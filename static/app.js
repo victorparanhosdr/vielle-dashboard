@@ -7,6 +7,24 @@ const state = {
   dateFrom: "",
   dateTo: "",
   rankings: {},
+  selectedClinic: "",
+};
+
+const clinics = {
+  vielle: {
+    id: "vielle",
+    name: "Vielle Clinic",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Relatório atual conectado ao Kommo e Clínica Experts.",
+    connected: true,
+  },
+  inspire: {
+    id: "inspire",
+    name: "Clínica Inspire",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Clínica Inspire pronta para configurar integrações.",
+    connected: false,
+  },
 };
 
 function fmtDate(value) {
@@ -35,6 +53,7 @@ function escapeHtml(value) {
 
 function buildQuery() {
   const params = new URLSearchParams();
+  if (state.selectedClinic) params.set("clinic", state.selectedClinic);
   if (state.selectedPipelines.size) {
     params.set("pipeline_ids", [...state.selectedPipelines].join(","));
   }
@@ -47,9 +66,9 @@ function buildQuery() {
 
 function syncFilterState(report) {
   const filters = report.filters || {};
-  state.dateFrom = state.dateFrom || filters.date_from || "";
-  state.dateTo = state.dateTo || filters.date_to || "";
-  state.selectedDoctor = state.selectedDoctor || filters.doctor || "";
+  state.dateFrom = filters.date_from || state.dateFrom || "";
+  state.dateTo = filters.date_to || state.dateTo || "";
+  state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
   document.getElementById("dateFrom").value = state.dateFrom;
   document.getElementById("dateTo").value = state.dateTo;
   state.allPipelines = report.pipelines || [];
@@ -77,14 +96,125 @@ function render() {
   renderFinancial(report.financial || {});
   renderStatusColumnChart(report.all_current_status || []);
 
+  applyClinicHeader();
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
   const lastSync = report.last_sync;
-  if (!report.connected) {
+  if (state.selectedClinic && !clinic.connected) {
+    showNotice(`${clinic.name} criada. Agora precisamos configurar as integrações dela para começar a puxar dados.`);
+  } else if (!report.connected) {
     showNotice("Conecte sua conta Kommo para iniciar a primeira sincronizacao.");
   } else if (lastSync && !lastSync.ok) {
     showNotice(lastSync.message || "A ultima sincronizacao nao foi concluida.");
   } else {
     showNotice("");
   }
+}
+
+function applyClinicHeader() {
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
+  document.title = `${clinic.title} | ${clinic.name}`;
+  document.getElementById("clinicEyebrow").textContent = clinic.name;
+  document.getElementById("dashboardTitle").textContent = clinic.title;
+  document.querySelectorAll("#syncBtn, #syncClinicaBtn, #connectBtn").forEach(button => {
+    button.disabled = !clinic.connected;
+    button.title = clinic.connected ? "" : "Configure as integrações desta clínica primeiro.";
+  });
+  const settingsLink = document.querySelector('a[href="/settings.html"]');
+  if (settingsLink) {
+    settingsLink.href = `/settings.html?clinic=${encodeURIComponent(clinic.id)}`;
+  }
+}
+
+function showClinicLanding() {
+  document.getElementById("clinicLanding").classList.remove("hidden");
+  document.getElementById("dashboardShell").classList.add("dashboardHidden");
+}
+
+function showDashboard() {
+  document.getElementById("clinicLanding").classList.add("hidden");
+  document.getElementById("dashboardShell").classList.remove("dashboardHidden");
+}
+
+function selectClinic(clinicId, updateUrl = true) {
+  state.selectedClinic = clinics[clinicId] ? clinicId : "vielle";
+  state.report = null;
+  state.allPipelines = [];
+  state.allDoctors = [];
+  state.selectedPipelines.clear();
+  state.selectedDoctor = "";
+  state.dateFrom = "";
+  state.dateTo = "";
+  localStorage.setItem("selectedClinic", state.selectedClinic);
+  showDashboard();
+  applyClinicHeader();
+  if (updateUrl) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("clinic", state.selectedClinic);
+    history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
+  loadReport();
+}
+
+function emptyReportForClinic(clinicId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const start = new Date();
+  start.setDate(start.getDate() - 30);
+  const dateFrom = start.toISOString().slice(0, 10);
+  return {
+    connected: false,
+    filters: {
+      pipeline_ids: [],
+      doctor: "",
+      date_from: dateFrom,
+      date_to: today,
+      doctors: [],
+    },
+    totals: { total_leads: 0, total_pipelines: 0, total_statuses: 0, last_synced_at: null },
+    pipelines: [],
+    by_pipeline: [],
+    interacted_leads: { total: 0, by_pipeline: [], daily: [], basis: "Ainda sem integração" },
+    by_status: [],
+    all_current_status: [],
+    daily_new_leads: [],
+    agendado_migrations: { total: 0 },
+    kommo_panel: { active_conversations: 0, lead_sources: [] },
+    clinica_experts: {
+      connected: false,
+      totals: { patients: 0, bookings: 0, sales: 0, sales_total: 0 },
+      bookings_by_status: [],
+      daily_bookings: [],
+      doctor_cross: [],
+      last_sync: null,
+    },
+    financial: {
+      basis: `${clinics[clinicId]?.name || "Clínica"}: aguardando integração`,
+      expense_source: "categorias",
+      totals: {
+        income: 0,
+        income_received: 0,
+        income_pending: 0,
+        expenses: 0,
+        expenses_paid: 0,
+        expenses_pending: 0,
+        balance: 0,
+        cash_balance: 0,
+        average_ticket: 0,
+      },
+      daily: [],
+      daily_details: {},
+      income_by_type: [],
+      expenses_by_category: [],
+      recent: [],
+      sales_intelligence: {
+        top_patients: [],
+        top_procedures: [],
+        procedure_categories: [],
+        performance_daily: [],
+        basis: "Aguardando integração da clínica.",
+      },
+    },
+    last_sync: null,
+  };
 }
 
 const brl = new Intl.NumberFormat("pt-BR", {
@@ -744,17 +874,30 @@ function formatDay(day) {
 }
 
 async function loadReport() {
+  if (!state.selectedClinic) {
+    showClinicLanding();
+    return;
+  }
+  if (state.selectedClinic !== "vielle") {
+    state.report = emptyReportForClinic(state.selectedClinic);
+    render();
+    return;
+  }
   const res = await fetch(`/api/report${buildQuery()}`);
   state.report = await res.json();
   render();
 }
 
 async function syncNow() {
+  if (state.selectedClinic !== "vielle") {
+    showNotice("Configure primeiro as integrações desta clínica.");
+    return;
+  }
   const btn = document.getElementById("syncBtn");
   btn.disabled = true;
   btn.textContent = "Atualizando...";
   try {
-    const res = await fetch("/api/sync");
+    const res = await fetch(`/api/sync${buildQuery()}`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar.");
     state.allPipelines = [];
@@ -768,11 +911,15 @@ async function syncNow() {
 }
 
 async function syncClinicaNow() {
+  if (state.selectedClinic !== "vielle") {
+    showNotice("Configure primeiro as integrações desta clínica.");
+    return;
+  }
   const btn = document.getElementById("syncClinicaBtn");
   btn.disabled = true;
   btn.textContent = "Buscando historico...";
   try {
-    const res = await fetch("/api/sync-clinica?historical=1");
+    const res = await fetch(`/api/sync-clinica?historical=1`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar Clínica Experts.");
     await loadReport();
@@ -798,6 +945,10 @@ function friendlyError(message) {
 }
 
 function exportPdf() {
+  if (state.selectedClinic !== "vielle") {
+    showNotice("O PDF fica disponível após configurarmos as integrações desta clínica.");
+    return;
+  }
   const btn = document.getElementById("exportPdfBtn");
   const original = btn.textContent;
   const params = new URLSearchParams(buildQuery().replace(/^\?/, ""));
@@ -812,6 +963,10 @@ function exportPdf() {
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
+  if (state.selectedClinic !== "vielle") {
+    showNotice("Configure primeiro as integrações desta clínica.");
+    return;
+  }
   window.location.href = "/auth/start";
 });
 
@@ -857,5 +1012,23 @@ const params = new URLSearchParams(window.location.search);
 if (params.get("error")) showNotice(decodeURIComponent(params.get("error")));
 if (params.get("connected")) showNotice("Kommo conectado. A primeira sincronizacao foi iniciada.");
 
-loadReport();
+document.querySelectorAll("[data-clinic-select]").forEach(button => {
+  button.addEventListener("click", () => {
+    selectClinic(button.dataset.clinicSelect);
+  });
+});
+document.getElementById("changeClinicBtn").addEventListener("click", () => {
+  state.selectedClinic = "";
+  state.report = null;
+  localStorage.removeItem("selectedClinic");
+  history.pushState(null, "", window.location.pathname);
+  showClinicLanding();
+});
+
+const initialClinic = params.get("clinic");
+if (initialClinic && clinics[initialClinic]) {
+  selectClinic(initialClinic, false);
+} else {
+  showClinicLanding();
+}
 setInterval(loadReport, 60_000);

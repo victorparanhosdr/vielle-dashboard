@@ -8,13 +8,46 @@
   </head>
   <body>
     <div class="ambient" aria-hidden="true"></div>
-    <main class="shell">
+    <section id="clinicLanding" class="clinicLanding">
+      <div class="landingShell">
+        <header class="landingHero">
+          <p class="eyebrow">Vielle Intelligence</p>
+          <h1>Escolha a clínica</h1>
+          <span>Dashboards estratégicos por unidade, com dados comerciais, agendamentos e financeiro no mesmo padrão visual.</span>
+        </header>
+
+        <div class="clinicCards">
+          <article class="clinicAccessCard primary">
+            <div>
+              <span>VC</span>
+              <small>Ativo</small>
+            </div>
+            <h2>Vielle Clinic</h2>
+            <p>Relatório atual com Kommo, Clínica Experts, comercial e financeiro.</p>
+            <button type="button" data-clinic-select="vielle">Acessar dashboard</button>
+          </article>
+
+          <article class="clinicAccessCard inspire">
+            <div>
+              <span>IN</span>
+              <small>Nova clínica</small>
+            </div>
+            <h2>Clínica Inspire</h2>
+            <p>Área separada para configurarmos as integrações e relatórios da Inspire.</p>
+            <button type="button" data-clinic-select="inspire">Acessar Inspire</button>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <main id="dashboardShell" class="shell dashboardHidden">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Vielle Clinic</p>
-          <h1>DASHBOARD ESTRATÉGICO</h1>
+          <p id="clinicEyebrow" class="eyebrow">Vielle Clinic</p>
+          <h1 id="dashboardTitle">DASHBOARD ESTRATÉGICO</h1>
         </div>
         <div class="actions">
+          <button id="changeClinicBtn" class="secondary" type="button">Trocar clínica</button>
           <button id="exportPdfBtn" class="secondary" type="button">Exportar PDF</button>
           <a class="buttonLink secondary" href="/settings.html">Configurações</a>
           <button id="connectBtn" class="secondary">Conectar Kommo</button>
