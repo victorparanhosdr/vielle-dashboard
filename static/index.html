@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DASHBOARD ESTRATÉGICO | Vielle Clinic</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Vielle Clinic</p>
+          <h1>DASHBOARD ESTRATÉGICO</h1>
+        </div>
+        <div class="actions">
+          <button id="exportPdfBtn" class="secondary" type="button">Exportar PDF</button>
+          <a class="buttonLink secondary" href="/settings.html">Configurações</a>
+          <button id="connectBtn" class="secondary">Conectar Kommo</button>
+          <button id="syncBtn">Atualizar</button>
+          <button id="syncClinicaBtn" class="secondary">Atualizar Clínica Experts</button>
+        </div>
+      </header>
+      <section id="printStamp" class="printStamp"></section>
+
+      <nav class="viewTabs" aria-label="Áreas do dashboard">
+        <button class="tabBtn active" type="button" data-view="commercialView">Comercial</button>
+        <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
+      </nav>
+
+      <section class="filterPanel" aria-label="Filtros">
+        <div class="filterHead">
+          <h2>Filtros</h2>
+          <button id="selectAllBtn" class="secondary" type="button">Todos considerados</button>
+        </div>
+        <div class="filterGrid">
+          <label>
+            <span>Doutor(a)</span>
+            <select id="doctorFilter">
+              <option value="">Todos considerados</option>
+            </select>
+          </label>
+          <label>
+            <span>De</span>
+            <input id="dateFrom" type="date">
+          </label>
+          <label>
+            <span>Ate</span>
+            <input id="dateTo" type="date">
+          </label>
+          <div class="pipelineSelect">
+            <span>Funis</span>
+            <details id="pipelineDropdown">
+              <summary>
+                <b id="pipelineSummary">Todos considerados</b>
+                <i>Selecionar</i>
+              </summary>
+              <div id="pipelineChoices" class="pipelineChoices"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="status" class="notice"></section>
+
+      <div id="commercialView" class="viewPanel active">
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Leads x Agendamentos por doutor(a)</h2>
+            <span class="metaText">Funis considerados + Clínica Experts</span>
+          </div>
+          <div id="doctorCross" class="doctorCross"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Clínica Experts</h2>
+            <span id="clinicaStatus" class="metaText">-</span>
+          </div>
+          <div class="clinicaGrid">
+            <article>
+              <span>Pacientes</span>
+              <strong id="clinicaPatients">0</strong>
+            </article>
+            <article>
+              <span>Agendamentos</span>
+              <strong id="clinicaBookings">0</strong>
+            </article>
+            <article>
+              <span>Vendas</span>
+              <strong id="clinicaSales">0</strong>
+            </article>
+            <article>
+              <span>Total vendido</span>
+              <strong id="clinicaSalesTotal">R$ 0</strong>
+            </article>
+          </div>
+          <div id="clinicaBookingStatus" class="numberList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Vendas e orçamentos</h2>
+            <span id="salesIntelligenceBasis" class="metaText">Clínica Experts</span>
+          </div>
+          <div id="salesPerformanceChart" class="salesPerformanceChart"></div>
+        </section>
+
+        <section class="insightGrid">
+          <div class="panel">
+            <div class="rankHead patient">
+              <span>♙</span>
+              <div>
+                <h2>Ranking de pacientes</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="topPatients" class="rankList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="rankHead procedure">
+              <span>✦</span>
+              <div>
+                <h2>Ranking de procedimentos</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="topProcedures" class="rankList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="rankHead category">
+              <span>◈</span>
+              <div>
+                <h2>Categorias de procedimento</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="procedureCategories" class="rankList"></div>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Resumo">
+          <article>
+            <span>Novos leads</span>
+            <strong id="totalLeads">0</strong>
+          </article>
+          <article>
+            <span>Leads com última interação</span>
+            <strong id="interactedLeads">0</strong>
+          </article>
+          <article>
+            <span>Funis selecionados</span>
+            <strong id="totalPipelines">0</strong>
+          </article>
+          <article>
+            <span>Fases com leads</span>
+            <strong id="totalStatuses">0</strong>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Entrada de novos leads dia a dia</h2>
+            <span id="lastSync" class="metaText">-</span>
+          </div>
+          <div id="dailyChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Agendamentos dia a dia</h2>
+            <span class="metaText">Base: Clínica Experts</span>
+          </div>
+          <div id="bookingChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Última interação dia a dia</h2>
+            <span class="metaText">Base: Última modificação</span>
+          </div>
+          <div id="interactionChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Fases atuais de todos os leads</h2>
+            <span class="metaText">Base: fase atual no Kommo, fases iguais somadas</span>
+          </div>
+          <div id="statusColumnChart" class="statusRankChart"></div>
+        </section>
+
+      </div>
+
+      <div id="financialView" class="viewPanel">
+        <section class="financeHero panel">
+          <div class="panelHead">
+            <h2>Financeiro</h2>
+            <span id="financeBasis" class="metaText">Clínica Experts</span>
+          </div>
+          <div class="financeGrid">
+            <article class="income">
+              <span>Faturamento</span>
+              <strong id="financeIncome">R$ 0</strong>
+            </article>
+            <article class="income">
+              <span>Recebido</span>
+              <strong id="financeReceived">R$ 0</strong>
+            </article>
+            <article>
+              <span>A receber</span>
+              <strong id="financeReceivable">R$ 0</strong>
+            </article>
+            <article class="expense">
+              <span>Despesas</span>
+              <strong id="financeExpenses">R$ 0</strong>
+            </article>
+            <article class="expense">
+              <span>Pagas</span>
+              <strong id="financePaidExpenses">R$ 0</strong>
+            </article>
+            <article>
+              <span>Em aberto</span>
+              <strong id="financeOpenExpenses">R$ 0</strong>
+            </article>
+            <article>
+              <span>Saldo de caixa</span>
+              <strong id="financeCashBalance">R$ 0</strong>
+            </article>
+            <article>
+              <span>Resultado</span>
+              <strong id="financeBalance">R$ 0</strong>
+            </article>
+            <article>
+              <span>Ticket médio</span>
+              <strong id="financeAverageTicket">R$ 0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Entradas x saídas dia a dia</h2>
+            <span class="metaText">Por data financeira no Clínica Experts</span>
+          </div>
+          <div id="financeDailyChart" class="financeDailyChart"></div>
+        </section>
+
+        <section class="split financeSplit">
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Entradas por tipo</h2>
+            </div>
+            <div id="financeIncomeTypes" class="financeList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Saídas por categoria</h2>
+            </div>
+            <div id="financeExpenseTypes" class="financeList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Últimos lançamentos</h2>
+            </div>
+            <div id="financeRecent" class="financeRecent"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="rankModal" class="rankModal" hidden>
+        <button class="rankModalBackdrop" type="button" data-rank-close aria-label="Fechar ranking"></button>
+        <section class="rankModalPanel" role="dialog" aria-modal="true" aria-labelledby="rankModalTitle">
+          <header>
+            <div>
+              <p class="eyebrow">Vielle Clinic</p>
+              <h2 id="rankModalTitle">Ranking completo</h2>
+            </div>
+            <button id="rankModalClose" class="secondary" type="button" data-rank-close>Fechar</button>
+          </header>
+          <div id="rankModalBody" class="rankModalBody"></div>
+        </section>
+      </div>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

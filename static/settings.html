@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Configurações | Vielle Clinic</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="shell settingsShell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Vielle Clinic</p>
+          <h1>Configurações</h1>
+        </div>
+        <div class="actions">
+          <a class="buttonLink secondary" href="/">Voltar ao dashboard</a>
+        </div>
+      </header>
+
+      <section id="settingsStatus" class="notice"></section>
+
+      <section class="panel settingsGate">
+        <div class="panelHead">
+          <h2>Acesso master</h2>
+          <span class="metaText">Necessário para alterar APIs e senhas</span>
+        </div>
+        <div class="settingsForm compactSettings">
+          <label>
+            <span>Usuário master</span>
+            <input id="masterUser" autocomplete="username" value="master">
+          </label>
+          <label>
+            <span>Senha master</span>
+            <input id="masterPassword" type="password" autocomplete="current-password">
+          </label>
+          <button id="unlockSettings" type="button">Entrar</button>
+        </div>
+      </section>
+
+      <div id="settingsArea" class="settingsArea" hidden>
+        <section class="panel settingsIntro">
+          <div>
+            <h2>Central de integrações</h2>
+            <p>Altere as contas conectadas, salve novas credenciais e recarregue o histórico completo pela API.</p>
+          </div>
+          <div class="settingsActions">
+            <button id="saveSettings" type="button">Salvar configurações</button>
+            <button id="loadEverything" class="secondary" type="button">Carregar todas as informações</button>
+            <button id="switchAccount" class="danger" type="button">Trocar conta e recarregar tudo</button>
+          </div>
+        </section>
+
+        <section class="settingsGrid">
+          <article class="panel">
+            <div class="panelHead">
+              <h2>Kommo</h2>
+              <span class="metaText">CRM e funis</span>
+            </div>
+            <div class="settingsForm">
+              <label>
+                <span>Domínio Kommo</span>
+                <input data-config="KOMMO_SUBDOMAIN" placeholder="contatoconsultingvpnet">
+              </label>
+              <label>
+                <span>ID da integração</span>
+                <input data-config="KOMMO_CLIENT_ID">
+              </label>
+              <label>
+                <span>URL de redirecionamento</span>
+                <input data-config="KOMMO_REDIRECT_URI">
+              </label>
+              <label>
+                <span>Chave secreta</span>
+                <input data-config="KOMMO_CLIENT_SECRET" data-secret="true" type="password" placeholder="Deixe em branco para manter a atual">
+                <small data-mask-for="KOMMO_CLIENT_SECRET"></small>
+              </label>
+              <label>
+                <span>Token de longa duração</span>
+                <input data-config="KOMMO_LONG_LIVED_TOKEN" data-secret="true" type="password" placeholder="Deixe em branco para manter o atual">
+                <small data-mask-for="KOMMO_LONG_LIVED_TOKEN"></small>
+              </label>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panelHead">
+              <h2>Clínica Experts</h2>
+              <span class="metaText">Agenda e financeiro</span>
+            </div>
+            <div class="settingsForm">
+              <label>
+                <span>Token da API</span>
+                <input data-config="CLINICA_EXPERTS_TOKEN" data-secret="true" type="password" placeholder="Deixe em branco para manter o atual">
+                <small data-mask-for="CLINICA_EXPERTS_TOKEN"></small>
+              </label>
+              <label>
+                <span>Buscar histórico desde</span>
+                <input data-config="CLINICA_HISTORY_START" type="date">
+              </label>
+              <label>
+                <span>Intervalo de segurança da API</span>
+                <input data-config="CLINICA_RATE_LIMIT_DELAY" type="number" min="1" step="1">
+              </label>
+              <label>
+                <span>Sincronização automática</span>
+                <input data-config="SYNC_INTERVAL_MINUTES" type="number" min="1" step="1">
+              </label>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panelHead">
+              <h2>Acesso ao sistema</h2>
+              <span class="metaText">Login do dashboard</span>
+            </div>
+            <div class="settingsForm">
+              <label>
+                <span>Usuário do dashboard</span>
+                <input data-config="DASHBOARD_USER" placeholder="admin">
+              </label>
+              <label>
+                <span>Nova senha do dashboard</span>
+                <input data-config="DASHBOARD_PASSWORD" data-secret="true" type="password" placeholder="Deixe em branco para manter a atual">
+                <small data-mask-for="DASHBOARD_PASSWORD"></small>
+              </label>
+              <label>
+                <span>Usuário master</span>
+                <input data-config="MASTER_USER" placeholder="master">
+              </label>
+              <label>
+                <span>Nova senha master</span>
+                <input data-config="MASTER_PASSWORD" data-secret="true" type="password" placeholder="Deixe em branco para manter a atual">
+                <small data-mask-for="MASTER_PASSWORD"></small>
+              </label>
+              <label>
+                <span>Chave interna do sistema</span>
+                <input data-config="APP_SECRET" data-secret="true" type="password" placeholder="Deixe em branco para manter a atual">
+                <small data-mask-for="APP_SECRET"></small>
+              </label>
+            </div>
+          </article>
+
+          <article class="panel settingsHelp">
+            <div class="panelHead">
+              <h2>Como usar</h2>
+            </div>
+            <div class="settingsCopy">
+              <p><strong>Salvar configurações</strong> altera tokens, domínios e senhas sem apagar os dados atuais.</p>
+              <p><strong>Carregar todas as informações</strong> busca o histórico completo usando as APIs configuradas.</p>
+              <p><strong>Trocar conta e recarregar tudo</strong> limpa os dados locais sincronizados e puxa tudo novamente da conta nova.</p>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+    <script src="/settings.js"></script>
+  </body>
+</html>
