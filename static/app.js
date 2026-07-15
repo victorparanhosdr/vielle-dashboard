@@ -119,7 +119,7 @@ function applyClinicHeader() {
     button.disabled = !clinic.connected;
     button.title = clinic.connected ? "" : "Configure as integrações desta clínica primeiro.";
   });
-  const settingsLink = document.querySelector('a[href="/settings.html"]');
+  const settingsLink = document.getElementById("settingsLink");
   if (settingsLink) {
     settingsLink.href = `/settings.html?clinic=${encodeURIComponent(clinic.id)}`;
   }
