@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
@@ -363,11 +364,13 @@ def init_db():
         )
 
 
-def json_response(handler, payload, status=HTTPStatus.OK):
+def json_response(handler, payload, status=HTTPStatus.OK, headers=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    for key, value in (headers or {}).items():
+        handler.send_header(key, value)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -385,6 +388,42 @@ def redirect(handler, location):
     handler.send_response(HTTPStatus.FOUND)
     handler.send_header("Location", location)
     handler.end_headers()
+
+
+CLINIC_ACCESS_ENV = {
+    "vielle": "VIELLE_ACCESS_CODE",
+    "inspire": "INSPIRE_ACCESS_CODE",
+}
+
+
+def normalize_clinic_id(value):
+    clinic_id = (value or "vielle").strip().lower()
+    return clinic_id if clinic_id in CLINIC_ACCESS_ENV else "vielle"
+
+
+def clinic_access_code(clinic_id):
+    env_key = CLINIC_ACCESS_ENV.get(normalize_clinic_id(clinic_id), "VIELLE_ACCESS_CODE")
+    return os.getenv(env_key, "").strip()
+
+
+def clinic_access_cookie_name(clinic_id):
+    return f"clinic_access_{normalize_clinic_id(clinic_id)}"
+
+
+def clinic_access_signature(clinic_id):
+    clinic_id = normalize_clinic_id(clinic_id)
+    secret = config_value("APP_SECRET", "dev-secret-change-me")
+    code = clinic_access_code(clinic_id)
+    message = f"{clinic_id}:{code}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def clinic_access_cookie(clinic_id):
+    clinic_id = normalize_clinic_id(clinic_id)
+    return (
+        f"{clinic_access_cookie_name(clinic_id)}={clinic_access_signature(clinic_id)}; "
+        "Path=/; Max-Age=43200; HttpOnly; SameSite=Lax"
+    )
 
 
 def account_domain(referrer=None):
@@ -2322,6 +2361,28 @@ class Handler(SimpleHTTPRequestHandler):
     def require_dashboard_auth(self):
         return True
 
+    def request_clinic_id(self, parsed):
+        params = urllib.parse.parse_qs(parsed.query)
+        return normalize_clinic_id(params.get("clinic", ["vielle"])[0])
+
+    def has_clinic_access(self, clinic_id):
+        expected_code = clinic_access_code(clinic_id)
+        if not expected_code:
+            return False
+        cookie = SimpleCookie(self.headers.get("Cookie", ""))
+        morsel = cookie.get(clinic_access_cookie_name(clinic_id))
+        return bool(morsel) and hmac.compare_digest(morsel.value, clinic_access_signature(clinic_id))
+
+    def require_clinic_access(self, parsed):
+        clinic_id = self.request_clinic_id(parsed)
+        if self.has_clinic_access(clinic_id):
+            return True
+        return json_response(
+            self,
+            {"ok": False, "error": "Código de acesso obrigatório para esta clínica."},
+            HTTPStatus.UNAUTHORIZED,
+        )
+
     def require_master_auth(self):
         expected_user = config_value("MASTER_USER", "master") or "master"
         expected_password = (
@@ -2353,6 +2414,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/report":
+            if not self.require_clinic_access(parsed):
+                return
             params = urllib.parse.parse_qs(parsed.query)
             try:
                 args = query_report_args(params)
@@ -2363,6 +2426,8 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as exc:
                 return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/export-pdf":
+            if not self.require_clinic_access(parsed):
+                return
             params = urllib.parse.parse_qs(parsed.query)
             try:
                 args = query_report_args(params)
@@ -2376,11 +2441,15 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return json_response(self, {"ok": False, "error": f"Não foi possível gerar o PDF: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync":
+            if not self.require_clinic_access(parsed):
+                return
             try:
                 return json_response(self, sync_leads())
             except Exception as exc:
                 return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-clinica":
+            if not self.require_clinic_access(parsed):
+                return
             params = urllib.parse.parse_qs(parsed.query)
             try:
                 return json_response(
@@ -2434,6 +2503,27 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/clinic-access":
+            try:
+                payload = self.read_json_body()
+            except Exception:
+                return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
+            clinic_id = normalize_clinic_id(payload.get("clinic_id", "vielle"))
+            expected_code = clinic_access_code(clinic_id)
+            received_code = str(payload.get("access_code", "")).strip()
+            if not expected_code:
+                return json_response(
+                    self,
+                    {"ok": False, "error": "Código desta clínica ainda não foi configurado no servidor."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            if not hmac.compare_digest(received_code, expected_code):
+                return json_response(self, {"ok": False, "error": "Código incorreto. Confira e tente novamente."}, HTTPStatus.UNAUTHORIZED)
+            return json_response(
+                self,
+                {"ok": True, "clinic_id": clinic_id},
+                headers={"Set-Cookie": clinic_access_cookie(clinic_id)},
+            )
         if parsed.path == "/api/settings":
             if not self.require_master_auth():
                 return

@@ -40,6 +40,21 @@
       </div>
     </section>
 
+    <section id="clinicAccessModal" class="clinicAccessModal hidden" aria-hidden="true">
+      <form id="clinicAccessForm" class="clinicAccessBox">
+        <button id="clinicAccessClose" class="modalClose" type="button" aria-label="Fechar">×</button>
+        <p class="eyebrow">Acesso restrito</p>
+        <h2 id="clinicAccessTitle">Código da clínica</h2>
+        <span id="clinicAccessSubtitle">Digite o código de acesso para continuar.</span>
+        <label>
+          <span>Código de acesso</span>
+          <input id="clinicAccessCode" type="password" autocomplete="off" inputmode="text" placeholder="Digite o código">
+        </label>
+        <small id="clinicAccessError"></small>
+        <button type="submit">Entrar no dashboard</button>
+      </form>
+    </section>
+
     <main id="dashboardShell" class="shell dashboardHidden">
       <header class="topbar">
         <div>

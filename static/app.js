@@ -135,6 +135,39 @@ function showDashboard() {
   document.getElementById("dashboardShell").classList.remove("dashboardHidden");
 }
 
+function clinicAccessKey(clinicId) {
+  return `clinicAccess:${clinicId}`;
+}
+
+function openClinicAccessModal(clinicId) {
+  const clinic = clinics[clinicId] || clinics.vielle;
+  const modal = document.getElementById("clinicAccessModal");
+  modal.dataset.clinicId = clinic.id;
+  document.getElementById("clinicAccessTitle").textContent = clinic.name;
+  document.getElementById("clinicAccessSubtitle").textContent = `Digite o código de acesso da ${clinic.name} para continuar.`;
+  document.getElementById("clinicAccessError").textContent = "";
+  document.getElementById("clinicAccessCode").value = "";
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  document.getElementById("clinicAccessCode").focus();
+}
+
+function closeClinicAccessModal() {
+  const modal = document.getElementById("clinicAccessModal");
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  modal.dataset.clinicId = "";
+}
+
+function requestClinicAccess(clinicId, updateUrl = true) {
+  const validClinicId = clinics[clinicId] ? clinicId : "vielle";
+  if (sessionStorage.getItem(clinicAccessKey(validClinicId)) === "ok") {
+    selectClinic(validClinicId, updateUrl);
+    return;
+  }
+  openClinicAccessModal(validClinicId);
+}
+
 function selectClinic(clinicId, updateUrl = true) {
   state.selectedClinic = clinics[clinicId] ? clinicId : "vielle";
   state.report = null;
@@ -884,7 +917,15 @@ async function loadReport() {
     return;
   }
   const res = await fetch(`/api/report${buildQuery()}`);
-  state.report = await res.json();
+  const payload = await res.json();
+  if (res.status === 401) {
+    sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
+    showDashboard();
+    openClinicAccessModal(state.selectedClinic);
+    showNotice(payload.error || "Digite o código de acesso para continuar.");
+    return;
+  }
+  state.report = payload;
   render();
 }
 
@@ -919,7 +960,8 @@ async function syncClinicaNow() {
   btn.disabled = true;
   btn.textContent = "Buscando historico...";
   try {
-    const res = await fetch(`/api/sync-clinica?historical=1`);
+    const separator = buildQuery() ? "&" : "?";
+    const res = await fetch(`/api/sync-clinica${buildQuery()}${separator}historical=1`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar Clínica Experts.");
     await loadReport();
@@ -1014,9 +1056,37 @@ if (params.get("connected")) showNotice("Kommo conectado. A primeira sincronizac
 
 document.querySelectorAll("[data-clinic-select]").forEach(button => {
   button.addEventListener("click", () => {
-    selectClinic(button.dataset.clinicSelect);
+    requestClinicAccess(button.dataset.clinicSelect);
   });
 });
+document.getElementById("clinicAccessForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const modal = document.getElementById("clinicAccessModal");
+  const clinicId = modal.dataset.clinicId;
+  const clinic = clinics[clinicId] || clinics.vielle;
+  const value = document.getElementById("clinicAccessCode").value.trim();
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const response = await fetch("/api/clinic-access", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({clinic_id: clinic.id, access_code: value}),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "Código incorreto.");
+    }
+    sessionStorage.setItem(clinicAccessKey(clinic.id), "ok");
+    closeClinicAccessModal();
+    selectClinic(clinic.id);
+  } catch (error) {
+    document.getElementById("clinicAccessError").textContent = error.message || "Código incorreto. Confira e tente novamente.";
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+document.getElementById("clinicAccessClose").addEventListener("click", closeClinicAccessModal);
 document.getElementById("changeClinicBtn").addEventListener("click", () => {
   state.selectedClinic = "";
   state.report = null;
@@ -1027,7 +1097,7 @@ document.getElementById("changeClinicBtn").addEventListener("click", () => {
 
 const initialClinic = params.get("clinic");
 if (initialClinic && clinics[initialClinic]) {
-  selectClinic(initialClinic, false);
+  requestClinicAccess(initialClinic, false);
 } else {
   showClinicLanding();
 }
