@@ -126,6 +126,7 @@ CLINIC_KOMMO_DOCTOR_ALIASES = {
         "Vinicyus Leite Moreira Faria": ["Dr. Vinicyus", "Dr Vinicyus", "Vinicyus"],
         "Leticia Araújo de Quevedo": ["Dra. Leticia", "Dra Leticia", "Leticia", "Letícia"],
         "Giovanna Fogo": ["Dra. Geovanna", "Dra Geovanna", "Dra. Giovanna", "Dra Giovanna", "Geovanna", "Giovanna"],
+        "Jessika de Paula Medeiros": ["Dra.Jessica", "Dra. Jessica", "Dra Jessica", "Jessica", "Dra.Jessika", "Dra. Jessika", "Dra Jessika", "Jessika"],
     },
 }
 
