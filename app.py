@@ -113,6 +113,14 @@ DOCTOR_PROFESSIONALS = {
     "Rafaela Amaro": "3f9ac58c-2427-46a6-9a41-166bf4ebddb5",
 }
 
+CLINIC_PIPELINE_DOCTOR_MAPS = {
+    "vielle": PIPELINE_DOCTOR_MAP,
+}
+
+CLINIC_DOCTOR_PROFESSIONALS = {
+    "vielle": DOCTOR_PROFESSIONALS,
+}
+
 
 PROCEDURE_CATEGORY_RULES = [
     ("Bioestimulador", ("bioestimulador", "stiim", "sculptra", "radiesse", "ellanse", "colágeno", "colageno", "neauvia")),
@@ -138,6 +146,49 @@ def procedure_category_from_name(name):
         if any(term in text for term in terms):
             return category
     return "Sem categoria"
+
+
+def clinic_pipeline_doctor_map():
+    return CLINIC_PIPELINE_DOCTOR_MAPS.get(current_clinic_id(), {})
+
+
+def clinica_professionals_from_data(conn):
+    rows = conn.execute(
+        """
+        select professional_uuid as uuid,
+               coalesce(
+                 json_extract(raw_json, '$.professional.name'),
+                 json_extract(raw_json, '$.professional.full_name'),
+                 json_extract(raw_json, '$.professional.title')
+               ) as name
+        from clinica_bookings
+        where professional_uuid is not null
+        union
+        select json_extract(raw_json, '$.seller.uuid') as uuid,
+               coalesce(
+                 json_extract(raw_json, '$.seller.name'),
+                 json_extract(raw_json, '$.seller.full_name'),
+                 json_extract(raw_json, '$.seller.title')
+               ) as name
+        from clinica_sales
+        where json_extract(raw_json, '$.seller.uuid') is not null
+        order by name
+        """
+    ).fetchall()
+    professionals = {}
+    for row in rows:
+        uuid = row["uuid"]
+        name = row["name"]
+        if uuid and name:
+            professionals[str(name)] = str(uuid)
+    return professionals
+
+
+def clinic_doctor_professionals(conn):
+    static_professionals = CLINIC_DOCTOR_PROFESSIONALS.get(current_clinic_id())
+    if static_professionals is not None:
+        return dict(static_professionals)
+    return clinica_professionals_from_data(conn)
 
 
 def current_clinic_id():
@@ -1431,8 +1482,7 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
 def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     pipeline_ids = pipeline_ids or []
     clinic_id = current_clinic_id()
-    is_vielle = clinic_id == "vielle"
-    selected_doctor = doctor if is_vielle and doctor in DOCTOR_PROFESSIONALS else ""
+    pipeline_doctor_map = clinic_pipeline_doctor_map()
     if not date_from or not date_to:
         default_from, default_to = default_period()
         date_from = date_from or default_from
@@ -1442,20 +1492,25 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     selected_pipeline_filter = ""
     selected_pipeline_params = []
     with db() as conn:
-        if is_vielle:
+        doctor_professionals = clinic_doctor_professionals(conn)
+        selected_doctor = doctor if doctor in doctor_professionals else ""
+        if pipeline_doctor_map:
             considered_pipeline_names = [
-                name for name, mapped_doctor in PIPELINE_DOCTOR_MAP.items()
+                name for name, mapped_doctor in pipeline_doctor_map.items()
                 if not selected_doctor or mapped_doctor == selected_doctor
             ]
-            considered_pipeline_rows = conn.execute(
-                f"""
-                select id, name
-                from pipelines
-                where name in ({",".join("?" for _ in considered_pipeline_names)})
-                order by coalesce(sort, 999999), name
-                """,
-                considered_pipeline_names,
-            ).fetchall()
+            if considered_pipeline_names:
+                considered_pipeline_rows = conn.execute(
+                    f"""
+                    select id, name
+                    from pipelines
+                    where name in ({",".join("?" for _ in considered_pipeline_names)})
+                    order by coalesce(sort, 999999), name
+                    """,
+                    considered_pipeline_names,
+                ).fetchall()
+            else:
+                considered_pipeline_rows = []
         else:
             considered_pipeline_rows = conn.execute(
                 """
@@ -1467,15 +1522,20 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     considered_pipeline_ids = [row["id"] for row in considered_pipeline_rows]
     effective_pipeline_ids = [pid for pid in pipeline_ids if pid in considered_pipeline_ids] if pipeline_ids else considered_pipeline_ids
     effective_pipeline_doctors = sorted({
-        PIPELINE_DOCTOR_MAP.get(row["name"])
+        pipeline_doctor_map.get(row["name"])
         for row in considered_pipeline_rows
-        if row["id"] in effective_pipeline_ids and PIPELINE_DOCTOR_MAP.get(row["name"])
+        if row["id"] in effective_pipeline_ids and pipeline_doctor_map.get(row["name"])
     })
-    effective_professional_uuids = [
-        DOCTOR_PROFESSIONALS[doctor_name]
-        for doctor_name in effective_pipeline_doctors
-        if doctor_name in DOCTOR_PROFESSIONALS
-    ] if is_vielle else []
+    if selected_doctor:
+        effective_professional_uuids = [doctor_professionals[selected_doctor]]
+    elif effective_pipeline_doctors:
+        effective_professional_uuids = [
+            doctor_professionals[doctor_name]
+            for doctor_name in effective_pipeline_doctors
+            if doctor_name in doctor_professionals
+        ]
+    else:
+        effective_professional_uuids = []
     pipeline_filter, params = build_filters(effective_pipeline_ids, start_ts, end_ts)
     all_status_filter, all_status_params = build_filters(effective_pipeline_ids, None, None)
     update_filter, update_params = build_filters(
@@ -2011,47 +2071,54 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         ]
         doctor_rows = []
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
-        for doctor_name, professional_uuid in (DOCTOR_PROFESSIONALS.items() if is_vielle else []):
+        for doctor_name, professional_uuid in doctor_professionals.items():
+            if selected_doctor and doctor_name != selected_doctor:
+                continue
             doctor_pipeline_ids = [
                 pipeline_id
                 for pipeline_id, pipeline_name in pipeline_lookup.items()
-                if PIPELINE_DOCTOR_MAP.get(pipeline_name) == doctor_name and pipeline_id in effective_pipeline_ids
+                if pipeline_doctor_map.get(pipeline_name) == doctor_name and pipeline_id in effective_pipeline_ids
             ]
-            if not doctor_pipeline_ids:
+            if pipeline_doctor_map and not doctor_pipeline_ids:
                 continue
-            placeholders = ",".join("?" for _ in doctor_pipeline_ids)
-            lead_total = conn.execute(
-                f"""
-                select count(*) from leads
-                where pipeline_id in ({placeholders})
-                  and created_at >= ?
-                  and created_at <= ?
-                """,
-                [*doctor_pipeline_ids, start_ts, end_ts],
-            ).fetchone()[0]
-            interacted_total = conn.execute(
-                f"""
-                select count(*) from leads
-                where pipeline_id in ({placeholders})
-                  and updated_at >= ?
-                  and updated_at <= ?
-                """,
-                [*doctor_pipeline_ids, start_ts, end_ts],
-            ).fetchone()[0]
-            agendado_total = conn.execute(
-                f"""
-                select count(distinct lead_status_events.lead_id)
-                from lead_status_events
-                join pipeline_statuses
-                  on pipeline_statuses.id = lead_status_events.after_status_id
-                 and pipeline_statuses.pipeline_id = lead_status_events.after_pipeline_id
-                where lead_status_events.after_pipeline_id in ({placeholders})
-                  and lead_status_events.created_at >= ?
-                  and lead_status_events.created_at <= ?
-                  and lower(pipeline_statuses.name) like '%agend%'
-                """,
-                [*doctor_pipeline_ids, start_ts, end_ts],
-            ).fetchone()[0]
+            if doctor_pipeline_ids:
+                placeholders = ",".join("?" for _ in doctor_pipeline_ids)
+                lead_total = conn.execute(
+                    f"""
+                    select count(*) from leads
+                    where pipeline_id in ({placeholders})
+                      and created_at >= ?
+                      and created_at <= ?
+                    """,
+                    [*doctor_pipeline_ids, start_ts, end_ts],
+                ).fetchone()[0]
+                interacted_total = conn.execute(
+                    f"""
+                    select count(*) from leads
+                    where pipeline_id in ({placeholders})
+                      and updated_at >= ?
+                      and updated_at <= ?
+                    """,
+                    [*doctor_pipeline_ids, start_ts, end_ts],
+                ).fetchone()[0]
+                agendado_total = conn.execute(
+                    f"""
+                    select count(distinct lead_status_events.lead_id)
+                    from lead_status_events
+                    join pipeline_statuses
+                      on pipeline_statuses.id = lead_status_events.after_status_id
+                     and pipeline_statuses.pipeline_id = lead_status_events.after_pipeline_id
+                    where lead_status_events.after_pipeline_id in ({placeholders})
+                      and lead_status_events.created_at >= ?
+                      and lead_status_events.created_at <= ?
+                      and lower(pipeline_statuses.name) like '%agend%'
+                    """,
+                    [*doctor_pipeline_ids, start_ts, end_ts],
+                ).fetchone()[0]
+            else:
+                lead_total = 0
+                interacted_total = 0
+                agendado_total = 0
             bookings_total = conn.execute(
                 """
                 select count(*) from clinica_bookings
@@ -2106,7 +2173,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             "doctor": selected_doctor,
             "date_from": date_from,
             "date_to": date_to,
-            "doctors": list(DOCTOR_PROFESSIONALS.keys()),
+            "doctors": list(doctor_professionals.keys()),
         },
         "totals": dict(totals),
         "pipelines": [dict(row) for row in pipelines],
