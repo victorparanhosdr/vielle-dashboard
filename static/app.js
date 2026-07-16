@@ -121,10 +121,10 @@ function applyClinicHeader() {
   });
   const syncClinicaBtn = document.getElementById("syncClinicaBtn");
   if (syncClinicaBtn) {
-    syncClinicaBtn.disabled = state.selectedClinic !== "vielle";
-    syncClinicaBtn.title = state.selectedClinic === "vielle"
+    syncClinicaBtn.disabled = !clinic.connected;
+    syncClinicaBtn.title = clinic.connected
       ? ""
-      : "Clínica Experts ainda não foi conectado para esta clínica.";
+      : "Configure as integrações desta clínica primeiro.";
   }
   const settingsLink = document.getElementById("settingsLink");
   if (settingsLink) {
@@ -950,10 +950,6 @@ async function syncNow() {
 }
 
 async function syncClinicaNow() {
-  if (state.selectedClinic !== "vielle") {
-    showNotice("Configure primeiro as integrações desta clínica.");
-    return;
-  }
   const btn = document.getElementById("syncClinicaBtn");
   btn.disabled = true;
   btn.textContent = "Buscando historico...";
