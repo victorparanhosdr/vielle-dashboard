@@ -22,8 +22,8 @@ const clinics = {
     id: "inspire",
     name: "Clínica Inspire",
     title: "DASHBOARD ESTRATÉGICO",
-    status: "Clínica Inspire pronta para configurar integrações.",
-    connected: false,
+    status: "Relatório da Clínica Inspire conectado ao Kommo.",
+    connected: true,
   },
 };
 
@@ -115,10 +115,17 @@ function applyClinicHeader() {
   document.title = `${clinic.title} | ${clinic.name}`;
   document.getElementById("clinicEyebrow").textContent = clinic.name;
   document.getElementById("dashboardTitle").textContent = clinic.title;
-  document.querySelectorAll("#syncBtn, #syncClinicaBtn, #connectBtn").forEach(button => {
+  document.querySelectorAll("#syncBtn, #connectBtn").forEach(button => {
     button.disabled = !clinic.connected;
     button.title = clinic.connected ? "" : "Configure as integrações desta clínica primeiro.";
   });
+  const syncClinicaBtn = document.getElementById("syncClinicaBtn");
+  if (syncClinicaBtn) {
+    syncClinicaBtn.disabled = state.selectedClinic !== "vielle";
+    syncClinicaBtn.title = state.selectedClinic === "vielle"
+      ? ""
+      : "Clínica Experts ainda não foi conectado para esta clínica.";
+  }
   const settingsLink = document.getElementById("settingsLink");
   if (settingsLink) {
     settingsLink.href = `/settings.html?clinic=${encodeURIComponent(clinic.id)}`;
@@ -911,11 +918,6 @@ async function loadReport() {
     showClinicLanding();
     return;
   }
-  if (state.selectedClinic !== "vielle") {
-    state.report = emptyReportForClinic(state.selectedClinic);
-    render();
-    return;
-  }
   const res = await fetch(`/api/report${buildQuery()}`);
   const payload = await res.json();
   if (res.status === 401) {
@@ -930,10 +932,6 @@ async function loadReport() {
 }
 
 async function syncNow() {
-  if (state.selectedClinic !== "vielle") {
-    showNotice("Configure primeiro as integrações desta clínica.");
-    return;
-  }
   const btn = document.getElementById("syncBtn");
   btn.disabled = true;
   btn.textContent = "Atualizando...";
@@ -987,10 +985,6 @@ function friendlyError(message) {
 }
 
 function exportPdf() {
-  if (state.selectedClinic !== "vielle") {
-    showNotice("O PDF fica disponível após configurarmos as integrações desta clínica.");
-    return;
-  }
   const btn = document.getElementById("exportPdfBtn");
   const original = btn.textContent;
   const params = new URLSearchParams(buildQuery().replace(/^\?/, ""));
@@ -1005,11 +999,7 @@ function exportPdf() {
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
-  if (state.selectedClinic !== "vielle") {
-    showNotice("Configure primeiro as integrações desta clínica.");
-    return;
-  }
-  window.location.href = "/auth/start";
+  window.location.href = `/auth/start${buildQuery()}`;
 });
 
 document.getElementById("syncBtn").addEventListener("click", syncNow);

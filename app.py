@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import base64
+import contextlib
+import contextvars
 import hashlib
 import hmac
 import io
@@ -21,6 +23,16 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
+CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
+SUPPORTED_CLINICS = ("vielle", "inspire")
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE"}
+CLINIC_SCOPED_CONFIG_KEYS = {
+    "KOMMO_SUBDOMAIN",
+    "KOMMO_CLIENT_ID",
+    "KOMMO_CLIENT_SECRET",
+    "KOMMO_LONG_LIVED_TOKEN",
+    "KOMMO_REDIRECT_URI",
+}
 
 
 def load_env():
@@ -126,14 +138,46 @@ def procedure_category_from_name(name):
     return "Sem categoria"
 
 
+def current_clinic_id():
+    clinic_id = CURRENT_CLINIC_ID.get()
+    return clinic_id if clinic_id in SUPPORTED_CLINICS else "vielle"
+
+
+def clinic_db_path(clinic_id=None):
+    clinic_id = clinic_id or current_clinic_id()
+    if clinic_id == "vielle":
+        return DB_PATH
+    return BASE_DIR / f"kommo_report_{clinic_id}.sqlite3"
+
+
+@contextlib.contextmanager
+def clinic_context(clinic_id):
+    token = CURRENT_CLINIC_ID.set(normalize_clinic_id(clinic_id))
+    try:
+        init_db()
+        yield
+    finally:
+        CURRENT_CLINIC_ID.reset(token)
+
+
+def clinic_env_value(key):
+    prefix = CLINIC_ENV_PREFIXES.get(current_clinic_id(), "")
+    if not prefix or key not in CLINIC_SCOPED_CONFIG_KEYS:
+        return ""
+    return os.getenv(f"{prefix}_{key}", "").strip()
+
+
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(clinic_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def config_value(key, default=None):
     fallback = CONFIG_DEFAULTS.get(key, default or "")
+    scoped_env = clinic_env_value(key)
+    if scoped_env:
+        return scoped_env
     try:
         with db() as conn:
             row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
@@ -1384,7 +1428,9 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
 
 def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     pipeline_ids = pipeline_ids or []
-    selected_doctor = doctor if doctor in DOCTOR_PROFESSIONALS else ""
+    clinic_id = current_clinic_id()
+    is_vielle = clinic_id == "vielle"
+    selected_doctor = doctor if is_vielle and doctor in DOCTOR_PROFESSIONALS else ""
     if not date_from or not date_to:
         default_from, default_to = default_period()
         date_from = date_from or default_from
@@ -1393,20 +1439,29 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     end_ts = parse_date(date_to, end_of_day=True)
     selected_pipeline_filter = ""
     selected_pipeline_params = []
-    considered_pipeline_names = [
-        name for name, mapped_doctor in PIPELINE_DOCTOR_MAP.items()
-        if not selected_doctor or mapped_doctor == selected_doctor
-    ]
     with db() as conn:
-        considered_pipeline_rows = conn.execute(
-            f"""
-            select id, name
-            from pipelines
-            where name in ({",".join("?" for _ in considered_pipeline_names)})
-            order by coalesce(sort, 999999), name
-            """,
-            considered_pipeline_names,
-        ).fetchall()
+        if is_vielle:
+            considered_pipeline_names = [
+                name for name, mapped_doctor in PIPELINE_DOCTOR_MAP.items()
+                if not selected_doctor or mapped_doctor == selected_doctor
+            ]
+            considered_pipeline_rows = conn.execute(
+                f"""
+                select id, name
+                from pipelines
+                where name in ({",".join("?" for _ in considered_pipeline_names)})
+                order by coalesce(sort, 999999), name
+                """,
+                considered_pipeline_names,
+            ).fetchall()
+        else:
+            considered_pipeline_rows = conn.execute(
+                """
+                select id, name
+                from pipelines
+                order by coalesce(sort, 999999), name
+                """
+            ).fetchall()
     considered_pipeline_ids = [row["id"] for row in considered_pipeline_rows]
     effective_pipeline_ids = [pid for pid in pipeline_ids if pid in considered_pipeline_ids] if pipeline_ids else considered_pipeline_ids
     effective_pipeline_doctors = sorted({
@@ -1418,7 +1473,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         DOCTOR_PROFESSIONALS[doctor_name]
         for doctor_name in effective_pipeline_doctors
         if doctor_name in DOCTOR_PROFESSIONALS
-    ]
+    ] if is_vielle else []
     pipeline_filter, params = build_filters(effective_pipeline_ids, start_ts, end_ts)
     all_status_filter, all_status_params = build_filters(effective_pipeline_ids, None, None)
     update_filter, update_params = build_filters(
@@ -1954,7 +2009,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         ]
         doctor_rows = []
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
-        for doctor_name, professional_uuid in DOCTOR_PROFESSIONALS.items():
+        for doctor_name, professional_uuid in (DOCTOR_PROFESSIONALS.items() if is_vielle else []):
             doctor_pipeline_ids = [
                 pipeline_id
                 for pipeline_id, pipeline_name in pipeline_lookup.items()
@@ -2414,68 +2469,73 @@ class Handler(SimpleHTTPRequestHandler):
             return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/report":
-            if not self.require_clinic_access(parsed):
-                return
-            params = urllib.parse.parse_qs(parsed.query)
-            try:
-                args = query_report_args(params)
-            except ValueError:
-                return json_response(self, {"ok": False, "error": "pipeline_ids invalido"}, HTTPStatus.BAD_REQUEST)
-            try:
-                return json_response(self, report_data(**args))
-            except ValueError as exc:
-                return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                params = urllib.parse.parse_qs(parsed.query)
+                try:
+                    args = query_report_args(params)
+                except ValueError:
+                    return json_response(self, {"ok": False, "error": "pipeline_ids invalido"}, HTTPStatus.BAD_REQUEST)
+                try:
+                    return json_response(self, report_data(**args))
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/export-pdf":
-            if not self.require_clinic_access(parsed):
-                return
-            params = urllib.parse.parse_qs(parsed.query)
-            try:
-                args = query_report_args(params)
-                report = report_data(**args)
-                view = params.get("view", ["commercial"])[0]
-                pdf = generate_report_pdf(report, view="financial" if view == "financialView" else "commercial")
-                stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-                return binary_response(self, pdf, f"vielle-clinic-dashboard-{stamp}.pdf", "application/pdf")
-            except ValueError as exc:
-                return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
-            except Exception as exc:
-                return json_response(self, {"ok": False, "error": f"Não foi possível gerar o PDF: {exc}"}, HTTPStatus.BAD_REQUEST)
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                params = urllib.parse.parse_qs(parsed.query)
+                try:
+                    args = query_report_args(params)
+                    report = report_data(**args)
+                    view = params.get("view", ["commercial"])[0]
+                    pdf = generate_report_pdf(report, view="financial" if view == "financialView" else "commercial")
+                    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                    return binary_response(self, pdf, f"{current_clinic_id()}-dashboard-{stamp}.pdf", "application/pdf")
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível gerar o PDF: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync":
-            if not self.require_clinic_access(parsed):
-                return
-            try:
-                return json_response(self, sync_leads())
-            except Exception as exc:
-                return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    return json_response(self, sync_leads())
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-clinica":
-            if not self.require_clinic_access(parsed):
-                return
-            params = urllib.parse.parse_qs(parsed.query)
-            try:
-                return json_response(
-                    self,
-                    sync_clinica_experts(
-                        date_from=params.get("date_from", [""])[0],
-                        date_to=params.get("date_to", [""])[0],
-                        historical=params.get("historical", [""])[0] in ("1", "true", "yes"),
-                    ),
-                )
-            except Exception as exc:
-                return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                params = urllib.parse.parse_qs(parsed.query)
+                try:
+                    return json_response(
+                        self,
+                        sync_clinica_experts(
+                            date_from=params.get("date_from", [""])[0],
+                            date_to=params.get("date_to", [""])[0],
+                            historical=params.get("historical", [""])[0] in ("1", "true", "yes"),
+                        ),
+                    )
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/settings":
             if not self.require_master_auth():
                 return
             return json_response(self, settings_payload())
         if parsed.path == "/auth/start":
-            client_id = config_value("KOMMO_CLIENT_ID", "")
-            if not client_id:
-                return json_response(self, {"ok": False, "error": "KOMMO_CLIENT_ID nao configurado."}, HTTPStatus.BAD_REQUEST)
-            state = secrets.token_urlsafe(24)
-            save_state(state)
-            query = urllib.parse.urlencode(
-                {"client_id": client_id, "state": state, "mode": "popup"}
-            )
-            return redirect(self, f"https://www.kommo.com/oauth?{query}")
+            with clinic_context(self.request_clinic_id(parsed)):
+                client_id = config_value("KOMMO_CLIENT_ID", "")
+                if not client_id:
+                    return json_response(self, {"ok": False, "error": "KOMMO_CLIENT_ID nao configurado."}, HTTPStatus.BAD_REQUEST)
+                state = secrets.token_urlsafe(24)
+                save_state(state)
+                query = urllib.parse.urlencode(
+                    {"client_id": client_id, "state": state, "mode": "popup"}
+                )
+                return redirect(self, f"https://www.kommo.com/oauth?{query}")
         if parsed.path == "/auth/callback":
             params = urllib.parse.parse_qs(parsed.query)
             if "error" in params:
@@ -2579,15 +2639,19 @@ class Handler(SimpleHTTPRequestHandler):
 def background_sync():
     while True:
         time.sleep(max(1, config_int("SYNC_INTERVAL_MINUTES", 30)) * 60)
-        try:
-            if configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens():
-                sync_leads()
-        except Exception:
-            pass
+        for clinic_id in SUPPORTED_CLINICS:
+            try:
+                with clinic_context(clinic_id):
+                    if configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens():
+                        sync_leads()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
-    init_db()
+    for clinic_id in SUPPORTED_CLINICS:
+        with clinic_context(clinic_id):
+            pass
     thread = threading.Thread(target=background_sync, daemon=True)
     thread.start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
