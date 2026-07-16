@@ -332,7 +332,10 @@ function renderFinancial(financial) {
   document.getElementById("financeAverageTicket").textContent = brl.format(totals.average_ticket || 0);
   renderFinanceDailyChart(financial.daily || [], financial.daily_details || {});
   renderFinanceList("financeIncomeTypes", financial.income_by_type || [], "amount");
-  renderFinanceList("financeExpenseTypes", financial.expenses_by_category || [], "amount", "category");
+  renderFinanceList("financeExpenseTypes", financial.expenses_by_category || [], "amount", "category", {
+    showShare: true,
+    shareTotal: totals.expenses || 0,
+  });
   renderFinanceRecent(financial.recent || []);
   renderSalesIntelligence(financial.sales_intelligence || {});
 }
@@ -629,21 +632,29 @@ function renderFinanceLaunches(items) {
   `).join("");
 }
 
-function renderFinanceList(id, items, amountKey, labelKey = "type") {
+function renderFinanceList(id, items, amountKey, labelKey = "type", options = {}) {
   const el = document.getElementById(id);
   const sortedItems = [...items].sort((a, b) => (b[amountKey] || 0) - (a[amountKey] || 0));
   const max = Math.max(...sortedItems.map(item => item[amountKey] || 0), 1);
+  const shareTotal = options.shareTotal || sortedItems.reduce((sum, item) => sum + (item[amountKey] || 0), 0);
   el.innerHTML = sortedItems.length
-    ? sortedItems.map(item => `
+    ? sortedItems.map(item => {
+      const amount = item[amountKey] || 0;
+      const share = shareTotal ? amount / shareTotal : null;
+      return `
       <div class="financeItem">
         <div>
           <strong>${escapeHtml(labelKey === "category" ? (item.category || "Sem categoria") : financeTypeLabel(item.type))}</strong>
           <span>${financeListSubtitle(item)}</span>
-          <div class="bar"><i style="width:${Math.max(4, ((item[amountKey] || 0) / max) * 100)}%"></i></div>
+          <div class="bar"><i style="width:${Math.max(4, (amount / max) * 100)}%"></i></div>
         </div>
-        <b>${brl.format(item[amountKey] || 0)}</b>
+        <div class="financeAmount">
+          <b>${brl.format(amount)}</b>
+          ${options.showShare ? `<small>${formatPercent(share)} do total</small>` : ""}
+        </div>
       </div>
-    `).join("")
+    `;
+    }).join("")
     : `<div class="empty">Sem dados financeiros para o filtro selecionado.</div>`;
 }
 
