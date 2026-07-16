@@ -119,6 +119,15 @@ CLINIC_PIPELINE_DOCTOR_MAPS = {
 
 CLINIC_DOCTOR_PROFESSIONALS = {
     "vielle": DOCTOR_PROFESSIONALS,
+    "inspire": {
+        "Adrielli Gonzaga Da Silva": "833965e8-acc0-47d9-b15e-df749069ce95",
+        "Ana Beatriz Ferreira da Silva": "fd8b2edf-3578-43cf-a1e7-87ea299cb419",
+        "Giovanna Fogo": "205298fd-973c-494b-a7ea-c58b644ecee5",
+        "Jessika de Paula Medeiros": "b8b09d3e-8998-44e0-bb56-16c46415287b",
+        "Joilda De França Lima": "6fb360fc-2721-449e-8566-e4155dfe862d",
+        "Leticia Araújo de Quevedo": "3535aff4-b079-4037-9e0c-17e08c0780ea",
+        "Vinicyus Leite Moreira Faria": "d59079c4-6ab9-4d5a-9112-cfa1b4ba11fc",
+    },
 }
 
 CLINIC_KOMMO_DOCTOR_ALIASES = {
