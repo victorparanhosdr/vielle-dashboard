@@ -121,6 +121,14 @@ CLINIC_DOCTOR_PROFESSIONALS = {
     "vielle": DOCTOR_PROFESSIONALS,
 }
 
+CLINIC_KOMMO_DOCTOR_ALIASES = {
+    "inspire": {
+        "Vinicyus Leite Moreira Faria": ["Dr. Vinicyus", "Dr Vinicyus", "Vinicyus"],
+        "Leticia Araújo de Quevedo": ["Dra. Leticia", "Dra Leticia", "Leticia", "Letícia"],
+        "Giovanna Fogo": ["Dra. Geovanna", "Dra Geovanna", "Dra. Giovanna", "Dra Giovanna", "Geovanna", "Giovanna"],
+    },
+}
+
 
 PROCEDURE_CATEGORY_RULES = [
     ("Bioestimulador", ("bioestimulador", "stiim", "sculptra", "radiesse", "ellanse", "colágeno", "colageno", "neauvia")),
@@ -189,6 +197,34 @@ def clinic_doctor_professionals(conn):
     if static_professionals is not None:
         return dict(static_professionals)
     return clinica_professionals_from_data(conn)
+
+
+def clinic_kommo_doctor_aliases(doctor_name):
+    aliases = CLINIC_KOMMO_DOCTOR_ALIASES.get(current_clinic_id(), {}).get(doctor_name, [])
+    return [alias.lower() for alias in aliases if alias]
+
+
+def clinic_has_kommo_doctor_aliases():
+    return current_clinic_id() in CLINIC_KOMMO_DOCTOR_ALIASES
+
+
+def kommo_doctor_clause(aliases, prefix="leads"):
+    aliases = [alias.lower() for alias in aliases if alias]
+    if not aliases:
+        return "", []
+    placeholders = ",".join("?" for _ in aliases)
+    return (
+        f"""
+        exists (
+          select 1
+          from json_each({prefix}.raw_json, '$.custom_fields_values') custom_field
+          join json_each(custom_field.value, '$.values') custom_value
+          where lower(coalesce(json_extract(custom_field.value, '$.field_name'), '')) = 'profissional'
+            and lower(coalesce(json_extract(custom_value.value, '$.value'), '')) in ({placeholders})
+        )
+        """,
+        aliases,
+    )
 
 
 def current_clinic_id():
@@ -1463,7 +1499,7 @@ def sync_leads():
         raise
 
 
-def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="created_at"):
+def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="created_at", extra_clauses=None, extra_params=None):
     clauses = []
     params = []
     if pipeline_ids:
@@ -1476,6 +1512,9 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
     if end_ts:
         clauses.append(f"{prefix}.{date_column} <= ?")
         params.append(end_ts)
+    if extra_clauses:
+        clauses.extend(extra_clauses)
+        params.extend(extra_params or [])
     return ("where " + " and ".join(clauses)) if clauses else "", params
 
 
@@ -1536,14 +1575,35 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         ]
     else:
         effective_professional_uuids = []
-    pipeline_filter, params = build_filters(effective_pipeline_ids, start_ts, end_ts)
-    all_status_filter, all_status_params = build_filters(effective_pipeline_ids, None, None)
+    selected_kommo_aliases = clinic_kommo_doctor_aliases(selected_doctor) if selected_doctor else []
+    if selected_doctor and clinic_has_kommo_doctor_aliases() and not selected_kommo_aliases:
+        lead_doctor_clause, lead_doctor_params = "0 = 1", []
+    else:
+        lead_doctor_clause, lead_doctor_params = kommo_doctor_clause(selected_kommo_aliases)
+    lead_extra_clauses = [lead_doctor_clause] if lead_doctor_clause else []
+    pipeline_filter, params = build_filters(
+        effective_pipeline_ids,
+        start_ts,
+        end_ts,
+        extra_clauses=lead_extra_clauses,
+        extra_params=lead_doctor_params,
+    )
+    all_status_filter, all_status_params = build_filters(
+        effective_pipeline_ids,
+        None,
+        None,
+        extra_clauses=lead_extra_clauses,
+        extra_params=lead_doctor_params,
+    )
     update_filter, update_params = build_filters(
         effective_pipeline_ids,
         start_ts,
         end_ts,
         date_column="updated_at",
+        extra_clauses=lead_extra_clauses,
+        extra_params=lead_doctor_params,
     )
+    join_doctor_clause = f" and {lead_doctor_clause}" if lead_doctor_clause else ""
     if effective_pipeline_ids:
         placeholders = ",".join("?" for _ in effective_pipeline_ids)
         selected_pipeline_filter = f"where pipelines.id in ({placeholders})"
@@ -1573,11 +1633,12 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
               on leads.pipeline_id = pipelines.id
              and leads.created_at >= ?
              and leads.created_at <= ?
+             {join_doctor_clause}
             {selected_pipeline_filter}
             group by pipelines.id
             order by sort, pipelines.name
             """,
-            [start_ts, end_ts, *selected_pipeline_params],
+            [start_ts, end_ts, *lead_doctor_params, *selected_pipeline_params],
         ).fetchall()
         daily = conn.execute(
             f"""
@@ -1688,10 +1749,14 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             placeholders = ",".join("?" for _ in effective_pipeline_ids)
             event_clauses.append(f"lead_status_events.after_pipeline_id in ({placeholders})")
             event_params.extend(effective_pipeline_ids)
+        if lead_doctor_clause:
+            event_clauses.append(lead_doctor_clause)
+            event_params.extend(lead_doctor_params)
         agendado = conn.execute(
             f"""
             select count(distinct lead_status_events.lead_id) as total
             from lead_status_events
+            join leads on leads.id = lead_status_events.lead_id
             join pipeline_statuses
               on pipeline_statuses.id = lead_status_events.after_status_id
              and pipeline_statuses.pipeline_id = lead_status_events.after_pipeline_id
@@ -2116,9 +2181,46 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
                     [*doctor_pipeline_ids, start_ts, end_ts],
                 ).fetchone()[0]
             else:
-                lead_total = 0
-                interacted_total = 0
-                agendado_total = 0
+                doctor_aliases = clinic_kommo_doctor_aliases(doctor_name)
+                doctor_clause, doctor_params = kommo_doctor_clause(doctor_aliases)
+                if doctor_clause:
+                    lead_total = conn.execute(
+                        f"""
+                        select count(*) from leads
+                        where created_at >= ?
+                          and created_at <= ?
+                          and {doctor_clause}
+                        """,
+                        [start_ts, end_ts, *doctor_params],
+                    ).fetchone()[0]
+                    interacted_total = conn.execute(
+                        f"""
+                        select count(*) from leads
+                        where updated_at >= ?
+                          and updated_at <= ?
+                          and {doctor_clause}
+                        """,
+                        [start_ts, end_ts, *doctor_params],
+                    ).fetchone()[0]
+                    agendado_total = conn.execute(
+                        f"""
+                        select count(distinct lead_status_events.lead_id)
+                        from lead_status_events
+                        join leads on leads.id = lead_status_events.lead_id
+                        join pipeline_statuses
+                          on pipeline_statuses.id = lead_status_events.after_status_id
+                         and pipeline_statuses.pipeline_id = lead_status_events.after_pipeline_id
+                        where lead_status_events.created_at >= ?
+                          and lead_status_events.created_at <= ?
+                          and lower(pipeline_statuses.name) like '%agend%'
+                          and {doctor_clause}
+                        """,
+                        [start_ts, end_ts, *doctor_params],
+                    ).fetchone()[0]
+                else:
+                    lead_total = 0
+                    interacted_total = 0
+                    agendado_total = 0
             bookings_total = conn.execute(
                 """
                 select count(*) from clinica_bookings
