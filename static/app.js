@@ -88,7 +88,10 @@ function render() {
   document.getElementById("lastSync").textContent = `Ultima sincronizacao: ${fmtDate(totals.last_synced_at)}`;
 
   renderPipelineChoices();
-  renderDailyChart(report.daily_new_leads || []);
+  renderDailyChart(report.daily_new_leads || [], "dailyChart", {
+    totalLabel: "Novos leads",
+    breakdownKey: "by_doctor",
+  });
   renderDailyChart(report.clinica_experts?.daily_bookings || [], "bookingChart");
   renderDailyChart(report.interacted_leads?.daily || [], "interactionChart");
   renderClinicaExperts(report.clinica_experts || {});
@@ -797,7 +800,7 @@ function renderDoctorFilter() {
   select.value = state.selectedDoctor;
 }
 
-function renderDailyChart(items, targetId = "dailyChart") {
+function renderDailyChart(items, targetId = "dailyChart", options = {}) {
   const el = document.getElementById(targetId);
   if (!items.length) {
     el.innerHTML = `<div class="empty">Sem dados no periodo selecionado.</div>`;
@@ -826,6 +829,13 @@ function renderDailyChart(items, targetId = "dailyChart") {
     const y = pad.top + chartHeight * ratio;
     return `<line class="lineGrid" x1="${pad.left}" y1="${y}" x2="${pad.left + chartWidth}" y2="${y}"></line>`;
   }).join("");
+  const hitZones = points.map((point, index) => {
+    const prevX = index === 0 ? pad.left : (points[index - 1].x + point.x) / 2;
+    const nextX = index === points.length - 1 ? pad.left + chartWidth : (point.x + points[index + 1].x) / 2;
+    return `
+      <rect class="chartHitZone dailyHitZone" data-index="${index}" x="${prevX}" y="${pad.top - 16}" width="${Math.max(28, nextX - prevX)}" height="${chartHeight + 44}"></rect>
+    `;
+  }).join("");
 
   el.innerHTML = `
     <div class="lineChartScroller">
@@ -851,9 +861,54 @@ function renderDailyChart(items, targetId = "dailyChart") {
             <text class="pointDate" x="${point.x}" y="${height - 12}">${formatDay(point.day)}</text>
           </g>
         `).join("")}
+        ${hitZones}
       </svg>
     </div>
+    <div class="chartTooltip dailyTooltip" hidden></div>
   `;
+  const tooltip = el.querySelector(".chartTooltip");
+  el.querySelectorAll(".dailyHitZone").forEach(zone => {
+    zone.addEventListener("mouseenter", event => {
+      showDailyTooltip(event, points[Number(zone.dataset.index)], tooltip, el, options);
+    });
+    zone.addEventListener("mousemove", event => {
+      showDailyTooltip(event, points[Number(zone.dataset.index)], tooltip, el, options);
+    });
+    zone.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
+  });
+}
+
+function showDailyTooltip(event, item, tooltip, container, options = {}) {
+  if (!item) return;
+  const breakdown = options.breakdownKey && Array.isArray(item[options.breakdownKey]) ? item[options.breakdownKey] : [];
+  const breakdownHtml = options.breakdownKey
+    ? (breakdown.length
+      ? breakdown.map(row => `
+        <span class="tooltipSplit">
+          <span><i class="dailyLeadDot"></i>${escapeHtml(row.doctor || "Sem profissional")}</span>
+          <b>${row.total || 0}</b>
+        </span>
+      `).join("")
+      : `<span><i class="dailyLeadDot"></i>Sem profissional definido</span>`)
+    : "";
+  tooltip.innerHTML = `
+    <strong>${formatDay(item.day)}</strong>
+    <span><i class="dailyTotalDot"></i>${escapeHtml(options.totalLabel || "Total")}: ${item.total || 0}</span>
+    ${options.breakdownKey ? `<div class="tooltipDivider"></div>` : ""}
+    ${breakdownHtml}
+  `;
+  const bounds = container.getBoundingClientRect();
+  tooltip.hidden = false;
+  const tooltipWidth = tooltip.offsetWidth || 280;
+  const left = Math.min(
+    Math.max(12, event.clientX - bounds.left - tooltipWidth / 2),
+    bounds.width - tooltipWidth - 12
+  );
+  const top = Math.max(42, event.clientY - bounds.top - tooltip.offsetHeight - 18);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function renderKommoPanel(panel) {

@@ -214,8 +214,33 @@ def clinic_kommo_doctor_aliases(doctor_name):
     return [alias.lower() for alias in aliases if alias]
 
 
+def clinic_kommo_doctor_alias_lookup():
+    lookup = {}
+    for doctor_name, aliases in CLINIC_KOMMO_DOCTOR_ALIASES.get(current_clinic_id(), {}).items():
+        for alias in aliases:
+            if alias:
+                lookup[alias.lower()] = doctor_name
+    return lookup
+
+
 def clinic_has_kommo_doctor_aliases():
     return current_clinic_id() in CLINIC_KOMMO_DOCTOR_ALIASES
+
+
+def lead_custom_field_value(raw_json, field_name):
+    try:
+        payload = json.loads(raw_json or "{}")
+    except (TypeError, ValueError):
+        return ""
+    wanted = field_name.lower()
+    for field in payload.get("custom_fields_values") or []:
+        if str(field.get("field_name") or "").lower() != wanted:
+            continue
+        for value in field.get("values") or []:
+            field_value = value.get("value")
+            if field_value:
+                return str(field_value)
+    return ""
 
 
 def kommo_doctor_clause(aliases, prefix="leads"):
@@ -1660,6 +1685,19 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             params,
         ).fetchall()
+        daily_lead_details = conn.execute(
+            f"""
+            select
+              date(leads.created_at, 'unixepoch', 'localtime') as day,
+              coalesce(pipelines.name, '') as pipeline_name,
+              leads.raw_json
+            from leads
+            left join pipelines on pipelines.id = leads.pipeline_id
+            {pipeline_filter}
+            order by day
+            """,
+            params,
+        ).fetchall()
         by_status = conn.execute(
             f"""
             select
@@ -2144,6 +2182,27 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             }
             for item in sorted(performance_lookup.values(), key=lambda row: row["day"])
         ]
+        kommo_alias_lookup = clinic_kommo_doctor_alias_lookup()
+        daily_doctors = {}
+        for row in daily_lead_details:
+            day = row["day"]
+            if not day:
+                continue
+            doctor_name = pipeline_doctor_map.get(row["pipeline_name"])
+            if not doctor_name:
+                field_value = lead_custom_field_value(row["raw_json"], "profissional")
+                doctor_name = kommo_alias_lookup.get(field_value.lower(), field_value) if field_value else ""
+            if not doctor_name:
+                doctor_name = "Sem profissional"
+            daily_doctors.setdefault(day, {})
+            daily_doctors[day][doctor_name] = daily_doctors[day].get(doctor_name, 0) + 1
+        daily_new_leads = fill_daily_series([dict(row) for row in daily], date_from, date_to)
+        for row in daily_new_leads:
+            breakdown = daily_doctors.get(row["day"], {})
+            row["by_doctor"] = [
+                {"doctor": doctor_name, "total": total}
+                for doctor_name, total in sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
+            ]
         doctor_rows = []
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
         for doctor_name, professional_uuid in doctor_professionals.items():
@@ -2298,7 +2357,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         },
         "by_status": [dict(row) for row in by_status],
         "all_current_status": [dict(row) for row in all_current_status],
-        "daily_new_leads": fill_daily_series([dict(row) for row in daily], date_from, date_to),
+        "daily_new_leads": daily_new_leads,
         "agendado_migrations": {
             "total": agendado["total"] if agendado else 0,
             "status_match": "fase contendo 'agend'",
