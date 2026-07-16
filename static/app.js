@@ -92,7 +92,10 @@ function render() {
     totalLabel: "Novos leads",
     breakdownKey: "by_doctor",
   });
-  renderDailyChart(report.clinica_experts?.daily_bookings || [], "bookingChart");
+  renderDailyChart(report.clinica_experts?.daily_bookings || [], "bookingChart", {
+    totalLabel: "Agendamentos",
+    breakdownKey: "by_doctor",
+  });
   renderDailyChart(report.interacted_leads?.daily || [], "interactionChart");
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);

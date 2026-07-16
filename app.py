@@ -1866,6 +1866,19 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             booking_params,
         ).fetchall()
+        clinica_daily_bookings_by_doctor = conn.execute(
+            f"""
+            select
+              substr(starts_at, 1, 10) as day,
+              professional_uuid,
+              count(*) as total
+            from clinica_bookings
+            where {booking_scope}
+            group by day, professional_uuid
+            order by day, total desc
+            """,
+            booking_params,
+        ).fetchall()
         bill_date_expr = "substr(coalesce(paid_at, due_date, emission_date), 1, 10)"
         bill_amount_expr = "coalesce(json_extract(raw_json, '$.final_amount') / 100.0, amount, 0)"
         bill_balance_expr = "coalesce(json_extract(raw_json, '$.balance') / 100.0, 0)"
@@ -2203,6 +2216,22 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
                 {"doctor": doctor_name, "total": total}
                 for doctor_name, total in sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
             ]
+        professional_doctor_lookup = {uuid: name for name, uuid in doctor_professionals.items()}
+        daily_booking_doctors = {}
+        for row in clinica_daily_bookings_by_doctor:
+            day = row["day"]
+            if not day:
+                continue
+            doctor_name = professional_doctor_lookup.get(row["professional_uuid"], "Sem profissional")
+            daily_booking_doctors.setdefault(day, {})
+            daily_booking_doctors[day][doctor_name] = daily_booking_doctors[day].get(doctor_name, 0) + row["total"]
+        daily_bookings = fill_daily_series([dict(row) for row in clinica_daily_bookings], date_from, date_to)
+        for row in daily_bookings:
+            breakdown = daily_booking_doctors.get(row["day"], {})
+            row["by_doctor"] = [
+                {"doctor": doctor_name, "total": total}
+                for doctor_name, total in sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
+            ]
         doctor_rows = []
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
         for doctor_name, professional_uuid in doctor_professionals.items():
@@ -2374,7 +2403,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             "connected": configured(config_value("CLINICA_EXPERTS_TOKEN", "")),
             "totals": dict(clinica_totals),
             "bookings_by_status": [dict(row) for row in clinica_bookings_by_status],
-            "daily_bookings": fill_daily_series([dict(row) for row in clinica_daily_bookings], date_from, date_to),
+            "daily_bookings": daily_bookings,
             "doctor_cross": doctor_rows,
             "last_sync": dict(clinica_log) if clinica_log else None,
         },
