@@ -2320,27 +2320,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
     def require_dashboard_auth(self):
-        dashboard_password = config_value("DASHBOARD_PASSWORD", "")
-        if not dashboard_password:
-            return True
-        auth = self.headers.get("Authorization", "")
-        if not auth.startswith("Basic "):
-            self.send_response(HTTPStatus.UNAUTHORIZED)
-            self.send_header("WWW-Authenticate", 'Basic realm="Vielle Clinic"')
-            self.end_headers()
-            return False
-        try:
-            decoded = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
-        except Exception:
-            decoded = ""
-        username, _, password = decoded.partition(":")
-        expected_user = config_value("DASHBOARD_USER", "") or "admin"
-        if hmac.compare_digest(username, expected_user) and hmac.compare_digest(password, dashboard_password):
-            return True
-        self.send_response(HTTPStatus.UNAUTHORIZED)
-        self.send_header("WWW-Authenticate", 'Basic realm="Vielle Clinic"')
-        self.end_headers()
-        return False
+        return True
 
     def require_master_auth(self):
         expected_user = config_value("MASTER_USER", "master") or "master"
