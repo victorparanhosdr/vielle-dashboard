@@ -1898,6 +1898,26 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             "lower(coalesce(type, '')) not in ('venda', 'sale', 'receita') "
             "and lower(coalesce(category_name, '')) not like '%receita%'"
         )
+        parcel_date_expr = "substr(coalesce(paid_at, due_date), 1, 10)"
+        parcel_amount_expr = "coalesce(json_extract(raw_json, '$.final_amount') / 100.0, amount, 0)"
+        parcel_balance_expr = "coalesce(json_extract(raw_json, '$.balance') / 100.0, 0)"
+        parcel_paid_filter = "lower(coalesce(status, '')) in ('paid', 'received', 'settled', 'done')"
+        parcel_settled_expr = (
+            f"case when {parcel_paid_filter} then {parcel_amount_expr} "
+            f"when {parcel_balance_expr} > 0 and {parcel_balance_expr} < {parcel_amount_expr} "
+            f"then {parcel_amount_expr} - {parcel_balance_expr} "
+            f"when {parcel_balance_expr} <= 0 then {parcel_amount_expr} else 0 end"
+        )
+        parcel_open_expr = (
+            f"case when {parcel_paid_filter} then 0 "
+            f"when {parcel_balance_expr} > 0 then {parcel_balance_expr} else 0 end"
+        )
+        manual_income_parcel_filter = (
+            f"{expense_type_filter} and lower(coalesce(status, '')) = 'received'"
+        )
+        parcel_expense_filter = (
+            f"{expense_type_filter} and lower(coalesce(status, '')) != 'received'"
+        )
         financial_income_row = conn.execute(
             f"""
             select
@@ -1924,6 +1944,49 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             (date_from, date_to),
         ).fetchall()
+        financial_manual_income_row = conn.execute(
+            f"""
+            select
+              count(*) as total,
+              coalesce(sum({parcel_amount_expr}), 0) as amount,
+              coalesce(sum({parcel_settled_expr}), 0) as settled,
+              coalesce(sum({parcel_open_expr}), 0) as open_amount
+            from clinica_parcels
+            where {parcel_date_expr} >= ?
+              and {parcel_date_expr} <= ?
+              and amount is not null
+              and {manual_income_parcel_filter}
+            """,
+            (date_from, date_to),
+        ).fetchone()
+        financial_manual_income_by_day = conn.execute(
+            f"""
+            select {parcel_date_expr} as day, coalesce(sum({parcel_amount_expr}), 0) as total
+            from clinica_parcels
+            where {parcel_date_expr} >= ?
+              and {parcel_date_expr} <= ?
+              and amount is not null
+              and {manual_income_parcel_filter}
+            group by day
+            order by day
+            """,
+            (date_from, date_to),
+        ).fetchall()
+        financial_manual_income_by_type = conn.execute(
+            f"""
+            select coalesce(category_name, type, 'Receitas manuais') as type,
+                   count(*) as total,
+                   coalesce(sum({parcel_amount_expr}), 0) as amount
+            from clinica_parcels
+            where {parcel_date_expr} >= ?
+              and {parcel_date_expr} <= ?
+              and amount is not null
+              and {manual_income_parcel_filter}
+            group by type
+            order by amount desc
+            """,
+            (date_from, date_to),
+        ).fetchall()
         financial_sales_by_type = conn.execute(
             f"""
             select coalesce(type, 'sem tipo') as type, count(*) as total, coalesce(sum({bill_amount_expr}), 0) as amount
@@ -1936,24 +1999,6 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             (date_from, date_to),
         ).fetchall()
-        parcel_date_expr = "substr(coalesce(paid_at, due_date), 1, 10)"
-        parcel_amount_expr = "coalesce(json_extract(raw_json, '$.final_amount') / 100.0, amount, 0)"
-        parcel_balance_expr = "coalesce(json_extract(raw_json, '$.balance') / 100.0, 0)"
-        parcel_paid_filter = "lower(coalesce(status, '')) in ('paid', 'received', 'settled', 'done')"
-        parcel_settled_expr = (
-            f"case when {parcel_paid_filter} then {parcel_amount_expr} "
-            f"when {parcel_balance_expr} > 0 and {parcel_balance_expr} < {parcel_amount_expr} "
-            f"then {parcel_amount_expr} - {parcel_balance_expr} "
-            f"when {parcel_balance_expr} <= 0 then {parcel_amount_expr} else 0 end"
-        )
-        parcel_open_expr = (
-            f"case when {parcel_paid_filter} then 0 "
-            f"when {parcel_balance_expr} > 0 then {parcel_balance_expr} else 0 end"
-        )
-        parcel_expense_filter = (
-            "lower(coalesce(type, '')) not in ('venda', 'sale', 'receita') "
-            "and lower(coalesce(category_name, '')) not like '%receita%'"
-        )
         financial_expense_row = conn.execute(
             f"""
             select
@@ -2019,6 +2064,26 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             (date_from, date_to),
         ).fetchall()
+        financial_recent_manual_income = conn.execute(
+            f"""
+            select
+              'entrada' as direction,
+              {parcel_date_expr} as date,
+              coalesce(description, category_name, type, 'Receita') as description,
+              coalesce(category_name, account_name, status, 'Clínica Experts') as detail,
+              {parcel_amount_expr} as amount,
+              {parcel_settled_expr} as settled,
+              {parcel_open_expr} as open_amount
+            from clinica_parcels
+            where {parcel_date_expr} >= ?
+              and {parcel_date_expr} <= ?
+              and amount is not null
+              and {manual_income_parcel_filter}
+            order by {parcel_date_expr} desc
+            limit 6
+            """,
+            (date_from, date_to),
+        ).fetchall()
         financial_recent_expenses = conn.execute(
             f"""
             select
@@ -2057,6 +2122,25 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             (date_from, date_to),
         ).fetchall()
+        financial_detail_manual_income = conn.execute(
+            f"""
+            select
+              'entrada' as direction,
+              {parcel_date_expr} as date,
+              coalesce(description, category_name, type, 'Receita') as description,
+              coalesce(category_name, account_name, status, 'Clínica Experts') as detail,
+              {parcel_amount_expr} as amount,
+              {parcel_settled_expr} as settled,
+              {parcel_open_expr} as open_amount
+            from clinica_parcels
+            where {parcel_date_expr} >= ?
+              and {parcel_date_expr} <= ?
+              and amount is not null
+              and {manual_income_parcel_filter}
+            order by {parcel_date_expr} desc, amount desc
+            """,
+            (date_from, date_to),
+        ).fetchall()
         financial_detail_expenses = conn.execute(
             f"""
             select
@@ -2076,15 +2160,18 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             """,
             (date_from, date_to),
         ).fetchall()
-        financial_income_total = financial_income_row["amount"] or 0
+        financial_income_total = (financial_income_row["amount"] or 0) + (financial_manual_income_row["amount"] or 0)
         financial_expense_total = financial_expense_row["amount"] or 0
-        financial_income_settled = financial_income_row["settled"] or 0
-        financial_income_open = financial_income_row["open_amount"] or 0
+        financial_income_settled = (financial_income_row["settled"] or 0) + (financial_manual_income_row["settled"] or 0)
+        financial_income_open = (financial_income_row["open_amount"] or 0) + (financial_manual_income_row["open_amount"] or 0)
         financial_expense_settled = financial_expense_row["settled"] or 0
         financial_expense_open = financial_expense_row["open_amount"] or 0
         financial_daily_lookup = {}
         for row in fill_daily_series([dict(row) for row in financial_income_by_day], date_from, date_to):
             financial_daily_lookup[row["day"]] = {"day": row["day"], "income": row["total"], "expenses": 0}
+        for row in fill_daily_series([dict(row) for row in financial_manual_income_by_day], date_from, date_to):
+            current = financial_daily_lookup.setdefault(row["day"], {"day": row["day"], "income": 0, "expenses": 0})
+            current["income"] += row["total"]
         for row in fill_daily_series([dict(row) for row in financial_expense_by_day], date_from, date_to):
             current = financial_daily_lookup.setdefault(row["day"], {"day": row["day"], "income": 0, "expenses": 0})
             current["expenses"] = row["total"]
@@ -2093,15 +2180,32 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             for item in sorted(financial_daily_lookup.values(), key=lambda value: value["day"])
         ]
         financial_recent = sorted(
-            [dict(row) for row in financial_recent_sales] + [dict(row) for row in financial_recent_expenses],
+            [dict(row) for row in financial_recent_sales]
+            + [dict(row) for row in financial_recent_manual_income]
+            + [dict(row) for row in financial_recent_expenses],
             key=lambda row: row.get("date") or "",
             reverse=True,
         )[:10]
         financial_details_by_day = {}
-        for row in [dict(row) for row in financial_detail_sales] + [dict(row) for row in financial_detail_expenses]:
+        for row in (
+            [dict(row) for row in financial_detail_sales]
+            + [dict(row) for row in financial_detail_manual_income]
+            + [dict(row) for row in financial_detail_expenses]
+        ):
             financial_details_by_day.setdefault(row["date"], []).append(row)
         for rows in financial_details_by_day.values():
             rows.sort(key=lambda row: (row["direction"] != "entrada", -(row["amount"] or 0)))
+        financial_income_count = (financial_income_row["total"] or 0) + (financial_manual_income_row["total"] or 0)
+        financial_income_by_type_lookup = {}
+        for row in [dict(row) for row in financial_sales_by_type] + [dict(row) for row in financial_manual_income_by_type]:
+            item = financial_income_by_type_lookup.setdefault(row["type"], {"type": row["type"], "total": 0, "amount": 0})
+            item["total"] += row["total"] or 0
+            item["amount"] += row["amount"] or 0
+        financial_income_by_type = sorted(
+            financial_income_by_type_lookup.values(),
+            key=lambda row: row["amount"],
+            reverse=True,
+        )
 
         patient_lookup = {
             row["uuid"]: row["name"] or "Paciente sem nome"
@@ -2419,13 +2523,13 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
                 "expenses_pending": financial_expense_open,
                 "balance": financial_income_total - financial_expense_total,
                 "cash_balance": financial_income_settled - financial_expense_settled,
-                "sales_count": financial_income_row["total"] or 0,
+                "sales_count": financial_income_count,
                 "expenses_count": financial_expense_row["total"] or 0,
-                "average_ticket": (financial_income_total / financial_income_row["total"]) if financial_income_row["total"] else 0,
+                "average_ticket": (financial_income_total / financial_income_count) if financial_income_count else 0,
             },
             "daily": financial_daily,
             "daily_details": financial_details_by_day,
-            "income_by_type": [dict(row) for row in financial_sales_by_type],
+            "income_by_type": financial_income_by_type,
             "expenses_by_category": [dict(row) for row in financial_expense_by_category],
             "recent": financial_recent,
             "sales_intelligence": {
