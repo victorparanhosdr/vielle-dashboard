@@ -4,6 +4,7 @@ import contextlib
 import contextvars
 import hashlib
 import hmac
+import html
 import io
 import json
 import os
@@ -550,6 +551,15 @@ def binary_response(handler, content, filename, content_type):
     handler.send_header("Content-Length", str(len(content)))
     handler.end_headers()
     handler.wfile.write(content)
+
+
+def html_response(handler, content, status=HTTPStatus.OK):
+    body = content.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
 def redirect(handler, location):
@@ -2782,6 +2792,177 @@ def generate_report_pdf(report, view="commercial"):
     return buffer.getvalue()
 
 
+def kommo_widget_period(period):
+    today = datetime.now()
+    period = (period or "month").lower()
+    if period in ("day", "today", "hoje"):
+        start = today
+    elif period in ("week", "semana"):
+        start = today - timedelta(days=6)
+    else:
+        start = today.replace(day=1)
+    return start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")
+
+
+def compact_number(value):
+    value = float(value or 0)
+    if value >= 1000000:
+        return f"{value / 1000000:.1f}mi".replace(".", ",")
+    if value >= 1000:
+        return f"{value / 1000:.1f}k".replace(".", ",")
+    return str(int(value))
+
+
+def render_kommo_widget(report, clinic_id, period):
+    clinic_name = "Clínica Inspire" if clinic_id == "inspire" else "Vielle Clinic"
+    financial = report.get("financial", {})
+    financial_totals = financial.get("totals", {})
+    clinica = report.get("clinica_experts", {})
+    totals = report.get("totals", {})
+    leads = totals.get("total_leads") or 0
+    bookings = clinica.get("totals", {}).get("bookings") or 0
+    sales = financial_totals.get("sales_count") or clinica.get("totals", {}).get("sales") or 0
+    income = financial_totals.get("income_received") or financial_totals.get("income") or 0
+    dashboard_url = f"/?clinic={clinic_id}"
+    title = html.escape(f"{clinic_name} · {period}")
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    html, body {{
+      margin: 0;
+      padding: 0;
+      font-family: 'PT Sans', 'Open Sans', Arial, sans-serif;
+      color: #17233a;
+      background: transparent;
+    }}
+    a {{ color: inherit; text-decoration: none; }}
+    .widget {{
+      min-height: 100vh;
+      padding: 16px;
+      border-radius: 14px;
+      background:
+        radial-gradient(circle at 92% 8%, rgba(113,103,232,.22), transparent 32%),
+        linear-gradient(135deg, #f8fcff 0%, #eef9fc 54%, #ffffff 100%);
+      border: 1px solid rgba(20, 174, 204, .18);
+      overflow: hidden;
+    }}
+    .top {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .eyebrow {{
+      font-size: 11px;
+      font-weight: 800;
+      color: #0d7891;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .period {{
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(24,185,212,.12);
+      color: #0d7891;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }}
+    .main {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 12px;
+    }}
+    .metric {{
+      padding: 11px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.82);
+      border: 1px solid rgba(20,174,204,.12);
+      box-shadow: 0 10px 28px rgba(23,35,56,.08);
+    }}
+    .label {{
+      margin-bottom: 4px;
+      color: #65748a;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .value {{
+      color: #17233a;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 900;
+      font-family: 'Open Sans', Arial, sans-serif;
+    }}
+    .value.money {{
+      color: #087f69;
+      font-size: 24px;
+    }}
+    .footer {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(101,116,138,.16);
+      color: #65748a;
+      font-size: 12px;
+      font-weight: 800;
+    }}
+    .open {{
+      color: #0d7891;
+      white-space: nowrap;
+    }}
+  </style>
+</head>
+<body>
+  <a href="{dashboard_url}" target="_blank" rel="noopener">
+    <section class="widget">
+      <div class="top">
+        <div class="eyebrow">{html.escape(clinic_name)}</div>
+        <div class="period">{html.escape(period)}</div>
+      </div>
+      <div class="main">
+        <div class="metric">
+          <div class="label">Leads</div>
+          <div class="value">{compact_number(leads)}</div>
+        </div>
+        <div class="metric">
+          <div class="label">Agend.</div>
+          <div class="value">{compact_number(bookings)}</div>
+        </div>
+        <div class="metric">
+          <div class="label">Vendas</div>
+          <div class="value">{compact_number(sales)}</div>
+        </div>
+        <div class="metric">
+          <div class="label">Recebido</div>
+          <div class="value money">R$ {compact_number(income)}</div>
+        </div>
+      </div>
+      <div class="footer">
+        <span>Dashboard estratégico</span>
+        <span class="open">abrir</span>
+      </div>
+    </section>
+  </a>
+</body>
+</html>"""
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
@@ -2841,6 +3022,21 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/kommo-widget":
+            params = urllib.parse.parse_qs(parsed.query)
+            clinic_id = self.request_clinic_id(parsed)
+            period = params.get("kommo_period", params.get("period", ["month"]))[0]
+            date_from, date_to = kommo_widget_period(period)
+            with clinic_context(clinic_id):
+                try:
+                    report = report_data(date_from=date_from, date_to=date_to)
+                    return html_response(self, render_kommo_widget(report, clinic_id, period))
+                except Exception as exc:
+                    return html_response(
+                        self,
+                        f"<html><body style='font-family:Arial;padding:14px;color:#2E3640'>Widget indisponível: {html.escape(str(exc))}</body></html>",
+                        HTTPStatus.BAD_REQUEST,
+                    )
         if parsed.path == "/api/report":
             with clinic_context(self.request_clinic_id(parsed)):
                 if not self.require_clinic_access(parsed):
