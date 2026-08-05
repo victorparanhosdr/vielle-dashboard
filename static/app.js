@@ -2,8 +2,10 @@ const state = {
   report: null,
   allPipelines: [],
   allDoctors: [],
+  allSellers: [],
   selectedPipelines: new Set(),
   selectedDoctor: "",
+  selectedSeller: "",
   dateFrom: "",
   dateTo: "",
   rankings: {},
@@ -58,6 +60,7 @@ function buildQuery() {
     params.set("pipeline_ids", [...state.selectedPipelines].join(","));
   }
   if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
+  if (state.selectedSeller) params.set("seller", state.selectedSeller);
   if (state.dateFrom) params.set("date_from", state.dateFrom);
   if (state.dateTo) params.set("date_to", state.dateTo);
   const query = params.toString();
@@ -69,11 +72,14 @@ function syncFilterState(report) {
   state.dateFrom = filters.date_from || state.dateFrom || "";
   state.dateTo = filters.date_to || state.dateTo || "";
   state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
+  state.selectedSeller = filters.seller || state.selectedSeller || "";
   document.getElementById("dateFrom").value = state.dateFrom;
   document.getElementById("dateTo").value = state.dateTo;
   state.allPipelines = report.pipelines || [];
   state.allDoctors = filters.doctors || state.allDoctors || [];
+  state.allSellers = filters.sellers || state.allSellers || [];
   renderDoctorFilter();
+  renderSellerFilter();
 }
 
 function render() {
@@ -186,8 +192,10 @@ function selectClinic(clinicId, updateUrl = true) {
   state.report = null;
   state.allPipelines = [];
   state.allDoctors = [];
+  state.allSellers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedSeller = "";
   state.dateFrom = "";
   state.dateTo = "";
   localStorage.setItem("selectedClinic", state.selectedClinic);
@@ -214,6 +222,7 @@ function emptyReportForClinic(clinicId) {
       date_from: dateFrom,
       date_to: today,
       doctors: [],
+      sellers: [],
     },
     totals: { total_leads: 0, total_pipelines: 0, total_statuses: 0, last_synced_at: null },
     pipelines: [],
@@ -803,6 +812,20 @@ function renderDoctorFilter() {
   select.value = state.selectedDoctor;
 }
 
+function renderSellerFilter() {
+  const select = document.getElementById("sellerFilter");
+  if (!select) return;
+  const currentOptions = [...select.options].map(option => option.value).join("|");
+  const nextOptions = ["", ...state.allSellers].join("|");
+  if (currentOptions !== nextOptions) {
+    select.innerHTML = `
+      <option value="">Todos considerados</option>
+      ${state.allSellers.map(seller => `<option value="${escapeHtml(seller)}">${escapeHtml(seller)}</option>`).join("")}
+    `;
+  }
+  select.value = state.selectedSeller;
+}
+
 function renderDailyChart(items, targetId = "dailyChart", options = {}) {
   const el = document.getElementById(targetId);
   if (!items.length) {
@@ -1089,11 +1112,16 @@ document.querySelectorAll(".tabBtn").forEach(button => {
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedSeller = "";
   loadReport();
 });
 document.getElementById("doctorFilter").addEventListener("change", event => {
   state.selectedDoctor = event.target.value;
   state.selectedPipelines.clear();
+  loadReport();
+});
+document.getElementById("sellerFilter").addEventListener("change", event => {
+  state.selectedSeller = event.target.value;
   loadReport();
 });
 document.getElementById("dateFrom").addEventListener("change", event => {

@@ -529,7 +529,7 @@ button.danger {
 
 .filterGrid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.15fr) minmax(150px, .7fr) minmax(150px, .7fr) minmax(260px, 1.35fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;

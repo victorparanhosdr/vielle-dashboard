@@ -203,6 +203,30 @@ def clinica_professionals_from_data(conn):
     return professionals
 
 
+def clinica_sellers_from_data(conn):
+    rows = conn.execute(
+        """
+        select json_extract(raw_json, '$.seller.uuid') as uuid,
+               coalesce(
+                 json_extract(raw_json, '$.seller.name'),
+                 json_extract(raw_json, '$.seller.full_name'),
+                 json_extract(raw_json, '$.seller.title')
+               ) as name
+        from clinica_sales
+        where json_extract(raw_json, '$.seller.uuid') is not null
+        group by uuid, name
+        order by name
+        """
+    ).fetchall()
+    sellers = {}
+    for row in rows:
+        uuid = row["uuid"]
+        name = row["name"]
+        if uuid and name:
+            sellers[str(name)] = str(uuid)
+    return sellers
+
+
 def clinic_doctor_professionals(conn):
     static_professionals = CLINIC_DOCTOR_PROFESSIONALS.get(current_clinic_id())
     if static_professionals is not None:
@@ -1563,7 +1587,7 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
     return ("where " + " and ".join(clauses)) if clauses else "", params
 
 
-def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
+def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None):
     pipeline_ids = pipeline_ids or []
     clinic_id = current_clinic_id()
     pipeline_doctor_map = clinic_pipeline_doctor_map()
@@ -1577,7 +1601,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
     selected_pipeline_params = []
     with db() as conn:
         doctor_professionals = clinic_doctor_professionals(conn)
+        sellers = clinica_sellers_from_data(conn)
         selected_doctor = doctor if doctor in doctor_professionals else ""
+        selected_seller = seller if seller in sellers else ""
+        selected_seller_uuid = sellers.get(selected_seller, "")
         if pipeline_doctor_map:
             considered_pipeline_names = [
                 name for name, mapped_doctor in pipeline_doctor_map.items()
@@ -1846,6 +1873,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
             booking_params.extend(effective_professional_uuids)
             sales_scope += f" and json_extract(raw_json, '$.seller.uuid') in ({professional_placeholders})"
             sales_params.extend(effective_professional_uuids)
+        if selected_seller_uuid:
+            sales_scope += " and json_extract(raw_json, '$.seller.uuid') = ?"
+            sales_params.append(selected_seller_uuid)
         clinica_totals = conn.execute(
             f"""
             select
@@ -2485,9 +2515,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None):
         "filters": {
             "pipeline_ids": pipeline_ids,
             "doctor": selected_doctor,
+            "seller": selected_seller,
             "date_from": date_from,
             "date_to": date_to,
             "doctors": list(doctor_professionals.keys()),
+            "sellers": list(sellers.keys()),
         },
         "totals": dict(totals),
         "pipelines": [dict(row) for row in pipelines],
@@ -2610,6 +2642,7 @@ def query_report_args(params):
         "date_from": params.get("date_from", [""])[0],
         "date_to": params.get("date_to", [""])[0],
         "doctor": params.get("doctor", [""])[0],
+        "seller": params.get("seller", [""])[0],
     }
 
 
@@ -2692,7 +2725,8 @@ def generate_report_pdf(report, view="commercial"):
         Paragraph(
             f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} - "
             f"Periodo: {day_label(filters.get('date_from'))} a {day_label(filters.get('date_to'))} - "
-            f"Doutor(a): {filters.get('doctor') or 'Todos'}",
+            f"Doutor(a): {filters.get('doctor') or 'Todos'} - "
+            f"Vendedor: {filters.get('seller') or 'Todos'}",
             styles["SmallMuted"],
         ),
         Spacer(1, 8),
