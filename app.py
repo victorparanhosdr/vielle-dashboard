@@ -227,6 +227,46 @@ def clinica_sellers_from_data(conn):
     return sellers
 
 
+def kommo_sellers_from_data(conn):
+    rows = conn.execute(
+        """
+        select
+          trim(coalesce(json_extract(custom_value.value, '$.value'), '')) as name
+        from leads
+        join json_each(leads.raw_json, '$.custom_fields_values') custom_field
+        join json_each(custom_field.value, '$.values') custom_value
+        where lower(coalesce(json_extract(custom_field.value, '$.field_name'), '')) = 'vendedor'
+          and trim(coalesce(json_extract(custom_value.value, '$.value'), '')) != ''
+        group by name
+        order by name
+        """
+    ).fetchall()
+    sellers = {}
+    for row in rows:
+        name = row["name"]
+        if name:
+            sellers[str(name)] = str(name)
+    return sellers
+
+
+def kommo_seller_clause(seller, prefix="leads"):
+    seller = (seller or "").strip().lower()
+    if not seller:
+        return "", []
+    return (
+        f"""
+        exists (
+          select 1
+          from json_each({prefix}.raw_json, '$.custom_fields_values') custom_field
+          join json_each(custom_field.value, '$.values') custom_value
+          where lower(coalesce(json_extract(custom_field.value, '$.field_name'), '')) = 'vendedor'
+            and lower(trim(coalesce(json_extract(custom_value.value, '$.value'), ''))) = ?
+        )
+        """,
+        [seller],
+    )
+
+
 def clinic_doctor_professionals(conn):
     static_professionals = CLINIC_DOCTOR_PROFESSIONALS.get(current_clinic_id())
     if static_professionals is not None:
@@ -1601,10 +1641,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
     selected_pipeline_params = []
     with db() as conn:
         doctor_professionals = clinic_doctor_professionals(conn)
-        sellers = clinica_sellers_from_data(conn)
+        sellers = kommo_sellers_from_data(conn)
         selected_doctor = doctor if doctor in doctor_professionals else ""
         selected_seller = seller if seller in sellers else ""
-        selected_seller_uuid = sellers.get(selected_seller, "")
         if pipeline_doctor_map:
             considered_pipeline_names = [
                 name for name, mapped_doctor in pipeline_doctor_map.items()
@@ -1653,19 +1692,24 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
     else:
         lead_doctor_clause, lead_doctor_params = kommo_doctor_clause(selected_kommo_aliases)
     lead_extra_clauses = [lead_doctor_clause] if lead_doctor_clause else []
+    lead_extra_params = list(lead_doctor_params)
+    lead_seller_clause, lead_seller_params = kommo_seller_clause(selected_seller)
+    if lead_seller_clause:
+        lead_extra_clauses.append(lead_seller_clause)
+        lead_extra_params.extend(lead_seller_params)
     pipeline_filter, params = build_filters(
         effective_pipeline_ids,
         start_ts,
         end_ts,
         extra_clauses=lead_extra_clauses,
-        extra_params=lead_doctor_params,
+        extra_params=lead_extra_params,
     )
     all_status_filter, all_status_params = build_filters(
         effective_pipeline_ids,
         None,
         None,
         extra_clauses=lead_extra_clauses,
-        extra_params=lead_doctor_params,
+        extra_params=lead_extra_params,
     )
     update_filter, update_params = build_filters(
         effective_pipeline_ids,
@@ -1673,9 +1717,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         end_ts,
         date_column="updated_at",
         extra_clauses=lead_extra_clauses,
-        extra_params=lead_doctor_params,
+        extra_params=lead_extra_params,
     )
-    join_doctor_clause = f" and {lead_doctor_clause}" if lead_doctor_clause else ""
+    join_extra_clause = "".join(f" and {clause}" for clause in lead_extra_clauses)
     if effective_pipeline_ids:
         placeholders = ",".join("?" for _ in effective_pipeline_ids)
         selected_pipeline_filter = f"where pipelines.id in ({placeholders})"
@@ -1705,12 +1749,12 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               on leads.pipeline_id = pipelines.id
              and leads.created_at >= ?
              and leads.created_at <= ?
-             {join_doctor_clause}
+             {join_extra_clause}
             {selected_pipeline_filter}
             group by pipelines.id
             order by sort, pipelines.name
             """,
-            [start_ts, end_ts, *lead_doctor_params, *selected_pipeline_params],
+            [start_ts, end_ts, *lead_extra_params, *selected_pipeline_params],
         ).fetchall()
         daily = conn.execute(
             f"""
@@ -1834,9 +1878,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             placeholders = ",".join("?" for _ in effective_pipeline_ids)
             event_clauses.append(f"lead_status_events.after_pipeline_id in ({placeholders})")
             event_params.extend(effective_pipeline_ids)
-        if lead_doctor_clause:
-            event_clauses.append(lead_doctor_clause)
-            event_params.extend(lead_doctor_params)
+        if lead_extra_clauses:
+            event_clauses.extend(lead_extra_clauses)
+            event_params.extend(lead_extra_params)
         agendado = conn.execute(
             f"""
             select count(distinct lead_status_events.lead_id) as total
@@ -1873,9 +1917,6 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             booking_params.extend(effective_professional_uuids)
             sales_scope += f" and json_extract(raw_json, '$.seller.uuid') in ({professional_placeholders})"
             sales_params.extend(effective_professional_uuids)
-        if selected_seller_uuid:
-            sales_scope += " and json_extract(raw_json, '$.seller.uuid') = ?"
-            sales_params.append(selected_seller_uuid)
         clinica_totals = conn.execute(
             f"""
             select
