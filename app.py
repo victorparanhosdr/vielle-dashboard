@@ -35,6 +35,7 @@ CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_REDIRECT_URI",
     "CLINICA_EXPERTS_TOKEN",
     "CLINICA_HISTORY_START",
+    "CLINICA_WEBHOOK_SECRET",
 }
 
 
@@ -377,7 +378,10 @@ def db():
 
 
 def config_value(key, default=None):
+    clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
+    if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
+        fallback = default or ""
     scoped_env = clinic_env_value(key)
     if scoped_env:
         return scoped_env
@@ -3485,14 +3489,15 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json_body()
             except Exception:
                 return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
-            return json_response(
-                self,
-                sync_all(
-                    historical=payload.get("historical", True),
-                    reset_data=payload.get("reset_data", False),
-                    reset_oauth=payload.get("reset_oauth", False),
-                ),
-            )
+            with clinic_context(self.request_clinic_id(parsed)):
+                return json_response(
+                    self,
+                    sync_all(
+                        historical=payload.get("historical", True),
+                        reset_data=payload.get("reset_data", False),
+                        reset_oauth=payload.get("reset_oauth", False),
+                    ),
+                )
         if parsed.path == "/api/clear-data":
             if not self.require_master_auth():
                 return
@@ -3502,8 +3507,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
             if payload.get("confirm") != "LIMPAR":
                 return json_response(self, {"ok": False, "error": "Confirmação obrigatória."}, HTTPStatus.BAD_REQUEST)
-            clear_local_data(clear_oauth=payload.get("clear_oauth", False))
-            return json_response(self, {"ok": True})
+            with clinic_context(self.request_clinic_id(parsed)):
+                clear_local_data(clear_oauth=payload.get("clear_oauth", False))
+                return json_response(self, {"ok": True, "clinic_id": current_clinic_id()})
         return json_response(self, {"ok": False, "error": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
 
 
