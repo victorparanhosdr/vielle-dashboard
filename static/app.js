@@ -3,9 +3,11 @@ const state = {
   allPipelines: [],
   allDoctors: [],
   allSellers: [],
+  allBookingRegistryUsers: [],
   selectedPipelines: new Set(),
   selectedDoctor: "",
   selectedSeller: "",
+  selectedBookingRegistryUser: "",
   dateFrom: "",
   dateTo: "",
   rankings: {},
@@ -78,8 +80,13 @@ function syncFilterState(report) {
   state.allPipelines = report.pipelines || [];
   state.allDoctors = filters.doctors || state.allDoctors || [];
   state.allSellers = filters.sellers || state.allSellers || [];
+  state.allBookingRegistryUsers = report.clinica_experts?.booking_registry_users || [];
+  if (state.selectedBookingRegistryUser && !state.allBookingRegistryUsers.includes(state.selectedBookingRegistryUser)) {
+    state.selectedBookingRegistryUser = "";
+  }
   renderDoctorFilter();
   renderSellerFilter();
+  renderBookingRegistryUserFilter();
 }
 
 function render() {
@@ -98,7 +105,7 @@ function render() {
     totalLabel: "Novos leads",
     breakdownKey: "by_doctor",
   });
-  renderDailyChart(report.clinica_experts?.daily_bookings || [], "bookingChart", {
+  renderDailyChart(filteredBookingDailyItems(report.clinica_experts?.daily_bookings || []), "bookingChart", {
     totalLabel: "Agendamentos",
     breakdownKey: "by_doctor",
   });
@@ -193,9 +200,11 @@ function selectClinic(clinicId, updateUrl = true) {
   state.allPipelines = [];
   state.allDoctors = [];
   state.allSellers = [];
+  state.allBookingRegistryUsers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
   state.selectedSeller = "";
+  state.selectedBookingRegistryUser = "";
   state.dateFrom = "";
   state.dateTo = "";
   localStorage.setItem("selectedClinic", state.selectedClinic);
@@ -238,6 +247,7 @@ function emptyReportForClinic(clinicId) {
       totals: { patients: 0, bookings: 0, sales: 0, sales_total: 0 },
       bookings_by_status: [],
       daily_bookings: [],
+      booking_registry_users: [],
       doctor_cross: [],
       last_sync: null,
     },
@@ -826,6 +836,36 @@ function renderSellerFilter() {
   select.value = state.selectedSeller;
 }
 
+function renderBookingRegistryUserFilter() {
+  const select = document.getElementById("bookingRegistryUserFilter");
+  if (!select) return;
+  const currentOptions = [...select.options].map(option => option.value).join("|");
+  const nextOptions = ["", ...state.allBookingRegistryUsers].join("|");
+  if (currentOptions !== nextOptions) {
+    select.innerHTML = `
+      <option value="">Todos</option>
+      ${state.allBookingRegistryUsers.map(user => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("")}
+    `;
+  }
+  select.value = state.selectedBookingRegistryUser;
+  select.disabled = !state.allBookingRegistryUsers.length;
+  select.title = state.allBookingRegistryUsers.length
+    ? "Filtra somente o gráfico de agendamentos pelo usuário que registrou o agendamento"
+    : "A API ainda não enviou o usuário que registrou os agendamentos";
+}
+
+function filteredBookingDailyItems(items) {
+  if (!state.selectedBookingRegistryUser) return items;
+  return items.map(item => {
+    const registryUser = (item.by_registry_user || []).find(row => row.user === state.selectedBookingRegistryUser);
+    return {
+      ...item,
+      total: registryUser?.total || 0,
+      by_doctor: registryUser?.by_doctor || [],
+    };
+  });
+}
+
 function renderDailyChart(items, targetId = "dailyChart", options = {}) {
   const el = document.getElementById(targetId);
   if (!items.length) {
@@ -1113,6 +1153,7 @@ document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
   state.selectedSeller = "";
+  state.selectedBookingRegistryUser = "";
   loadReport();
 });
 document.getElementById("doctorFilter").addEventListener("change", event => {
@@ -1123,6 +1164,10 @@ document.getElementById("doctorFilter").addEventListener("change", event => {
 document.getElementById("sellerFilter").addEventListener("change", event => {
   state.selectedSeller = event.target.value;
   loadReport();
+});
+document.getElementById("bookingRegistryUserFilter").addEventListener("change", event => {
+  state.selectedBookingRegistryUser = event.target.value;
+  render();
 });
 document.getElementById("dateFrom").addEventListener("change", event => {
   state.dateFrom = event.target.value;

@@ -226,7 +226,15 @@
         <section class="panel">
           <div class="panelHead">
             <h2>Agendamentos dia a dia</h2>
-            <span class="metaText">Base: Clínica Experts</span>
+            <div class="panelHeadControls">
+              <span class="metaText">Base: Clínica Experts</span>
+              <label class="miniFilter">
+                <span>Usuário do registro</span>
+                <select id="bookingRegistryUserFilter">
+                  <option value="">Todos</option>
+                </select>
+              </label>
+            </div>
           </div>
           <div id="bookingChart" class="dailyChart"></div>
         </section>

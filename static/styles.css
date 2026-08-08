@@ -1896,6 +1896,41 @@ select {
   background: linear-gradient(90deg, rgba(21, 27, 75, .035), transparent);
 }
 
+.panelHeadControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.miniFilter {
+  min-width: 220px;
+  display: grid;
+  gap: 4px;
+}
+
+.miniFilter span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.miniFilter select {
+  height: 34px;
+  min-width: 220px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.miniFilter select:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: rgba(241, 246, 250, .86);
+}
+
 .split {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -2030,6 +2065,10 @@ select {
   .topbar, .panelHead, .filterHead {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .panelHeadControls, .miniFilter, .miniFilter select {
+    width: 100%;
   }
 
   .actions {

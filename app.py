@@ -770,6 +770,47 @@ def nested_name(data, key):
     return value
 
 
+def deep_first_name(data, paths):
+    for path in paths:
+        value = data
+        for key in path:
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(key)
+        if isinstance(value, dict):
+            name = first_value(value, ["name", "full_name", "title", "description", "email"])
+            if name:
+                return str(name)
+        elif value:
+            return str(value)
+    return ""
+
+
+def booking_registry_user_name(raw_json):
+    try:
+        booking = json.loads(raw_json or "{}")
+    except (TypeError, ValueError):
+        return ""
+    return deep_first_name(
+        booking,
+        [
+            ["created_by"],
+            ["created_by_user"],
+            ["created_by_professional"],
+            ["creator"],
+            ["creator_user"],
+            ["registered_by"],
+            ["registered_by_user"],
+            ["scheduled_by"],
+            ["scheduled_by_user"],
+            ["user"],
+            ["author"],
+            ["owner"],
+        ],
+    )
+
+
 def save_state(state):
     with db() as conn:
         conn.execute(
@@ -1960,6 +2001,18 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             """,
             booking_params,
         ).fetchall()
+        clinica_daily_booking_registry_rows = conn.execute(
+            f"""
+            select
+              substr(starts_at, 1, 10) as day,
+              professional_uuid,
+              raw_json
+            from clinica_bookings
+            where {booking_scope}
+            order by day
+            """,
+            booking_params,
+        ).fetchall()
         bill_date_expr = "substr(coalesce(paid_at, due_date, emission_date), 1, 10)"
         bill_amount_expr = "coalesce(json_extract(raw_json, '$.final_amount') / 100.0, amount, 0)"
         bill_balance_expr = "coalesce(json_extract(raw_json, '$.balance') / 100.0, 0)"
@@ -2410,12 +2463,41 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             doctor_name = professional_doctor_lookup.get(row["professional_uuid"], "Sem profissional")
             daily_booking_doctors.setdefault(day, {})
             daily_booking_doctors[day][doctor_name] = daily_booking_doctors[day].get(doctor_name, 0) + row["total"]
+        booking_registry_users = set()
+        daily_booking_registry_users = {}
+        for row in clinica_daily_booking_registry_rows:
+            day = row["day"]
+            if not day:
+                continue
+            user_name = booking_registry_user_name(row["raw_json"])
+            if not user_name:
+                continue
+            doctor_name = professional_doctor_lookup.get(row["professional_uuid"], "Sem profissional")
+            booking_registry_users.add(user_name)
+            daily_booking_registry_users.setdefault(day, {})
+            daily_booking_registry_users[day].setdefault(user_name, {"total": 0, "by_doctor": {}})
+            daily_booking_registry_users[day][user_name]["total"] += 1
+            daily_booking_registry_users[day][user_name]["by_doctor"][doctor_name] = (
+                daily_booking_registry_users[day][user_name]["by_doctor"].get(doctor_name, 0) + 1
+            )
         daily_bookings = fill_daily_series([dict(row) for row in clinica_daily_bookings], date_from, date_to)
         for row in daily_bookings:
             breakdown = daily_booking_doctors.get(row["day"], {})
             row["by_doctor"] = [
                 {"doctor": doctor_name, "total": total}
                 for doctor_name, total in sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
+            ]
+            creator_breakdown = daily_booking_registry_users.get(row["day"], {})
+            row["by_registry_user"] = [
+                {
+                    "user": user_name,
+                    "total": info["total"],
+                    "by_doctor": [
+                        {"doctor": doctor_name, "total": total}
+                        for doctor_name, total in sorted(info["by_doctor"].items(), key=lambda item: (-item[1], item[0]))
+                    ],
+                }
+                for user_name, info in sorted(creator_breakdown.items(), key=lambda item: (-item[1]["total"], item[0]))
             ]
         doctor_rows = []
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
@@ -2591,6 +2673,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "totals": dict(clinica_totals),
             "bookings_by_status": [dict(row) for row in clinica_bookings_by_status],
             "daily_bookings": daily_bookings,
+            "booking_registry_users": sorted(booking_registry_users),
             "doctor_cross": doctor_rows,
             "last_sync": dict(clinica_log) if clinica_log else None,
         },
