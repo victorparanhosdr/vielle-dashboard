@@ -839,11 +839,14 @@ function renderSellerFilter() {
 function renderBookingRegistryUserFilter() {
   const select = document.getElementById("bookingRegistryUserFilter");
   if (!select) return;
-  const currentOptions = [...select.options].map(option => option.value).join("|");
-  const nextOptions = ["", ...state.allBookingRegistryUsers].join("|");
+  const filter = select.closest(".miniFilter");
+  if (filter) filter.hidden = false;
+  const currentOptions = [...select.options].map(option => `${option.value}:${option.textContent}`).join("|");
+  const emptyLabel = state.allBookingRegistryUsers.length ? "Todos" : "Aguardando registros";
+  const nextOptions = [`:${emptyLabel}`, ...state.allBookingRegistryUsers.map(user => `${user}:${user}`)].join("|");
   if (currentOptions !== nextOptions) {
     select.innerHTML = `
-      <option value="">Todos</option>
+      <option value="">${emptyLabel}</option>
       ${state.allBookingRegistryUsers.map(user => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("")}
     `;
   }
@@ -851,7 +854,7 @@ function renderBookingRegistryUserFilter() {
   select.disabled = !state.allBookingRegistryUsers.length;
   select.title = state.allBookingRegistryUsers.length
     ? "Filtra somente o gráfico de agendamentos pelo usuário que registrou o agendamento"
-    : "A API ainda não enviou o usuário que registrou os agendamentos";
+    : "";
 }
 
 function filteredBookingDailyItems(items) {

@@ -62,6 +62,7 @@ CLINICA_HISTORY_START = os.getenv("CLINICA_HISTORY_START", "2020-01-01")
 CLINICA_RATE_LIMIT_DELAY = int(os.getenv("CLINICA_RATE_LIMIT_DELAY", "20"))
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "30"))
 APP_SECRET = os.getenv("APP_SECRET", "dev-secret-change-me")
+CLINICA_WEBHOOK_SECRET = os.getenv("CLINICA_WEBHOOK_SECRET", "")
 PORT = int(os.getenv("PORT", "8080"))
 DASHBOARD_USER = os.getenv("DASHBOARD_USER", "")
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
@@ -77,6 +78,7 @@ CONFIG_DEFAULTS = {
     "CLINICA_RATE_LIMIT_DELAY": str(CLINICA_RATE_LIMIT_DELAY),
     "SYNC_INTERVAL_MINUTES": str(SYNC_INTERVAL_MINUTES),
     "APP_SECRET": APP_SECRET,
+    "CLINICA_WEBHOOK_SECRET": CLINICA_WEBHOOK_SECRET,
     "DASHBOARD_USER": DASHBOARD_USER,
     "DASHBOARD_PASSWORD": DASHBOARD_PASSWORD,
     "MASTER_USER": os.getenv("MASTER_USER", "master"),
@@ -88,6 +90,7 @@ SECRET_CONFIG_KEYS = {
     "KOMMO_LONG_LIVED_TOKEN",
     "CLINICA_EXPERTS_TOKEN",
     "APP_SECRET",
+    "CLINICA_WEBHOOK_SECRET",
     "DASHBOARD_PASSWORD",
     "MASTER_PASSWORD",
 }
@@ -531,6 +534,7 @@ def init_db():
                 status text,
                 starts_at text,
                 ends_at text,
+                registry_user_name text,
                 raw_json text not null,
                 synced_at integer not null
             );
@@ -595,6 +599,13 @@ def init_db():
             );
             """
         )
+        for statement in (
+            "alter table clinica_bookings add column registry_user_name text",
+        ):
+            try:
+                conn.execute(statement)
+            except sqlite3.OperationalError:
+                pass
 
 
 def json_response(handler, payload, status=HTTPStatus.OK, headers=None):
@@ -787,12 +798,40 @@ def deep_first_name(data, paths):
     return ""
 
 
+def named_value(value):
+    if isinstance(value, dict):
+        name = first_value(value, ["name", "full_name", "title", "description", "email"])
+        return str(name) if name else ""
+    return str(value) if value else ""
+
+
+def recursive_named_value(data, key_names, depth=0):
+    if depth > 5:
+        return ""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            normalized = str(key).lower()
+            if normalized in key_names:
+                found = named_value(value)
+                if found:
+                    return found
+            found = recursive_named_value(value, key_names, depth + 1)
+            if found:
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = recursive_named_value(item, key_names, depth + 1)
+            if found:
+                return found
+    return ""
+
+
 def booking_registry_user_name(raw_json):
     try:
         booking = json.loads(raw_json or "{}")
     except (TypeError, ValueError):
         return ""
-    return deep_first_name(
+    direct = deep_first_name(
         booking,
         [
             ["created_by"],
@@ -800,6 +839,9 @@ def booking_registry_user_name(raw_json):
             ["created_by_professional"],
             ["creator"],
             ["creator_user"],
+            ["action_by"],
+            ["performed_by"],
+            ["triggered_by"],
             ["registered_by"],
             ["registered_by_user"],
             ["scheduled_by"],
@@ -808,6 +850,28 @@ def booking_registry_user_name(raw_json):
             ["author"],
             ["owner"],
         ],
+    )
+    if direct:
+        return direct
+    return recursive_named_value(
+        booking,
+        {
+            "created_by",
+            "created_by_user",
+            "created_by_professional",
+            "creator",
+            "creator_user",
+            "action_by",
+            "performed_by",
+            "triggered_by",
+            "registered_by",
+            "registered_by_user",
+            "scheduled_by",
+            "scheduled_by_user",
+            "user",
+            "author",
+            "owner",
+        },
     )
 
 
@@ -1006,11 +1070,12 @@ def save_clinica_booking(conn, booking, synced_at):
     patient = first_value(booking, ["patient", "patient_uuid"])
     professional = first_value(booking, ["professional", "professional_uuid"])
     procedure = first_value(booking, ["procedure", "procedure_uuid"])
+    registry_user_name = booking_registry_user_name(json.dumps(booking, ensure_ascii=False))
     conn.execute(
         """
         insert into clinica_bookings
-        (uuid, patient_uuid, professional_uuid, procedure_uuid, status, starts_at, ends_at, raw_json, synced_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (uuid, patient_uuid, professional_uuid, procedure_uuid, status, starts_at, ends_at, registry_user_name, raw_json, synced_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict(uuid) do update set
             patient_uuid=excluded.patient_uuid,
             professional_uuid=excluded.professional_uuid,
@@ -1018,6 +1083,7 @@ def save_clinica_booking(conn, booking, synced_at):
             status=excluded.status,
             starts_at=excluded.starts_at,
             ends_at=excluded.ends_at,
+            registry_user_name=coalesce(excluded.registry_user_name, clinica_bookings.registry_user_name),
             raw_json=excluded.raw_json,
             synced_at=excluded.synced_at
         """,
@@ -1029,11 +1095,58 @@ def save_clinica_booking(conn, booking, synced_at):
             first_value(booking, ["status"]),
             first_value(booking, ["starts_at", "start_at", "scheduled_at"]),
             first_value(booking, ["ends_at", "end_at"]),
+            registry_user_name or None,
             json.dumps(booking, ensure_ascii=False),
             synced_at,
         ),
     )
     return True
+
+
+def find_booking_payload(payload):
+    if not isinstance(payload, dict):
+        return None
+    candidates = [
+        payload,
+        payload.get("data"),
+        payload.get("booking"),
+        payload.get("resource"),
+        payload.get("model"),
+        payload.get("object"),
+        payload.get("payload"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, dict) and first_value(candidate, ["uuid", "id", "booking_uuid"]):
+            if first_value(candidate, ["starts_at", "start_at", "scheduled_at"]) or str(payload.get("event", "")).startswith("booking."):
+                return candidate
+    for value in payload.values():
+        if isinstance(value, dict):
+            found = find_booking_payload(value)
+            if found:
+                return found
+        elif isinstance(value, list):
+            for item in value:
+                found = find_booking_payload(item) if isinstance(item, dict) else None
+                if found:
+                    return found
+    return None
+
+
+def save_clinica_booking_webhook(payload):
+    booking = find_booking_payload(payload)
+    if not booking:
+        return {"ok": False, "saved": False, "error": "Payload sem agendamento reconhecido."}
+    registry_user_name = booking_registry_user_name(json.dumps(payload, ensure_ascii=False))
+    if registry_user_name and not booking_registry_user_name(json.dumps(booking, ensure_ascii=False)):
+        booking = {**booking, "registered_by": {"name": registry_user_name}}
+    with db() as conn:
+        saved = save_clinica_booking(conn, booking, int(time.time()))
+    return {
+        "ok": bool(saved),
+        "saved": bool(saved),
+        "booking_uuid": str(first_value(booking, ["uuid", "id", "booking_uuid"]) or ""),
+        "registry_user_name": registry_user_name,
+    }
 
 
 def save_clinica_sale(conn, sale, synced_at):
@@ -2006,7 +2119,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             select
               substr(starts_at, 1, 10) as day,
               professional_uuid,
-              raw_json
+              registry_user_name
             from clinica_bookings
             where {booking_scope}
             order by day
@@ -2469,7 +2582,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             day = row["day"]
             if not day:
                 continue
-            user_name = booking_registry_user_name(row["raw_json"])
+            user_name = row["registry_user_name"]
             if not user_name:
                 continue
             doctor_name = professional_doctor_lookup.get(row["professional_uuid"], "Sem profissional")
@@ -3287,9 +3400,28 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/clinica-webhook":
+            params = urllib.parse.parse_qs(parsed.query)
+            with clinic_context(self.request_clinic_id(parsed)):
+                expected_secret = config_value("CLINICA_WEBHOOK_SECRET", "") or config_value("APP_SECRET", "")
+                received_secret = (
+                    self.headers.get("X-Clinica-Webhook-Secret", "")
+                    or params.get("secret", [""])[0]
+                )
+                if not expected_secret or not hmac.compare_digest(str(received_secret), str(expected_secret)):
+                    return json_response(self, {"ok": False, "error": "Webhook não autorizado."}, HTTPStatus.UNAUTHORIZED)
+                try:
+                    payload = self.read_json_body()
+                except Exception:
+                    return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
+                event_name = str(payload.get("event") or payload.get("type") or payload.get("name") or "")
+                if event_name and not event_name.startswith("booking."):
+                    return json_response(self, {"ok": True, "ignored": True, "event": event_name})
+                result = save_clinica_booking_webhook(payload)
+                return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
         if not self.require_dashboard_auth():
             return
-        parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/clinic-access":
             try:
                 payload = self.read_json_body()
