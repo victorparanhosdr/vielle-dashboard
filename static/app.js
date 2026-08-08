@@ -29,6 +29,13 @@ const clinics = {
     status: "Relatório da Clínica Inspire conectado ao Kommo.",
     connected: true,
   },
+  carla: {
+    id: "carla",
+    name: "Dr. Carla Ferreira",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
+    connected: true,
+  },
 };
 
 function fmtDate(value) {

@@ -25,8 +25,8 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
-SUPPORTED_CLINICS = ("vielle", "inspire")
-CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE"}
+SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
     "KOMMO_CLIENT_ID",
@@ -141,6 +141,12 @@ CLINIC_KOMMO_DOCTOR_ALIASES = {
         "Giovanna Fogo": ["Dra. Geovanna", "Dra Geovanna", "Dra. Giovanna", "Dra Giovanna", "Geovanna", "Giovanna"],
         "Jessika de Paula Medeiros": ["Dra.Jessica", "Dra. Jessica", "Dra Jessica", "Jessica", "Dra.Jessika", "Dra. Jessika", "Dra Jessika", "Jessika"],
     },
+}
+
+CLINIC_DISPLAY_NAMES = {
+    "vielle": "Vielle Clinic",
+    "inspire": "Clínica Inspire",
+    "carla": "Dr. Carla Ferreira",
 }
 
 
@@ -333,6 +339,11 @@ def kommo_doctor_clause(aliases, prefix="leads"):
 def current_clinic_id():
     clinic_id = CURRENT_CLINIC_ID.get()
     return clinic_id if clinic_id in SUPPORTED_CLINICS else "vielle"
+
+
+def clinic_display_name(clinic_id=None):
+    clinic_id = clinic_id or current_clinic_id()
+    return CLINIC_DISPLAY_NAMES.get(normalize_clinic_id(clinic_id), "Vielle Clinic")
 
 
 def clinic_db_path(clinic_id=None):
@@ -646,6 +657,7 @@ def redirect(handler, location):
 CLINIC_ACCESS_ENV = {
     "vielle": "VIELLE_ACCESS_CODE",
     "inspire": "INSPIRE_ACCESS_CODE",
+    "carla": "CARLA_ACCESS_CODE",
 }
 
 
@@ -2948,7 +2960,7 @@ def generate_report_pdf(report, view="commercial"):
         leftMargin=12 * mm,
         topMargin=10 * mm,
         bottomMargin=10 * mm,
-        title="DASHBOARD ESTRATEGICO - Vielle Clinic",
+        title=f"DASHBOARD ESTRATEGICO - {clinic_display_name()}",
     )
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="DashTitle", fontName="Helvetica-Bold", fontSize=22, textColor=colors.HexColor("#172338"), leading=26))
@@ -2957,7 +2969,7 @@ def generate_report_pdf(report, view="commercial"):
 
     filters = report.get("filters", {})
     story = [
-        Paragraph("Vielle Clinic", styles["SmallMuted"]),
+        Paragraph(clinic_display_name(), styles["SmallMuted"]),
         Paragraph("DASHBOARD ESTRATEGICO", styles["DashTitle"]),
         Paragraph(
             f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} - "
@@ -3085,7 +3097,7 @@ def compact_number(value):
 
 
 def render_kommo_widget(report, clinic_id, period):
-    clinic_name = "Clínica Inspire" if clinic_id == "inspire" else "Vielle Clinic"
+    clinic_name = clinic_display_name(clinic_id)
     financial = report.get("financial", {})
     financial_totals = financial.get("totals", {})
     clinica = report.get("clinica_experts", {})
