@@ -1165,6 +1165,41 @@ def find_booking_payload(payload):
     return None
 
 
+def find_sale_quote_payload(payload):
+    if not isinstance(payload, dict):
+        return None
+    candidates = [
+        payload,
+        payload.get("data"),
+        payload.get("sale_quote"),
+        payload.get("quote"),
+        payload.get("resource"),
+        payload.get("model"),
+        payload.get("object"),
+        payload.get("payload"),
+    ]
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if first_value(candidate, ["uuid", "id", "sale_quote_uuid"]) and (
+            first_value(candidate, ["quote_date", "final_amount", "nominal_amount"])
+            or first_value(candidate, ["type"]) == "sale_quote"
+            or "sale_quote" in str(first_value(payload, ["event", "type", "name"]) or "")
+        ):
+            return candidate
+    for value in payload.values():
+        if isinstance(value, dict):
+            found = find_sale_quote_payload(value)
+            if found:
+                return found
+        elif isinstance(value, list):
+            for item in value:
+                found = find_sale_quote_payload(item) if isinstance(item, dict) else None
+                if found:
+                    return found
+    return None
+
+
 def save_clinica_booking_webhook(payload):
     booking = find_booking_payload(payload)
     if not booking:
@@ -1179,6 +1214,20 @@ def save_clinica_booking_webhook(payload):
         "saved": bool(saved),
         "booking_uuid": str(first_value(booking, ["uuid", "id", "booking_uuid"]) or ""),
         "registry_user_name": registry_user_name,
+    }
+
+
+def save_clinica_sale_quote_webhook(payload):
+    sale_quote = find_sale_quote_payload(payload)
+    if not sale_quote:
+        return {"ok": False, "saved": False, "error": "Payload sem orçamento reconhecido."}
+    sale_quote = {**sale_quote, "type": first_value(sale_quote, ["type"]) or "sale_quote"}
+    with db() as conn:
+        saved = save_clinica_sale(conn, sale_quote, int(time.time()))
+    return {
+        "ok": bool(saved),
+        "saved": bool(saved),
+        "sale_quote_uuid": str(first_value(sale_quote, ["uuid", "id", "sale_quote_uuid"]) or ""),
     }
 
 
@@ -3580,6 +3629,9 @@ class Handler(SimpleHTTPRequestHandler):
                 except Exception:
                     return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
                 event_name = str(payload.get("event") or payload.get("type") or payload.get("name") or "")
+                if "sale_quote" in event_name:
+                    result = save_clinica_sale_quote_webhook(payload)
+                    return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
                 if event_name and not event_name.startswith("booking."):
                     return json_response(self, {"ok": True, "ignored": True, "event": event_name})
                 result = save_clinica_booking_webhook(payload)
