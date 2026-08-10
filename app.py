@@ -736,11 +736,11 @@ def kommo_request(method, path, token=None, body=None, domain=None):
         raise RuntimeError(f"Kommo retornou {exc.code}: {detail}") from exc
 
 
-def clinica_request(path):
+def clinica_request(path, api_prefix="/api/v1"):
     token = config_value("CLINICA_EXPERTS_TOKEN", "")
     if not configured(token):
         raise RuntimeError("CLINICA_EXPERTS_TOKEN nao foi configurado.")
-    url = f"https://api.clinicaexperts.com.br/api/v1{path}"
+    url = f"https://api.clinicaexperts.com.br{api_prefix}{path}"
     req = urllib.request.Request(
         url,
         headers={
@@ -768,6 +768,11 @@ def clinica_request(path):
                 raise RuntimeError(
                     "Clínica Experts bloqueou esta origem via Cloudflare. O token foi configurado, "
                     "mas a API recusou o cliente local."
+                ) from exc
+            if exc.code == 403 and "sales-quotes" in path:
+                raise RuntimeError(
+                    "Clínica Experts negou acesso aos orçamentos (sales-quotes). "
+                    "Libere a permissão de visualizar orçamentos/vendas para o token da integração."
                 ) from exc
             raise RuntimeError(f"Clínica Experts retornou {exc.code}: {detail}") from exc
 
@@ -1181,9 +1186,14 @@ def save_clinica_sale(conn, sale, synced_at):
     uuid = first_value(sale, ["uuid", "id", "sale_uuid"])
     if not uuid:
         return False
-    patient = first_value(sale, ["patient", "patient_uuid", "buyer"])
+    patient = first_value(sale, ["patient", "patient_uuid", "buyer", "buyer_person", "person"])
+    title = first_value(sale, ["title"])
     total = first_value(sale, ["final_amount", "total", "amount", "value", "price"])
+    if total is None and isinstance(title, dict):
+        total = first_value(title, ["final_amount", "total", "amount", "value", "nominal_amount"])
     total = money_value(total)
+    sale_type = first_value(sale, ["type"]) or ("sale_quote" if "quote_date" in sale else None)
+    sale_date = first_value(sale, ["sale_date", "quote_date", "date", "created_at"])
     conn.execute(
         """
         insert into clinica_sales
@@ -1200,8 +1210,8 @@ def save_clinica_sale(conn, sale, synced_at):
         (
             str(uuid),
             str(patient.get("uuid") or patient.get("id")) if isinstance(patient, dict) else str(patient) if patient else None,
-            first_value(sale, ["type"]),
-            first_value(sale, ["sale_date", "date", "created_at"]),
+            sale_type,
+            sale_date,
             total,
             json.dumps(sale, ensure_ascii=False),
             synced_at,
@@ -1414,6 +1424,34 @@ def sync_clinica_sales_period(date_from, date_to):
     return total
 
 
+def sync_clinica_sale_quotes_period(date_from, date_to):
+    starts_at = f"{date_from}T00:00:00-03:00"
+    ends_at = f"{date_to}T23:59:59-03:00"
+    total = 0
+    seen = set()
+    synced_at = int(time.time())
+    for sort_column in ("quote_date", "created_at", "updated_at"):
+        path = (
+            f"/sales-quotes?starts_at={starts_at}&ends_at={ends_at}"
+            f"&sort_column={sort_column}&per_page=100"
+        )
+        for page in range(1, 101):
+            payload = clinica_request(f"{path}&page={page}", api_prefix="/api")
+            items = extract_items(payload, ["data", "sales_quotes", "sale_quotes"])
+            if not items:
+                break
+            with db() as conn:
+                for item in items:
+                    item = {**item, "type": first_value(item, ["type"]) or "sale_quote"}
+                    uuid = first_value(item, ["uuid", "id", "sale_quote_uuid"])
+                    if save_clinica_sale(conn, item, synced_at) and uuid and str(uuid) not in seen:
+                        seen.add(str(uuid))
+                        total += 1
+            if len(items) < 100:
+                break
+    return total
+
+
 def month_ranges(date_from, date_to):
     current = datetime.strptime(date_from, "%Y-%m-%d").replace(day=1)
     end = datetime.strptime(date_to, "%Y-%m-%d")
@@ -1434,6 +1472,14 @@ def sync_clinica_period(date_from, date_to):
         save_clinica_booking,
     )
     sales = sync_clinica_sales_period(date_from, date_to)
+    sale_quote_warnings = []
+    try:
+        sale_quotes = sync_clinica_sale_quotes_period(date_from, date_to)
+    except RuntimeError as exc:
+        if "sales-quotes" not in str(exc) and "orçamentos" not in str(exc):
+            raise
+        sale_quotes = 0
+        sale_quote_warnings.append(str(exc))
     bills = sync_clinica_list(
         f"/bills?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
         ["data", "bills"],
@@ -1444,7 +1490,7 @@ def sync_clinica_period(date_from, date_to):
         ["data", "parcels"],
         save_clinica_parcel,
     )
-    return bookings, sales, bills, parcels
+    return bookings, sales, sale_quotes, bills, parcels, sale_quote_warnings
 
 
 def sync_clinica_experts(date_from=None, date_to=None, historical=False):
@@ -1469,23 +1515,30 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
             procedures = 0
         bookings = 0
         sales = 0
+        sale_quotes = 0
         bills = 0
         parcels = 0
+        warnings = []
         periods = list(month_ranges(date_from, date_to)) if historical else [(date_from, date_to)]
         for period_from, period_to in periods:
-            period_bookings, period_sales, period_bills, period_parcels = sync_clinica_period(period_from, period_to)
+            period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = sync_clinica_period(period_from, period_to)
             bookings += period_bookings
             sales += period_sales
+            sale_quotes += period_sale_quotes
             bills += period_bills
             parcels += period_parcels
+            warnings.extend(period_warnings)
             if historical:
                 time.sleep(0.25)
 
         scope = "historico" if historical else "periodo"
         message = (
-            f"{patients} pacientes, {procedures} procedimentos, {bookings} agendamentos, {sales} vendas, "
+            f"{patients} pacientes, {procedures} procedimentos, {bookings} agendamentos, "
+            f"{sales} vendas, {sale_quotes} orçamentos, "
             f"{bills} contas e {parcels} parcelas sincronizados ({scope}: {date_from} a {date_to})"
         )
+        if warnings:
+            message += " Aviso: " + "; ".join(sorted(set(warnings)))
         with db() as conn:
             conn.execute(
                 "update clinica_sync_log set finished_at = ?, ok = 1, message = ? where id = ?",
@@ -1497,8 +1550,10 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
             "procedures": procedures,
             "bookings": bookings,
             "sales": sales,
+            "sale_quotes": sale_quotes,
             "bills": bills,
             "parcels": parcels,
+            "warnings": sorted(set(warnings)),
             "historical": historical,
             "date_from": date_from,
             "date_to": date_to,
@@ -2535,7 +2590,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             except json.JSONDecodeError:
                 sale = {}
             day = (sale_row["sale_date"] or "")[:10]
-            status_group = sale_status_group(first_value(sale, ["status"]))
+            status_group = sale_status_group(first_value(sale, ["status"]), first_value(sale, ["type"]))
             final_amount = money_value(first_value(sale, ["final_amount", "total", "amount"])) or sale_row["total"] or 0
             nominal_amount = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount"])) or final_amount
             day_bucket = performance_lookup.setdefault(day, {"day": day, "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0})
@@ -2589,8 +2644,12 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
 
         extra_quote_clauses = [
             """
-            lower(coalesce(json_extract(raw_json, '$.status'), '')) in
-            ('inactive', 'budget', 'quote', 'proposal', 'quoted')
+            (
+              lower(coalesce(json_extract(raw_json, '$.status'), '')) in
+              ('inactive', 'budget', 'quote', 'proposal', 'quoted', 'open', 'opened', 'aberto')
+              or lower(coalesce(type, json_extract(raw_json, '$.type'), '')) in
+              ('sale_quote', 'quote', 'budget', 'proposal')
+            )
             """,
             "substr(coalesce(json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) >= ?",
             "substr(coalesce(json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) <= ?",
@@ -2599,8 +2658,16 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         extra_quote_params = [date_from, date_to, date_from, date_to]
         if effective_professional_uuids:
             professional_placeholders = ",".join("?" for _ in effective_professional_uuids)
-            extra_quote_clauses.append(f"json_extract(raw_json, '$.seller.uuid') in ({professional_placeholders})")
-            extra_quote_params.extend(effective_professional_uuids)
+            extra_quote_clauses.append(
+                f"""(
+                json_extract(raw_json, '$.seller.uuid') in ({professional_placeholders})
+                or json_extract(raw_json, '$.professional.uuid') in ({professional_placeholders})
+                or json_extract(raw_json, '$.responsible.uuid') in ({professional_placeholders})
+                or json_extract(raw_json, '$.seller_person_id') in ({professional_placeholders})
+                or json_extract(raw_json, '$.professional_id') in ({professional_placeholders})
+                )"""
+            )
+            extra_quote_params.extend(effective_professional_uuids * 5)
         extra_quote_rows = conn.execute(
             f"""
             select sale_date, total, raw_json
@@ -2614,11 +2681,14 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 sale = json.loads(sale_row["raw_json"])
             except json.JSONDecodeError:
                 sale = {}
-            quote_date = first_value(sale, ["created_at", "updated_at", "sale_date"]) or sale_row["sale_date"] or ""
+            quote_date = first_value(sale, ["quote_date", "created_at", "updated_at", "sale_date"]) or sale_row["sale_date"] or ""
             day = str(quote_date)[:10]
             if not (date_from <= day <= date_to):
                 continue
+            title = first_value(sale, ["title"])
             final_amount = money_value(first_value(sale, ["final_amount", "total", "amount"])) or sale_row["total"] or 0
+            if not final_amount and isinstance(title, dict):
+                final_amount = money_value(first_value(title, ["final_amount", "total", "amount", "nominal_amount"])) or 0
             nominal_amount = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount"])) or final_amount
             day_bucket = performance_lookup.setdefault(day, {"day": day, "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0})
             day_bucket["quoted"] += nominal_amount
@@ -2938,11 +3008,14 @@ def percent(value):
     return f"{value * 100:.1f}%".replace(".", ",")
 
 
-def sale_status_group(status):
+def sale_status_group(status, sale_type=None):
+    type_text = (sale_type or "").lower()
+    if type_text in ("sale_quote", "quote", "budget", "proposal"):
+        return "orcamento"
     text = (status or "").lower()
     if text in ("active", "paid", "received", "done", "completed"):
         return "venda"
-    if text in ("inactive", "budget", "quote", "proposal", "quoted"):
+    if text in ("inactive", "budget", "quote", "proposal", "quoted", "open", "opened", "aberto"):
         return "orcamento"
     return text or "sem status"
 
