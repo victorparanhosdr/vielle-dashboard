@@ -146,6 +146,14 @@ CLINIC_KOMMO_DOCTOR_ALIASES = {
     },
 }
 
+CLINIC_DOCTOR_CROSS_HIDDEN = {
+    "inspire": {
+        "Adrielli Gonzaga Da Silva",
+        "Ana Beatriz Ferreira da Silva",
+        "Joilda De França Lima",
+    },
+}
+
 CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
@@ -2633,8 +2641,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 for user_name, info in sorted(creator_breakdown.items(), key=lambda item: (-item[1]["total"], item[0]))
             ]
         doctor_rows = []
+        hidden_cross_doctors = CLINIC_DOCTOR_CROSS_HIDDEN.get(current_clinic_id(), set())
         pipeline_lookup = {row["id"]: row["name"] for row in considered_pipeline_rows}
         for doctor_name, professional_uuid in doctor_professionals.items():
+            if doctor_name in hidden_cross_doctors:
+                continue
             if selected_doctor and doctor_name != selected_doctor:
                 continue
             doctor_pipeline_ids = [
