@@ -1387,6 +1387,33 @@ def sync_clinica_list(path, preferred_keys, saver, max_pages=100):
     return total
 
 
+def sync_clinica_sales_period(date_from, date_to):
+    starts_at = f"{date_from}T00:00:00-03:00"
+    ends_at = f"{date_to}T23:59:59-03:00"
+    total = 0
+    seen = set()
+    synced_at = int(time.time())
+    for sort_column in ("sale_date", "created_at", "updated_at"):
+        path = (
+            f"/sales?starts_at={starts_at}&ends_at={ends_at}"
+            f"&sort_column={sort_column}&per_page=100"
+        )
+        for page in range(1, 101):
+            payload = clinica_request(f"{path}&page={page}")
+            items = extract_items(payload, ["data", "sales"])
+            if not items:
+                break
+            with db() as conn:
+                for item in items:
+                    uuid = first_value(item, ["uuid", "id", "sale_uuid"])
+                    if save_clinica_sale(conn, item, synced_at) and uuid and str(uuid) not in seen:
+                        seen.add(str(uuid))
+                        total += 1
+            if len(items) < 100:
+                break
+    return total
+
+
 def month_ranges(date_from, date_to):
     current = datetime.strptime(date_from, "%Y-%m-%d").replace(day=1)
     end = datetime.strptime(date_to, "%Y-%m-%d")
@@ -1406,11 +1433,7 @@ def sync_clinica_period(date_from, date_to):
         ["data", "bookings"],
         save_clinica_booking,
     )
-    sales = sync_clinica_list(
-        f"/sales?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
-        ["data", "sales"],
-        save_clinica_sale,
-    )
+    sales = sync_clinica_sales_period(date_from, date_to)
     bills = sync_clinica_list(
         f"/bills?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
         ["data", "bills"],
@@ -2563,6 +2586,43 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             elif status_group == "orcamento":
                 day_bucket["quoted"] += nominal_amount
                 day_bucket["quotes"] += 1
+
+        extra_quote_clauses = [
+            """
+            lower(coalesce(json_extract(raw_json, '$.status'), '')) in
+            ('inactive', 'budget', 'quote', 'proposal', 'quoted')
+            """,
+            "substr(coalesce(json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) >= ?",
+            "substr(coalesce(json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) <= ?",
+            "not (substr(sale_date, 1, 10) >= ? and substr(sale_date, 1, 10) <= ?)",
+        ]
+        extra_quote_params = [date_from, date_to, date_from, date_to]
+        if effective_professional_uuids:
+            professional_placeholders = ",".join("?" for _ in effective_professional_uuids)
+            extra_quote_clauses.append(f"json_extract(raw_json, '$.seller.uuid') in ({professional_placeholders})")
+            extra_quote_params.extend(effective_professional_uuids)
+        extra_quote_rows = conn.execute(
+            f"""
+            select sale_date, total, raw_json
+            from clinica_sales
+            where {" and ".join(extra_quote_clauses)}
+            """,
+            extra_quote_params,
+        ).fetchall()
+        for sale_row in extra_quote_rows:
+            try:
+                sale = json.loads(sale_row["raw_json"])
+            except json.JSONDecodeError:
+                sale = {}
+            quote_date = first_value(sale, ["created_at", "updated_at", "sale_date"]) or sale_row["sale_date"] or ""
+            day = str(quote_date)[:10]
+            if not (date_from <= day <= date_to):
+                continue
+            final_amount = money_value(first_value(sale, ["final_amount", "total", "amount"])) or sale_row["total"] or 0
+            nominal_amount = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount"])) or final_amount
+            day_bucket = performance_lookup.setdefault(day, {"day": day, "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0})
+            day_bucket["quoted"] += nominal_amount
+            day_bucket["quotes"] += 1
 
         top_patients = sorted(top_patient_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
         top_procedures = sorted(procedure_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
