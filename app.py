@@ -131,6 +131,7 @@ CLINIC_DOCTOR_PROFESSIONALS = {
         "Jessika de Paula Medeiros": "b8b09d3e-8998-44e0-bb56-16c46415287b",
         "Joilda De França Lima": "6fb360fc-2721-449e-8566-e4155dfe862d",
         "Leticia Araújo de Quevedo": "3535aff4-b079-4037-9e0c-17e08c0780ea",
+        "Matheus Azevedo Silva": "382552a2-17b8-4d1c-92fe-24f859f86e3c",
         "Vinicyus Leite Moreira Faria": "d59079c4-6ab9-4d5a-9112-cfa1b4ba11fc",
     },
 }
