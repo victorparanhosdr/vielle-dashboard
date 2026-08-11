@@ -2691,15 +2691,36 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               )
             """
             financial_income_extra_params = list(effective_professional_uuids)
+            parcel_owner_text_expr = """
+                lower(
+                  coalesce(json_extract(clinica_parcels.raw_json, '$.person.name'), '') || ' ' ||
+                  coalesce(json_extract(clinica_parcels.raw_json, '$.person.full_name'), '') || ' ' ||
+                  coalesce(json_extract(clinica_parcels.raw_json, '$.raw_bill.person.name'), '') || ' ' ||
+                  coalesce(json_extract(clinica_parcels.raw_json, '$.raw_bill.person.full_name'), '') || ' ' ||
+                  coalesce(clinica_parcels.raw_json, '')
+                )
+            """
+            owner_bill_text_expr = """
+                lower(
+                  coalesce(json_extract(owner_bill.raw_json, '$.person.name'), '') || ' ' ||
+                  coalesce(json_extract(owner_bill.raw_json, '$.person.full_name'), '') || ' ' ||
+                  coalesce(owner_bill.description, '') || ' ' ||
+                  coalesce(owner_bill.raw_json, '')
+                )
+            """
             financial_parcel_extra_clause = f"""
               and (
                 json_extract(clinica_parcels.raw_json, '$.person.uuid') in ({professional_placeholders})
                 or json_extract(clinica_parcels.raw_json, '$.raw_bill.person.uuid') in ({professional_placeholders})
+                or ({parcel_owner_text_expr} like '%victor%' and {parcel_owner_text_expr} like '%paranhos%')
                 or exists (
                   select 1
                   from clinica_bills owner_bill
                   where owner_bill.uuid = clinica_parcels.bill_uuid
-                    and json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
+                    and (
+                      json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
+                      or ({owner_bill_text_expr} like '%victor%' and {owner_bill_text_expr} like '%paranhos%')
+                    )
                 )
                 or (
                   lower(
