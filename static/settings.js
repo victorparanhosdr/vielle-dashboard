@@ -2,6 +2,18 @@ const master = {
   user: localStorage.getItem("vielle_master_user") || "master",
   password: "",
 };
+const settingsParams = new URLSearchParams(window.location.search);
+const selectedClinic = settingsParams.get("clinic") || "vielle";
+const clinicLabels = {
+  vielle: "Vielle Clinic",
+  inspire: "Clínica Inspire",
+  carla: "Dr. Carla Ferreira",
+  victor: "Dr. Victor Paranhos",
+};
+
+document.querySelectorAll("[data-clinic-label]").forEach(element => {
+  element.textContent = clinicLabels[selectedClinic] || clinicLabels.vielle;
+});
 
 document.getElementById("masterUser").value = master.user;
 
@@ -21,7 +33,9 @@ function headers() {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const separator = path.includes("?") ? "&" : "?";
+  const clinicPath = `${path}${separator}clinic=${encodeURIComponent(selectedClinic)}`;
+  const response = await fetch(clinicPath, {
     ...options,
     headers: {
       ...headers(),
@@ -94,11 +108,13 @@ async function loadEverything(reset = false) {
       reset_oauth: reset,
     }),
   });
-  const kommo = data.kommo?.ok ? "Kommo atualizado" : `Kommo: ${data.kommo?.error || "não atualizado"}`;
+  const commercial = selectedClinic === "victor"
+    ? (data.midas?.ok ? "Midas atualizado" : `Midas: ${data.midas?.error || "não atualizado"}`)
+    : (data.kommo?.ok ? "Kommo atualizado" : `Kommo: ${data.kommo?.error || "não atualizado"}`);
   const clinica = data.clinica_experts?.ok
     ? "Clínica Experts atualizado"
     : `Clínica Experts: ${data.clinica_experts?.error || "não atualizado"}`;
-  showSettingsStatus(`${kommo}. ${clinica}.`);
+  showSettingsStatus(`${commercial}. ${clinica}.`);
 }
 
 document.getElementById("unlockSettings").addEventListener("click", () => {

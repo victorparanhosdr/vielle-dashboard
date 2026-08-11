@@ -36,6 +36,14 @@ const clinics = {
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
+  victor: {
+    id: "victor",
+    name: "Dr. Victor Paranhos",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Perfil independente para conectar Midas, novas bases e Clínica Experts.",
+    commercialSource: "midas",
+    connected: true,
+  },
 };
 
 function fmtDate(value) {
@@ -128,7 +136,9 @@ function render() {
   if (state.selectedClinic && !clinic.connected) {
     showNotice(`${clinic.name} criada. Agora precisamos configurar as integrações dela para começar a puxar dados.`);
   } else if (!report.connected) {
-    showNotice("Conecte sua conta Kommo para iniciar a primeira sincronizacao.");
+    showNotice(clinic.commercialSource === "midas"
+      ? "Configure a API Midas para iniciar a primeira sincronizacao comercial."
+      : "Conecte sua conta Kommo para iniciar a primeira sincronizacao.");
   } else if (lastSync && !lastSync.ok) {
     showNotice(lastSync.message || "A ultima sincronizacao nao foi concluida.");
   } else {
@@ -141,6 +151,11 @@ function applyClinicHeader() {
   document.title = `${clinic.title} | ${clinic.name}`;
   document.getElementById("clinicEyebrow").textContent = clinic.name;
   document.getElementById("dashboardTitle").textContent = clinic.title;
+  const isMidas = clinic.commercialSource === "midas";
+  const connectBtn = document.getElementById("connectBtn");
+  const syncBtn = document.getElementById("syncBtn");
+  if (connectBtn) connectBtn.textContent = isMidas ? "Configurar Midas" : "Conectar Kommo";
+  if (syncBtn && !syncBtn.disabled) syncBtn.textContent = isMidas ? "Atualizar Midas" : "Atualizar";
   document.querySelectorAll("#syncBtn, #connectBtn").forEach(button => {
     button.disabled = !clinic.connected;
     button.title = clinic.connected ? "" : "Configure as integrações desta clínica primeiro.";
@@ -198,6 +213,21 @@ function requestClinicAccess(clinicId, updateUrl = true) {
     selectClinic(validClinicId, updateUrl);
     return;
   }
+  state.selectedClinic = validClinicId;
+  state.report = emptyReportForClinic(validClinicId);
+  state.allPipelines = [];
+  state.allDoctors = [];
+  state.allSellers = [];
+  state.allBookingRegistryUsers = [];
+  state.selectedPipelines.clear();
+  state.selectedDoctor = "";
+  state.selectedSeller = "";
+  state.selectedBookingRegistryUser = "";
+  state.dateFrom = "";
+  state.dateTo = "";
+  localStorage.setItem("selectedClinic", state.selectedClinic);
+  showDashboard();
+  render();
   openClinicAccessModal(validClinicId);
 }
 
@@ -1074,6 +1104,7 @@ async function loadReport() {
 }
 
 async function syncNow() {
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
   const btn = document.getElementById("syncBtn");
   btn.disabled = true;
   btn.textContent = "Atualizando...";
@@ -1087,7 +1118,7 @@ async function syncNow() {
     showNotice(error.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Atualizar";
+    btn.textContent = clinic.commercialSource === "midas" ? "Atualizar Midas" : "Atualizar";
   }
 }
 
@@ -1137,6 +1168,11 @@ function exportPdf() {
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
+  if (clinic.commercialSource === "midas") {
+    window.location.href = `/settings.html?clinic=${encodeURIComponent(clinic.id)}`;
+    return;
+  }
   window.location.href = `/auth/start${buildQuery()}`;
 });
 
