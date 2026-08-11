@@ -2671,6 +2671,57 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         parcel_expense_filter = (
             f"{expense_type_filter} and lower(coalesce(status, '')) != 'received'"
         )
+        financial_income_extra_clause = ""
+        financial_income_extra_params = []
+        financial_parcel_extra_clause = ""
+        financial_parcel_extra_params = []
+        if current_clinic_id() == "victor" and effective_professional_uuids:
+            professional_placeholders = ",".join("?" for _ in effective_professional_uuids)
+            financial_income_extra_clause = f"""
+              and exists (
+                select 1
+                from clinica_sales financial_sale
+                where json_extract(financial_sale.raw_json, '$.seller.uuid') in ({professional_placeholders})
+                  and json_extract(financial_sale.raw_json, '$.buyer.uuid') = json_extract(clinica_bills.raw_json, '$.person.uuid')
+                  and (
+                    abs(coalesce(json_extract(financial_sale.raw_json, '$.final_amount') / 100.0, financial_sale.total, 0) - {bill_amount_expr}) < 0.01
+                    or substr(coalesce(financial_sale.sale_date, json_extract(financial_sale.raw_json, '$.created_at')), 1, 10)
+                       = substr(coalesce(clinica_bills.emission_date, json_extract(clinica_bills.raw_json, '$.created_at')), 1, 10)
+                  )
+              )
+            """
+            financial_income_extra_params = list(effective_professional_uuids)
+            financial_parcel_extra_clause = f"""
+              and (
+                json_extract(clinica_parcels.raw_json, '$.person.uuid') in ({professional_placeholders})
+                or json_extract(clinica_parcels.raw_json, '$.raw_bill.person.uuid') in ({professional_placeholders})
+                or exists (
+                  select 1
+                  from clinica_bills owner_bill
+                  where owner_bill.uuid = clinica_parcels.bill_uuid
+                    and json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
+                )
+                or (
+                  lower(
+                    coalesce(clinica_parcels.description, '') || ' ' ||
+                    coalesce(clinica_parcels.category_name, '') || ' ' ||
+                    coalesce(clinica_parcels.account_name, '') || ' ' ||
+                    coalesce(clinica_parcels.raw_json, '')
+                  ) like '%victor%'
+                  and lower(
+                    coalesce(clinica_parcels.description, '') || ' ' ||
+                    coalesce(clinica_parcels.category_name, '') || ' ' ||
+                    coalesce(clinica_parcels.account_name, '') || ' ' ||
+                    coalesce(clinica_parcels.raw_json, '')
+                  ) like '%paranhos%'
+                )
+              )
+            """
+            financial_parcel_extra_params = (
+                list(effective_professional_uuids)
+                + list(effective_professional_uuids)
+                + list(effective_professional_uuids)
+            )
         financial_income_row = conn.execute(
             f"""
             select
@@ -2682,8 +2733,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             where {bill_date_expr} >= ?
               and {bill_date_expr} <= ?
               and {income_type_filter}
+              {financial_income_extra_clause}
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_income_extra_params],
         ).fetchone()
         financial_income_by_day = conn.execute(
             f"""
@@ -2692,10 +2744,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             where {bill_date_expr} >= ?
               and {bill_date_expr} <= ?
               and {income_type_filter}
+              {financial_income_extra_clause}
             group by day
             order by day
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_income_extra_params],
         ).fetchall()
         financial_manual_income_row = conn.execute(
             f"""
@@ -2709,8 +2762,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {manual_income_parcel_filter}
+              {financial_parcel_extra_clause}
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchone()
         financial_manual_income_by_day = conn.execute(
             f"""
@@ -2720,10 +2774,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {manual_income_parcel_filter}
+              {financial_parcel_extra_clause}
             group by day
             order by day
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_manual_income_by_type = conn.execute(
             f"""
@@ -2735,10 +2790,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {manual_income_parcel_filter}
+              {financial_parcel_extra_clause}
             group by type
             order by amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_sales_by_type = conn.execute(
             f"""
@@ -2747,10 +2803,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             where {bill_date_expr} >= ?
               and {bill_date_expr} <= ?
               and {income_type_filter}
+              {financial_income_extra_clause}
             group by type
             order by amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_income_extra_params],
         ).fetchall()
         financial_expense_row = conn.execute(
             f"""
@@ -2764,8 +2821,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {parcel_expense_filter}
+              {financial_parcel_extra_clause}
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchone()
         financial_expense_by_day = conn.execute(
             f"""
@@ -2775,10 +2833,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {parcel_expense_filter}
+              {financial_parcel_extra_clause}
             group by day
             order by day
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_expense_by_category = conn.execute(
             f"""
@@ -2793,10 +2852,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {parcel_expense_filter}
+              {financial_parcel_extra_clause}
             group by category_name
             order by amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_recent_sales = conn.execute(
             f"""
@@ -2812,10 +2872,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             where {bill_date_expr} >= ?
               and {bill_date_expr} <= ?
               and {income_type_filter}
+              {financial_income_extra_clause}
             order by {bill_date_expr} desc
             limit 6
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_income_extra_params],
         ).fetchall()
         financial_recent_manual_income = conn.execute(
             f"""
@@ -2832,10 +2893,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {manual_income_parcel_filter}
+              {financial_parcel_extra_clause}
             order by {parcel_date_expr} desc
             limit 6
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_recent_expenses = conn.execute(
             f"""
@@ -2852,10 +2914,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {parcel_expense_filter}
+              {financial_parcel_extra_clause}
             order by {parcel_date_expr} desc
             limit 6
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_detail_sales = conn.execute(
             f"""
@@ -2871,9 +2934,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             where {bill_date_expr} >= ?
               and {bill_date_expr} <= ?
               and {income_type_filter}
+              {financial_income_extra_clause}
             order by {bill_date_expr} desc, amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_income_extra_params],
         ).fetchall()
         financial_detail_manual_income = conn.execute(
             f"""
@@ -2890,9 +2954,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {manual_income_parcel_filter}
+              {financial_parcel_extra_clause}
             order by {parcel_date_expr} desc, amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_detail_expenses = conn.execute(
             f"""
@@ -2909,9 +2974,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and {parcel_date_expr} <= ?
               and amount is not null
               and {parcel_expense_filter}
+              {financial_parcel_extra_clause}
             order by {parcel_date_expr} desc, amount desc
             """,
-            (date_from, date_to),
+            [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
         financial_income_total = (financial_income_row["amount"] or 0) + (financial_manual_income_row["amount"] or 0)
         financial_expense_total = financial_expense_row["amount"] or 0
