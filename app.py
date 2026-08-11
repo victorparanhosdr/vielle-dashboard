@@ -12,6 +12,7 @@ import secrets
 import sqlite3
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -163,6 +164,10 @@ CLINIC_DOCTOR_CROSS_HIDDEN = {
     },
 }
 
+CLINIC_FORCED_PROFESSIONAL_MATCHES = {
+    "victor": (("victor",), ("paranhos", "andrade")),
+}
+
 CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
@@ -195,6 +200,20 @@ def procedure_category_from_name(name):
         if any(term in text for term in terms):
             return category
     return "Sem categoria"
+
+
+def normalize_lookup_text(value):
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    return without_accents.lower().strip()
+
+
+def matches_forced_professional_name(name, clinic_id=None):
+    rule = CLINIC_FORCED_PROFESSIONAL_MATCHES.get(clinic_id or current_clinic_id())
+    if not rule:
+        return False
+    normalized_name = normalize_lookup_text(name)
+    return all(any(term in normalized_name for term in group) for group in rule)
 
 
 def clinic_pipeline_doctor_map():
@@ -298,12 +317,26 @@ def kommo_seller_clause(seller, prefix="leads"):
 
 
 def clinic_doctor_professionals(conn):
+    clinic_id = current_clinic_id()
+    dynamic_professionals = clinica_professionals_from_data(conn)
+    if clinic_id in CLINIC_FORCED_PROFESSIONAL_MATCHES:
+        return {
+            name: uuid
+            for name, uuid in dynamic_professionals.items()
+            if matches_forced_professional_name(name, clinic_id)
+        }
     static_professionals = CLINIC_DOCTOR_PROFESSIONALS.get(current_clinic_id())
     if static_professionals is not None:
         professionals = dict(static_professionals)
-        professionals.update(clinica_professionals_from_data(conn))
+        professionals.update(dynamic_professionals)
         return professionals
-    return clinica_professionals_from_data(conn)
+    return dynamic_professionals
+
+
+def forced_professional_uuids(conn):
+    if current_clinic_id() not in CLINIC_FORCED_PROFESSIONAL_MATCHES:
+        return []
+    return sorted(set(clinic_doctor_professionals(conn).values()))
 
 
 def clinic_kommo_doctor_aliases(doctor_name):
@@ -2259,6 +2292,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
     selected_pipeline_params = []
     with db() as conn:
         doctor_professionals = clinic_doctor_professionals(conn)
+        forced_clinica_professional_uuids = forced_professional_uuids(conn)
         sellers = kommo_sellers_from_data(conn)
         selected_doctor = doctor if doctor in doctor_professionals else ""
         selected_seller = seller if seller in sellers else ""
@@ -2304,6 +2338,14 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         ]
     else:
         effective_professional_uuids = []
+    if forced_clinica_professional_uuids:
+        if effective_professional_uuids:
+            effective_professional_uuids = [
+                uuid for uuid in effective_professional_uuids
+                if uuid in forced_clinica_professional_uuids
+            ]
+        else:
+            effective_professional_uuids = forced_clinica_professional_uuids
     selected_kommo_aliases = clinic_kommo_doctor_aliases(selected_doctor) if selected_doctor else []
     if selected_doctor and clinic_has_kommo_doctor_aliases() and not selected_kommo_aliases:
         lead_doctor_clause, lead_doctor_params = "0 = 1", []
