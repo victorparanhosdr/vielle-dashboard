@@ -35,6 +35,7 @@ CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_REDIRECT_URI",
     "MIDAS_API_BASE_URL",
     "MIDAS_API_TOKEN",
+    "MIDAS_LOCATION_ID",
     "MIDAS_HISTORY_START",
     "CLINICA_EXPERTS_TOKEN",
     "CLINICA_HISTORY_START",
@@ -79,6 +80,7 @@ CONFIG_DEFAULTS = {
     "KOMMO_REDIRECT_URI": KOMMO_REDIRECT_URI,
     "MIDAS_API_BASE_URL": os.getenv("MIDAS_API_BASE_URL", "https://app.midasone.com.br"),
     "MIDAS_API_TOKEN": os.getenv("MIDAS_API_TOKEN", ""),
+    "MIDAS_LOCATION_ID": os.getenv("MIDAS_LOCATION_ID", ""),
     "MIDAS_HISTORY_START": os.getenv("MIDAS_HISTORY_START", "2020-01-01"),
     "CLINICA_EXPERTS_TOKEN": CLINICA_EXPERTS_TOKEN,
     "CLINICA_HISTORY_START": CLINICA_HISTORY_START,
@@ -402,6 +404,8 @@ def config_value(key, default=None):
     fallback = CONFIG_DEFAULTS.get(key, default or "")
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
         fallback = default or ""
+        if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
+            fallback = CONFIG_DEFAULTS.get(key, fallback)
     scoped_env = clinic_env_value(key)
     if scoped_env:
         return scoped_env
@@ -816,6 +820,38 @@ def money_value(value):
     except (TypeError, ValueError):
         return None
     return number / 100
+
+
+def stable_numeric_id(value, namespace="midas"):
+    text = f"{namespace}:{value or ''}"
+    return int(hashlib.sha1(text.encode("utf-8")).hexdigest()[:15], 16)
+
+
+def parse_any_timestamp(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if number > 100000000000:
+            number = number / 1000
+        return int(number)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        number = int(text)
+        return int(number / 1000) if number > 100000000000 else number
+    normalized = text.replace("Z", "+00:00")
+    try:
+        return int(datetime.fromisoformat(normalized).timestamp())
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return int(datetime.strptime(text[:19], fmt).timestamp())
+        except ValueError:
+            continue
+    return None
 
 
 def nested_name(data, key):
@@ -1675,12 +1711,259 @@ def sync_all(historical=True, reset_data=False, reset_oauth=False):
     return result
 
 
-def sync_midas():
-    base_url = config_value("MIDAS_API_BASE_URL", "").rstrip("/")
+def midas_api_base_url():
+    configured_base = config_value("MIDAS_API_BASE_URL", "").strip().rstrip("/")
+    if "leadconnectorhq.com" in configured_base:
+        return configured_base
+    return "https://services.leadconnectorhq.com"
+
+
+def midas_request(path, params=None):
     token = config_value("MIDAS_API_TOKEN", "")
-    if not configured(base_url) or not configured(token):
-        raise RuntimeError("Midas ainda não foi configurado para este perfil.")
-    raise RuntimeError("Midas configurado, mas ainda falta mapear os endpoints de leads/funil para sincronizar.")
+    if not configured(token):
+        raise RuntimeError("MIDAS_API_TOKEN nao foi configurado.")
+    query = urllib.parse.urlencode(params or {}, doseq=True)
+    url = f"{midas_api_base_url()}{path}"
+    if query:
+        url = f"{url}?{query}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Version": "2021-07-28",
+            "User-Agent": "VielleDashboard/1.0",
+        },
+        method="GET",
+    )
+    for attempt in range(1, 5):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                content = res.read().decode("utf-8")
+                return json.loads(content) if content else {}
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code in (429, 502, 503, 504) and attempt < 4:
+                time.sleep(5 * attempt)
+                continue
+            if exc.code == 403 and "cloudflare" in detail.lower():
+                raise RuntimeError(
+                    "A API Midas/LeadConnector bloqueou esta origem via Cloudflare. "
+                    "Tente novamente no Railway ou libere a origem no provedor."
+                ) from exc
+            raise RuntimeError(f"Midas retornou {exc.code}: {detail}") from exc
+
+
+def midas_location_id():
+    location_id = config_value("MIDAS_LOCATION_ID", "").strip()
+    if location_id:
+        return location_id
+    payload = midas_request("/locations/search")
+    locations = extract_items(payload, ["locations", "data"])
+    if len(locations) == 1:
+        location_id = str(first_value(locations[0], ["id", "_id", "locationId"]) or "")
+        if location_id:
+            save_config_values({"MIDAS_LOCATION_ID": location_id})
+            return location_id
+    raise RuntimeError("MIDAS_LOCATION_ID nao foi configurado.")
+
+
+def sync_midas_pipelines(location_id):
+    payload = midas_request("/opportunities/pipelines", {"locationId": location_id})
+    pipelines = extract_items(payload, ["pipelines", "data"])
+    now = int(time.time())
+    with db() as conn:
+        for index, pipeline in enumerate(pipelines):
+            source_pipeline_id = first_value(pipeline, ["id", "_id"])
+            if not source_pipeline_id:
+                continue
+            pipeline_id = stable_numeric_id(source_pipeline_id, "midas-pipeline")
+            conn.execute(
+                """
+                insert into pipelines (id, name, sort, is_main, raw_json, synced_at)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name=excluded.name,
+                    sort=excluded.sort,
+                    is_main=excluded.is_main,
+                    raw_json=excluded.raw_json,
+                    synced_at=excluded.synced_at
+                """,
+                (
+                    pipeline_id,
+                    first_value(pipeline, ["name", "title"]) or f"Funil {source_pipeline_id}",
+                    first_value(pipeline, ["sort", "position"]) or index,
+                    1 if index == 0 else 0,
+                    json.dumps(pipeline, ensure_ascii=False),
+                    now,
+                ),
+            )
+            stages = pipeline.get("stages") or pipeline.get("pipelineStages") or []
+            for stage_index, stage in enumerate(stages):
+                source_stage_id = first_value(stage, ["id", "_id"])
+                if not source_stage_id:
+                    continue
+                stage_id = stable_numeric_id(source_stage_id, "midas-stage")
+                conn.execute(
+                    """
+                    insert into pipeline_statuses
+                    (id, pipeline_id, name, sort, color, type, raw_json, synced_at)
+                    values (?, ?, ?, ?, ?, ?, ?, ?)
+                    on conflict(id) do update set
+                        pipeline_id=excluded.pipeline_id,
+                        name=excluded.name,
+                        sort=excluded.sort,
+                        color=excluded.color,
+                        type=excluded.type,
+                        raw_json=excluded.raw_json,
+                        synced_at=excluded.synced_at
+                    """,
+                    (
+                        stage_id,
+                        pipeline_id,
+                        first_value(stage, ["name", "title"]) or f"Fase {source_stage_id}",
+                        first_value(stage, ["sort", "position"]) or stage_index,
+                        first_value(stage, ["color"]),
+                        None,
+                        json.dumps(stage, ensure_ascii=False),
+                        now,
+                    ),
+                )
+    return len(pipelines)
+
+
+def midas_opportunity_to_lead(opportunity):
+    source_id = first_value(opportunity, ["id", "_id"])
+    pipeline_source_id = first_value(opportunity, ["pipelineId", "pipeline_id", "pipeline"])
+    status_source_id = first_value(opportunity, ["pipelineStageId", "pipeline_stage_id", "stageId", "stage_id"])
+    contact = opportunity.get("contact") if isinstance(opportunity.get("contact"), dict) else {}
+    assigned_to = first_value(opportunity, ["assignedTo", "assigned_to", "userId", "ownerId"])
+    created_at = parse_any_timestamp(first_value(opportunity, ["createdAt", "created_at", "dateAdded", "date_added"]))
+    updated_at = parse_any_timestamp(first_value(opportunity, ["updatedAt", "updated_at", "lastStatusChangeAt"]))
+    closed_at = parse_any_timestamp(first_value(opportunity, ["closedAt", "closed_at"]))
+    value = first_value(opportunity, ["monetaryValue", "monetary_value", "value", "price"])
+    raw = dict(opportunity)
+    raw["custom_fields_values"] = []
+    seller_name = first_value(opportunity, ["assignedToName", "assigned_to_name", "ownerName", "userName"])
+    professional_name = first_value(opportunity, ["professional", "doctor", "provider"])
+    if seller_name:
+        raw["custom_fields_values"].append({"field_name": "vendedor", "values": [{"value": seller_name}]})
+    if professional_name:
+        raw["custom_fields_values"].append({"field_name": "profissional", "values": [{"value": professional_name}]})
+    return {
+        "id": stable_numeric_id(source_id, "midas-opportunity"),
+        "name": first_value(opportunity, ["name", "title"]) or first_value(contact, ["name", "contactName"]) or f"Lead {source_id}",
+        "price": value or 0,
+        "status_id": stable_numeric_id(status_source_id, "midas-stage") if status_source_id else None,
+        "pipeline_id": stable_numeric_id(pipeline_source_id, "midas-pipeline") if pipeline_source_id else None,
+        "responsible_user_id": stable_numeric_id(assigned_to, "midas-user") if assigned_to else None,
+        "created_at": created_at or updated_at or int(time.time()),
+        "updated_at": updated_at or created_at or int(time.time()),
+        "closed_at": closed_at,
+        "raw_json": json.dumps(raw, ensure_ascii=False),
+    }
+
+
+def sync_midas_opportunities(location_id, history_start):
+    page = 1
+    total = 0
+    synced_at = int(time.time())
+    start_ts = parse_date(history_start) if history_start else None
+    while page <= 100:
+        payload = midas_request(
+            "/opportunities/search",
+            {
+                "location_id": location_id,
+                "limit": 100,
+                "page": page,
+            },
+        )
+        opportunities = extract_items(payload, ["opportunities", "data"])
+        if not opportunities:
+            break
+        with db() as conn:
+            for opportunity in opportunities:
+                lead = midas_opportunity_to_lead(opportunity)
+                if start_ts and lead["created_at"] < start_ts:
+                    continue
+                conn.execute(
+                    """
+                    insert into leads
+                    (id, name, price, status_id, pipeline_id, responsible_user_id,
+                     created_at, updated_at, closed_at, raw_json, synced_at)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    on conflict(id) do update set
+                        name=excluded.name,
+                        price=excluded.price,
+                        status_id=excluded.status_id,
+                        pipeline_id=excluded.pipeline_id,
+                        responsible_user_id=excluded.responsible_user_id,
+                        created_at=excluded.created_at,
+                        updated_at=excluded.updated_at,
+                        closed_at=excluded.closed_at,
+                        raw_json=excluded.raw_json,
+                        synced_at=excluded.synced_at
+                    """,
+                    (
+                        lead["id"],
+                        lead["name"],
+                        lead["price"],
+                        lead["status_id"],
+                        lead["pipeline_id"],
+                        lead["responsible_user_id"],
+                        lead["created_at"],
+                        lead["updated_at"],
+                        lead["closed_at"],
+                        lead["raw_json"],
+                        synced_at,
+                    ),
+                )
+                total += 1
+        meta = payload.get("meta") if isinstance(payload, dict) else {}
+        if len(opportunities) < 100:
+            break
+        if isinstance(meta, dict) and meta.get("nextPageUrl") is None and page >= int(meta.get("totalPages") or page):
+            break
+        page += 1
+    return total
+
+
+def sync_midas():
+    started_at = int(time.time())
+    log_id = None
+    with db() as conn:
+        cur = conn.execute(
+            "insert into sync_log (started_at, ok, message) values (?, 0, ?)",
+            (started_at, "Sincronizacao Midas iniciada"),
+        )
+        log_id = cur.lastrowid
+    try:
+        location_id = midas_location_id()
+        history_start = config_value("MIDAS_HISTORY_START", "2020-01-01")
+        pipelines_total = sync_midas_pipelines(location_id)
+        opportunities_total = sync_midas_opportunities(location_id, history_start)
+        with db() as conn:
+            conn.execute(
+                "update sync_log set finished_at = ?, ok = 1, message = ? where id = ?",
+                (
+                    int(time.time()),
+                    f"{opportunities_total} oportunidades, {pipelines_total} funis Midas sincronizados",
+                    log_id,
+                ),
+            )
+        return {
+            "ok": True,
+            "synced": opportunities_total,
+            "pipelines": pipelines_total,
+            "location_id": location_id,
+        }
+    except Exception as exc:
+        with db() as conn:
+            conn.execute(
+                "update sync_log set finished_at = ?, ok = 0, message = ? where id = ?",
+                (int(time.time()), str(exc), log_id),
+            )
+        raise
 
 
 def parse_date(value, end_of_day=False):
@@ -2982,7 +3265,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
-            connected = configured(config_value("MIDAS_API_BASE_URL", "")) and configured(config_value("MIDAS_API_TOKEN", ""))
+            connected = (
+                configured(config_value("MIDAS_API_BASE_URL", ""))
+                and configured(config_value("MIDAS_API_TOKEN", ""))
+                and configured(config_value("MIDAS_LOCATION_ID", ""))
+            )
         else:
             connected = configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens() is not None
     return {
