@@ -25,14 +25,17 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
-SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
-CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
+SUPPORTED_CLINICS = ("vielle", "inspire", "carla", "victor")
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "victor": "VICTOR"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
     "KOMMO_CLIENT_ID",
     "KOMMO_CLIENT_SECRET",
     "KOMMO_LONG_LIVED_TOKEN",
     "KOMMO_REDIRECT_URI",
+    "MIDAS_API_BASE_URL",
+    "MIDAS_API_TOKEN",
+    "MIDAS_HISTORY_START",
     "CLINICA_EXPERTS_TOKEN",
     "CLINICA_HISTORY_START",
     "CLINICA_WEBHOOK_SECRET",
@@ -74,6 +77,9 @@ CONFIG_DEFAULTS = {
     "KOMMO_CLIENT_SECRET": KOMMO_CLIENT_SECRET,
     "KOMMO_LONG_LIVED_TOKEN": KOMMO_LONG_LIVED_TOKEN,
     "KOMMO_REDIRECT_URI": KOMMO_REDIRECT_URI,
+    "MIDAS_API_BASE_URL": os.getenv("MIDAS_API_BASE_URL", "https://app.midasone.com.br"),
+    "MIDAS_API_TOKEN": os.getenv("MIDAS_API_TOKEN", ""),
+    "MIDAS_HISTORY_START": os.getenv("MIDAS_HISTORY_START", "2020-01-01"),
     "CLINICA_EXPERTS_TOKEN": CLINICA_EXPERTS_TOKEN,
     "CLINICA_HISTORY_START": CLINICA_HISTORY_START,
     "CLINICA_RATE_LIMIT_DELAY": str(CLINICA_RATE_LIMIT_DELAY),
@@ -89,6 +95,7 @@ CONFIG_DEFAULTS = {
 SECRET_CONFIG_KEYS = {
     "KOMMO_CLIENT_SECRET",
     "KOMMO_LONG_LIVED_TOKEN",
+    "MIDAS_API_TOKEN",
     "CLINICA_EXPERTS_TOKEN",
     "APP_SECRET",
     "CLINICA_WEBHOOK_SECRET",
@@ -158,6 +165,7 @@ CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
     "carla": "Dr. Carla Ferreira",
+    "victor": "Dr. Victor Paranhos",
 }
 
 
@@ -674,6 +682,7 @@ CLINIC_ACCESS_ENV = {
     "vielle": "VIELLE_ACCESS_CODE",
     "inspire": "INSPIRE_ACCESS_CODE",
     "carla": "CARLA_ACCESS_CODE",
+    "victor": "VICTOR_ACCESS_CODE",
 }
 
 
@@ -683,8 +692,10 @@ def normalize_clinic_id(value):
 
 
 def clinic_access_code(clinic_id):
-    env_key = CLINIC_ACCESS_ENV.get(normalize_clinic_id(clinic_id), "VIELLE_ACCESS_CODE")
-    return os.getenv(env_key, "").strip()
+    normalized = normalize_clinic_id(clinic_id)
+    env_key = CLINIC_ACCESS_ENV.get(normalized, "VIELLE_ACCESS_CODE")
+    default_code = "admin" if normalized == "victor" else ""
+    return os.getenv(env_key, default_code).strip()
 
 
 def clinic_access_cookie_name(clinic_id):
@@ -1642,19 +1653,34 @@ def clear_local_data(clear_oauth=False):
 def sync_all(historical=True, reset_data=False, reset_oauth=False):
     if reset_data:
         clear_local_data(clear_oauth=reset_oauth)
-    result = {"ok": True, "reset_data": reset_data, "kommo": None, "clinica_experts": None}
-    try:
-        result["kommo"] = sync_leads()
-    except Exception as exc:
-        result["kommo"] = {"ok": False, "error": str(exc)}
+    result = {"ok": True, "reset_data": reset_data, "kommo": None, "midas": None, "clinica_experts": None}
+    if current_clinic_id() == "victor":
+        try:
+            result["midas"] = sync_midas()
+        except Exception as exc:
+            result["midas"] = {"ok": False, "error": str(exc)}
+    else:
+        try:
+            result["kommo"] = sync_leads()
+        except Exception as exc:
+            result["kommo"] = {"ok": False, "error": str(exc)}
     try:
         result["clinica_experts"] = sync_clinica_experts(historical=historical)
     except Exception as exc:
         result["clinica_experts"] = {"ok": False, "error": str(exc)}
-    result["ok"] = bool(result["kommo"] and result["kommo"].get("ok")) or bool(
-        result["clinica_experts"] and result["clinica_experts"].get("ok")
+    result["ok"] = any(
+        bool(result.get(key) and result[key].get("ok"))
+        for key in ("kommo", "midas", "clinica_experts")
     )
     return result
+
+
+def sync_midas():
+    base_url = config_value("MIDAS_API_BASE_URL", "").rstrip("/")
+    token = config_value("MIDAS_API_TOKEN", "")
+    if not configured(base_url) or not configured(token):
+        raise RuntimeError("Midas ainda não foi configurado para este perfil.")
+    raise RuntimeError("Midas configurado, mas ainda falta mapear os endpoints de leads/funil para sincronizar.")
 
 
 def parse_date(value, end_of_day=False):
@@ -2955,7 +2981,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             )
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
-        connected = configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens() is not None
+        if current_clinic_id() == "victor":
+            connected = configured(config_value("MIDAS_API_BASE_URL", "")) and configured(config_value("MIDAS_API_TOKEN", ""))
+        else:
+            connected = configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens() is not None
     return {
         "connected": connected,
         "filters": {
@@ -3555,6 +3584,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_clinic_access(parsed):
                     return
                 try:
+                    if current_clinic_id() == "victor":
+                        return json_response(self, sync_midas())
                     return json_response(self, sync_leads())
                 except Exception as exc:
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
@@ -3577,7 +3608,8 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/settings":
             if not self.require_master_auth():
                 return
-            return json_response(self, settings_payload())
+            with clinic_context(self.request_clinic_id(parsed)):
+                return json_response(self, settings_payload())
         if parsed.path == "/auth/start":
             with clinic_context(self.request_clinic_id(parsed)):
                 client_id = config_value("KOMMO_CLIENT_ID", "")
@@ -3677,11 +3709,12 @@ class Handler(SimpleHTTPRequestHandler):
                 if key in SECRET_CONFIG_KEYS and not text:
                     continue
                 clean_values[key] = text
-            save_config_values(clean_values)
-            if payload.get("reset_kommo_oauth"):
-                with db() as conn:
-                    conn.execute("delete from oauth_tokens")
-            return json_response(self, settings_payload())
+            with clinic_context(self.request_clinic_id(parsed)):
+                save_config_values(clean_values)
+                if payload.get("reset_kommo_oauth"):
+                    with db() as conn:
+                        conn.execute("delete from oauth_tokens")
+                return json_response(self, settings_payload())
         if parsed.path == "/api/sync-all":
             if not self.require_master_auth():
                 return
@@ -3719,6 +3752,8 @@ def background_sync():
         for clinic_id in SUPPORTED_CLINICS:
             try:
                 with clinic_context(clinic_id):
+                    if current_clinic_id() == "victor":
+                        continue
                     if configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens():
                         sync_leads()
             except Exception:
