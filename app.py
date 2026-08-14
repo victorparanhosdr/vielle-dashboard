@@ -437,7 +437,7 @@ def config_value(key, default=None):
         value = "" if raw_value is None else str(raw_value).strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             return value[1:-1].strip()
-        return value
+        return value.strip("'\"").strip()
 
     clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
