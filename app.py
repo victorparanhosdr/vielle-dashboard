@@ -445,6 +445,13 @@ def config_value(key, default=None):
         fallback = default or ""
         if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
             fallback = CONFIG_DEFAULTS.get(key, fallback)
+        try:
+            with db() as conn:
+                row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
+                if row is not None and configured(row["value"]):
+                    return clean_config(row["value"])
+        except sqlite3.Error:
+            pass
     scoped_env = clinic_env_value(key)
     if scoped_env:
         return clean_config(scoped_env)
