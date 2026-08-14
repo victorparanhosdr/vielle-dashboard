@@ -433,6 +433,12 @@ def db():
 
 
 def config_value(key, default=None):
+    def clean_config(raw_value):
+        value = "" if raw_value is None else str(raw_value).strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            return value[1:-1].strip()
+        return value
+
     clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
@@ -441,15 +447,15 @@ def config_value(key, default=None):
             fallback = CONFIG_DEFAULTS.get(key, fallback)
     scoped_env = clinic_env_value(key)
     if scoped_env:
-        return scoped_env
+        return clean_config(scoped_env)
     try:
         with db() as conn:
             row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
             if row is not None:
-                return row["value"]
+                return clean_config(row["value"])
     except sqlite3.Error:
         pass
-    return fallback
+    return clean_config(fallback)
 
 
 def config_int(key, default):
