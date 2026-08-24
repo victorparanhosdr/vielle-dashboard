@@ -145,12 +145,6 @@ body {
     linear-gradient(135deg, rgba(14, 165, 163, .14), rgba(222, 111, 161, .10));
 }
 
-.clinicAccessCard.victor {
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(240, 248, 255, .90)),
-    linear-gradient(135deg, rgba(18, 185, 212, .16), rgba(16, 42, 87, .12));
-}
-
 .clinicAccessCard > div {
   display: flex;
   align-items: center;
@@ -177,10 +171,6 @@ body {
 
 .clinicAccessCard.carla > div span {
   background: linear-gradient(135deg, #0f766e, #de6fa1);
-}
-
-.clinicAccessCard.victor > div span {
-  background: linear-gradient(135deg, #102a57, #18b9d4);
 }
 
 .clinicAccessCard small {

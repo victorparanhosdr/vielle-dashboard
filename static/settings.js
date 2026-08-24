@@ -8,7 +8,6 @@ const clinicLabels = {
   vielle: "Vielle Clinic",
   inspire: "Clínica Inspire",
   carla: "Dr. Carla Ferreira",
-  victor: "Dr. Victor Paranhos",
 };
 
 document.querySelectorAll("[data-clinic-label]").forEach(element => {
@@ -108,9 +107,7 @@ async function loadEverything(reset = false) {
       reset_oauth: reset,
     }),
   });
-  const commercial = selectedClinic === "victor"
-    ? (data.midas?.ok ? "Midas atualizado" : `Midas: ${data.midas?.error || "não atualizado"}`)
-    : (data.kommo?.ok ? "Kommo atualizado" : `Kommo: ${data.kommo?.error || "não atualizado"}`);
+  const commercial = data.kommo?.ok ? "Kommo atualizado" : `Kommo: ${data.kommo?.error || "não atualizado"}`;
   const clinica = data.clinica_experts?.ok
     ? "Clínica Experts atualizado"
     : `Clínica Experts: ${data.clinica_experts?.error || "não atualizado"}`;

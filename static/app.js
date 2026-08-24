@@ -36,14 +36,6 @@ const clinics = {
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
-  victor: {
-    id: "victor",
-    name: "Dr. Victor Paranhos",
-    title: "DASHBOARD ESTRATÉGICO",
-    status: "Perfil independente para conectar Midas, novas bases e Clínica Experts.",
-    commercialSource: "midas",
-    connected: true,
-  },
 };
 
 function fmtDate(value) {
