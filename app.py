@@ -26,8 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
-SUPPORTED_CLINICS = ("vielle", "inspire", "carla", "victor")
-CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "victor": "VICTOR"}
+SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
     "KOMMO_CLIENT_ID",
@@ -172,7 +172,6 @@ CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
     "carla": "Dr. Carla Ferreira",
-    "victor": "Dr. Victor Paranhos",
 }
 
 
