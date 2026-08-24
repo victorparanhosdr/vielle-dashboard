@@ -241,6 +241,17 @@ body {
   letter-spacing: .52em;
 }
 
+.casaVitalleLogo {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 390px);
+  max-height: 190px;
+  border: 1px solid rgba(187, 169, 138, .26);
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 20px 44px rgba(8, 21, 17, .20);
+}
+
 .clinicAccessCard p {
   max-width: 480px;
   margin: 0;
