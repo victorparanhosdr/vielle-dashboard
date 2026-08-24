@@ -244,11 +244,13 @@ body {
 .casaVitalleLogo {
   position: relative;
   z-index: 1;
-  width: min(100%, 390px);
-  max-height: 190px;
+  width: 100%;
+  height: clamp(190px, 23vw, 260px);
   border: 1px solid rgba(187, 169, 138, .26);
   border-radius: 18px;
-  object-fit: cover;
+  object-fit: contain;
+  background: #10231b;
+  padding: 14px;
   box-shadow: 0 20px 44px rgba(8, 21, 17, .20);
 }
 
