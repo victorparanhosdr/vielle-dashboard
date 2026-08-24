@@ -441,6 +441,16 @@ def config_value(key, default=None):
 
     clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
+    if clinic_id == "vielle" and key in {
+        "KOMMO_SUBDOMAIN",
+        "KOMMO_CLIENT_ID",
+        "KOMMO_CLIENT_SECRET",
+        "KOMMO_LONG_LIVED_TOKEN",
+        "KOMMO_REDIRECT_URI",
+    }:
+        env_value = os.getenv(key, "").strip()
+        if configured(env_value):
+            return clean_config(env_value)
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
         fallback = default or ""
         if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
@@ -794,6 +804,11 @@ def kommo_request(method, path, token=None, body=None, domain=None):
             return json.loads(content) if content else {}
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 401:
+            raise RuntimeError(
+                "Kommo retornou 401: token inválido, expirado ou de outra conta. "
+                "Revise a chave/token da integração desta clínica."
+            ) from exc
         raise RuntimeError(f"Kommo retornou {exc.code}: {detail}") from exc
 
 
