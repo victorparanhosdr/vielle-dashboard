@@ -145,6 +145,19 @@ body {
     linear-gradient(135deg, rgba(14, 165, 163, .14), rgba(222, 111, 161, .10));
 }
 
+.clinicAccessCard.casaVitalle {
+  border-color: rgba(187, 169, 138, .34);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(187, 169, 138, .22), transparent 34%),
+    linear-gradient(145deg, rgba(38, 59, 50, .98), rgba(18, 34, 27, .96));
+  box-shadow: 0 26px 62px rgba(18, 34, 27, .24);
+}
+
+.clinicAccessCard.casaVitalle::after {
+  border-color: rgba(187, 169, 138, .28);
+  box-shadow: inset 0 0 0 28px rgba(187, 169, 138, .06);
+}
+
 .clinicAccessCard > div {
   display: flex;
   align-items: center;
@@ -173,6 +186,15 @@ body {
   background: linear-gradient(135deg, #0f766e, #de6fa1);
 }
 
+.clinicAccessCard.casaVitalle > div span {
+  border: 1px solid rgba(187, 169, 138, .48);
+  background: linear-gradient(135deg, #263b32, #5a4337);
+  color: #f5f1e9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 34px;
+  font-weight: 500;
+}
+
 .clinicAccessCard small {
   padding: 8px 10px;
   border-radius: 999px;
@@ -184,11 +206,39 @@ body {
   text-transform: uppercase;
 }
 
+.clinicAccessCard.casaVitalle small {
+  background: rgba(187, 169, 138, .16);
+  color: #d8c8aa;
+}
+
 .clinicAccessCard h2 {
   color: #172338;
   font-size: clamp(27px, 3vw, 40px);
   letter-spacing: 0;
   text-transform: none;
+}
+
+.clinicAccessCard.casaVitalle h2 {
+  color: #f5f1e9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(34px, 4vw, 54px);
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.clinicAccessCard.casaVitalle h2 small {
+  display: block;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #bba98a;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: .52em;
 }
 
 .clinicAccessCard p {
@@ -200,10 +250,20 @@ body {
   line-height: 1.45;
 }
 
+.clinicAccessCard.casaVitalle p {
+  color: rgba(245, 241, 233, .76);
+}
+
 .clinicAccessCard button {
   position: relative;
   z-index: 1;
   width: fit-content;
+}
+
+.clinicAccessCard.casaVitalle button {
+  background: linear-gradient(135deg, #ded5c7, #bba98a);
+  color: #263b32;
+  box-shadow: 0 16px 32px rgba(187, 169, 138, .20);
 }
 
 .clinicAccessModal {

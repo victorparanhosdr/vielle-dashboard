@@ -36,6 +36,13 @@ const clinics = {
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
+  casa_vitalle: {
+    id: "casa_vitalle",
+    name: "Casa Vitalle",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Relatório da Casa Vitalle pronto para conectar Kommo e Clínica Experts.",
+    connected: true,
+  },
 };
 
 function fmtDate(value) {
