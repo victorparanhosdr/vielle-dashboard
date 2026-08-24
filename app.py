@@ -26,8 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
-SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
-CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
+SUPPORTED_CLINICS = ("vielle", "inspire", "carla", "casa_vitalle")
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "casa_vitalle": "CASA_VITALLE"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
     "KOMMO_CLIENT_ID",
@@ -172,6 +172,7 @@ CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
     "carla": "Dr. Carla Ferreira",
+    "casa_vitalle": "Casa Vitalle",
 }
 
 
@@ -731,7 +732,7 @@ CLINIC_ACCESS_ENV = {
     "vielle": "VIELLE_ACCESS_CODE",
     "inspire": "INSPIRE_ACCESS_CODE",
     "carla": "CARLA_ACCESS_CODE",
-    "victor": "VICTOR_ACCESS_CODE",
+    "casa_vitalle": "CASA_VITALLE_ACCESS_CODE",
 }
 
 
@@ -743,7 +744,7 @@ def normalize_clinic_id(value):
 def clinic_access_code(clinic_id):
     normalized = normalize_clinic_id(clinic_id)
     env_key = CLINIC_ACCESS_ENV.get(normalized, "VIELLE_ACCESS_CODE")
-    default_code = "admin" if normalized == "victor" else ""
+    default_code = "admin" if normalized == "casa_vitalle" else ""
     return os.getenv(env_key, default_code).strip()
 
 
