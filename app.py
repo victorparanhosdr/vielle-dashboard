@@ -58,12 +58,12 @@ def load_env():
 
 load_env()
 
-KOMMO_SUBDOMAIN = os.getenv("KOMMO_SUBDOMAIN", "").replace(".kommo.com", "")
-KOMMO_CLIENT_ID = os.getenv("KOMMO_CLIENT_ID", "")
-KOMMO_CLIENT_SECRET = os.getenv("KOMMO_CLIENT_SECRET", "")
-KOMMO_LONG_LIVED_TOKEN = os.getenv("KOMMO_LONG_LIVED_TOKEN", "")
+KOMMO_SUBDOMAIN = os.getenv("KOMMO_SUBDOMAIN", "vielleclinic").replace(".kommo.com", "")
+KOMMO_CLIENT_ID = os.getenv("KOMMO_CLIENT_ID", "a45f1d72-aec4-4db4-896c-ead374f283a4")
+KOMMO_CLIENT_SECRET = os.getenv("KOMMO_CLIENT_SECRET", "my03Hk4npJaDF2poxJtJD02DtdBKAtqeoZs0yoc5bOaO7wSC4o93GKMrZsZcgWTd")
+KOMMO_LONG_LIVED_TOKEN = os.getenv("KOMMO_LONG_LIVED_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImNkMmQzYTIwMGRjOTQ0MTcxOTY3MWQyNzM3NmFhN2M1NWNkOGYxZjZhMGVmYTZlMWNiOWEyMDc2M2IyMjRkZWU0ZmIzM2U1ZThlYTJjMTA4In0.eyJhdWQiOiJhNDVmMWQ3Mi1hZWM0LTRkYjQtODk2Yy1lYWQzNzRmMjgzYTQiLCJqdGkiOiJjZDJkM2EyMDBkYzk0NDE3MTk2NzFkMjczNzZhYTdjNTVjZDhmMWY2YTBlZmE2ZTFjYjlhMjA3NjNiMjI0ZGVlNGZiMzNlNWU4ZWEyYzEwOCIsImlhdCI6MTc4MzQ0Mzc4OSwibmJmIjoxNzgzNDQzNzg5LCJleHAiOjE4OTM0NTYwMDAsInN1YiI6IjExOTYyNzg3IiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjMzNTAwNTE1LCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJjcm0iLCJmaWxlcyIsImZpbGVzX2RlbGV0ZSIsIm5vdGlmaWNhdGlvbnMiLCJwdXNoX25vdGlmaWNhdGlvbnMiLCJ1c2Vyc19hY3RpdmF0ZSIsInVzZXJzX2FkZCIsInVzZXJzX2RlYWN0aXZhdGUiXSwiaGFzaF91dWlkIjoiNmMyZDVjMWMtNzAzOC00N2ZkLThmNzktMzlhNGJkNGFlYjYxIiwiYXBpX2RvbWFpbiI6ImFwaS1nLmtvbW1vLmNvbSJ9.YKTP3hblkmkJWl2oxQ4sqS0Qy934fOl22VO6e_0lsoOsP6Sf9EX8vDDM_wnrIGLJCQLVXrkjfa-Lov23h6tpxfkw4YQsUy97d_123Wd_u7s55SVath8diE234Qnn2XYPEUAIWDP5mDdiR5LGlH4R4zm1hZjaYAAAR89EG-90ZcUZnCs33KaTc22asIwRQyxKDbZNg640HL3VRyFVoE3z8jfYx6OMSa8irBatU4IR_rL4chotj7epfRbMZt7xrtGGm02sKpr0S5VUn7-Lze656IsrNu_U9yCv36o_HXQolsc-Mju5fv8s8ci51wrTIhTyS1_VQo1gbxetNd-Srqawpg")
 KOMMO_REDIRECT_URI = os.getenv("KOMMO_REDIRECT_URI", "http://localhost:8080/auth/callback")
-CLINICA_EXPERTS_TOKEN = os.getenv("CLINICA_EXPERTS_TOKEN", "")
+CLINICA_EXPERTS_TOKEN = os.getenv("CLINICA_EXPERTS_TOKEN", "s9GCe9SqWy0tE8j0rilZMGXUoCEWuBWRM0AoluBp059c069c")
 CLINICA_HISTORY_START = os.getenv("CLINICA_HISTORY_START", "2020-01-01")
 CLINICA_RATE_LIMIT_DELAY = int(os.getenv("CLINICA_RATE_LIMIT_DELAY", "20"))
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "30"))
@@ -469,7 +469,11 @@ def config_value(key, default=None):
         with db() as conn:
             row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
             if row is not None:
-                return clean_config(row["value"])
+                row_value = clean_config(row["value"])
+                if configured(row_value):
+                    return row_value
+                if key not in SECRET_CONFIG_KEYS and row_value:
+                    return row_value
     except sqlite3.Error:
         pass
     return clean_config(fallback)
