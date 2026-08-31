@@ -58,10 +58,10 @@ def load_env():
 
 load_env()
 
-KOMMO_SUBDOMAIN = os.getenv("KOMMO_SUBDOMAIN", "vielleclinic").replace(".kommo.com", "")
-KOMMO_CLIENT_ID = os.getenv("KOMMO_CLIENT_ID", "a45f1d72-aec4-4db4-896c-ead374f283a4")
-KOMMO_CLIENT_SECRET = os.getenv("KOMMO_CLIENT_SECRET", "my03Hk4npJaDF2poxJtJD02DtdBKAtqeoZs0yoc5bOaO7wSC4o93GKMrZsZcgWTd")
-KOMMO_LONG_LIVED_TOKEN = os.getenv("KOMMO_LONG_LIVED_TOKEN", "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6ImNkMmQzYTIwMGRjOTQ0MTcxOTY3MWQyNzM3NmFhN2M1NWNkOGYxZjZhMGVmYTZlMWNiOWEyMDc2M2IyMjRkZWU0ZmIzM2U1ZThlYTJjMTA4In0.eyJhdWQiOiJhNDVmMWQ3Mi1hZWM0LTRkYjQtODk2Yy1lYWQzNzRmMjgzYTQiLCJqdGkiOiJjZDJkM2EyMDBkYzk0NDE3MTk2NzFkMjczNzZhYTdjNTVjZDhmMWY2YTBlZmE2ZTFjYjlhMjA3NjNiMjI0ZGVlNGZiMzNlNWU4ZWEyYzEwOCIsImlhdCI6MTc4MzQ0Mzc4OSwibmJmIjoxNzgzNDQzNzg5LCJleHAiOjE4OTM0NTYwMDAsInN1YiI6IjExOTYyNzg3IiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjMzNTAwNTE1LCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJjcm0iLCJmaWxlcyIsImZpbGVzX2RlbGV0ZSIsIm5vdGlmaWNhdGlvbnMiLCJwdXNoX25vdGlmaWNhdGlvbnMiLCJ1c2Vyc19hY3RpdmF0ZSIsInVzZXJzX2FkZCIsInVzZXJzX2RlYWN0aXZhdGUiXSwiaGFzaF91dWlkIjoiNmMyZDVjMWMtNzAzOC00N2ZkLThmNzktMzlhNGJkNGFlYjYxIiwiYXBpX2RvbWFpbiI6ImFwaS1nLmtvbW1vLmNvbSJ9.YKTP3hblkmkJWl2oxQ4sqS0Qy934fOl22VO6e_0lsoOsP6Sf9EX8vDDM_wnrIGLJCQLVXrkjfa-Lov23h6tpxfkw4YQsUy97d_123Wd_u7s55SVath8diE234Qnn2XYPEUAIWDP5mDdiR5LGlH4R4zm1hZjaYAAAR89EG-90ZcUZnCs33KaTc22asIwRQyxKDbZNg640HL3VRyFVoE3z8jfYx6OMSa8irBatU4IR_rL4chotj7epfRbMZt7xrtGGm02sKpr0S5VUn7-Lze656IsrNu_U9yCv36o_HXQolsc-Mju5fv8s8ci51wrTIhTyS1_VQo1gbxetNd-Srqawpg")
+KOMMO_SUBDOMAIN = os.getenv("KOMMO_SUBDOMAIN", "").replace(".kommo.com", "")
+KOMMO_CLIENT_ID = os.getenv("KOMMO_CLIENT_ID", "")
+KOMMO_CLIENT_SECRET = os.getenv("KOMMO_CLIENT_SECRET", "")
+KOMMO_LONG_LIVED_TOKEN = os.getenv("KOMMO_LONG_LIVED_TOKEN", "")
 KOMMO_REDIRECT_URI = os.getenv("KOMMO_REDIRECT_URI", "http://localhost:8080/auth/callback")
 CLINICA_EXPERTS_TOKEN = os.getenv("CLINICA_EXPERTS_TOKEN", "s9GCe9SqWy0tE8j0rilZMGXUoCEWuBWRM0AoluBp059c069c")
 CLINICA_HISTORY_START = os.getenv("CLINICA_HISTORY_START", "2020-01-01")
@@ -107,6 +107,16 @@ SECRET_CONFIG_KEYS = {
 }
 
 EDITABLE_CONFIG_KEYS = set(CONFIG_DEFAULTS.keys())
+KOMMO_CONFIG_KEYS = {
+    "KOMMO_SUBDOMAIN",
+    "KOMMO_CLIENT_ID",
+    "KOMMO_CLIENT_SECRET",
+    "KOMMO_LONG_LIVED_TOKEN",
+    "KOMMO_REDIRECT_URI",
+}
+KOMMO_DISABLED_KEY = "KOMMO_DISABLED"
+KOMMO_RESET_MARKER_KEY = "KOMMO_RESET_VERSION"
+KOMMO_RESET_VERSION = "2026-08-31-reset-kommo-1"
 
 PIPELINE_DOCTOR_MAP = {
     "Tráfego Paranhos": "Victor Paranhos de Andrade",
@@ -441,16 +451,24 @@ def config_value(key, default=None):
 
     clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
-    if clinic_id == "vielle" and key in {
-        "KOMMO_SUBDOMAIN",
-        "KOMMO_CLIENT_ID",
-        "KOMMO_CLIENT_SECRET",
-        "KOMMO_LONG_LIVED_TOKEN",
-        "KOMMO_REDIRECT_URI",
-    }:
-        env_value = os.getenv(key, "").strip()
-        if configured(env_value):
-            return clean_config(env_value)
+    if key in KOMMO_CONFIG_KEYS:
+        try:
+            with db() as conn:
+                disabled = conn.execute(
+                    "select value from app_settings where key = ?",
+                    (KOMMO_DISABLED_KEY,),
+                ).fetchone()
+                if disabled is not None and str(disabled["value"]).strip() == "1":
+                    row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
+                    if row is not None:
+                        row_value = clean_config(row["value"])
+                        if configured(row_value):
+                            return row_value
+                        if key not in SECRET_CONFIG_KEYS and row_value:
+                            return row_value
+                    return ""
+        except sqlite3.Error:
+            pass
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
         fallback = default or ""
         if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
@@ -489,6 +507,12 @@ def config_int(key, default):
 def save_config_values(values):
     now = int(time.time())
     with db() as conn:
+        kommo_has_new_value = any(
+            key in KOMMO_CONFIG_KEYS and configured(str(value or "").strip())
+            for key, value in values.items()
+        )
+        if kommo_has_new_value:
+            conn.execute("delete from app_settings where key = ?", (KOMMO_DISABLED_KEY,))
         for key, value in values.items():
             if key not in EDITABLE_CONFIG_KEYS:
                 continue
@@ -1749,6 +1773,51 @@ def clear_local_data(clear_oauth=False):
             conn.execute(f"delete from {table}")
         if clear_oauth:
             conn.execute("delete from oauth_tokens")
+
+
+def clear_kommo_connection_state():
+    tables = [
+        "leads",
+        "pipeline_statuses",
+        "pipelines",
+        "lead_status_events",
+        "lead_interaction_events",
+        "sync_log",
+        "oauth_tokens",
+    ]
+    now = int(time.time())
+    with db() as conn:
+        for table in tables:
+            conn.execute(f"delete from {table}")
+        keys = list(KOMMO_CONFIG_KEYS) + [KOMMO_DISABLED_KEY]
+        placeholders = ",".join("?" for _ in keys)
+        conn.execute(f"delete from app_settings where key in ({placeholders})", keys)
+        conn.execute(
+            """
+            insert or replace into app_settings (key, value, updated_at)
+            values (?, ?, ?)
+            """,
+            (KOMMO_DISABLED_KEY, "1", now),
+        )
+
+
+def apply_kommo_reset_if_needed():
+    with db() as conn:
+        row = conn.execute(
+            "select value from app_settings where key = ?",
+            (KOMMO_RESET_MARKER_KEY,),
+        ).fetchone()
+    if row is not None and row["value"] == KOMMO_RESET_VERSION:
+        return
+    clear_kommo_connection_state()
+    with db() as conn:
+        conn.execute(
+            """
+            insert or replace into app_settings (key, value, updated_at)
+            values (?, ?, ?)
+            """,
+            (KOMMO_RESET_MARKER_KEY, KOMMO_RESET_VERSION, int(time.time())),
+        )
 
 
 def sync_all(historical=True, reset_data=False, reset_oauth=False):
@@ -4191,6 +4260,20 @@ class Handler(SimpleHTTPRequestHandler):
             with clinic_context(self.request_clinic_id(parsed)):
                 clear_local_data(clear_oauth=payload.get("clear_oauth", False))
                 return json_response(self, {"ok": True, "clinic_id": current_clinic_id()})
+        if parsed.path == "/api/reset-kommo":
+            if not self.require_master_auth():
+                return
+            with clinic_context(self.request_clinic_id(parsed)):
+                clear_kommo_connection_state()
+                with db() as conn:
+                    conn.execute(
+                        """
+                        insert or replace into app_settings (key, value, updated_at)
+                        values (?, ?, ?)
+                        """,
+                        (KOMMO_RESET_MARKER_KEY, KOMMO_RESET_VERSION, int(time.time())),
+                    )
+                return json_response(self, {"ok": True, "clinic_id": current_clinic_id(), "kommo_disabled": True})
         return json_response(self, {"ok": False, "error": "Rota não encontrada."}, HTTPStatus.NOT_FOUND)
 
 
@@ -4211,7 +4294,7 @@ def background_sync():
 if __name__ == "__main__":
     for clinic_id in SUPPORTED_CLINICS:
         with clinic_context(clinic_id):
-            pass
+            apply_kommo_reset_if_needed()
     thread = threading.Thread(target=background_sync, daemon=True)
     thread.start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
