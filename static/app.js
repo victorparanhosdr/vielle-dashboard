@@ -386,6 +386,13 @@ function emptyReportForClinic(clinicId) {
       elapsed_days: 0,
       month_days: 0,
       average_ticket: 0,
+      sales_count: 0,
+      active_revenue_days: 0,
+      distinct_patients: 0,
+      financial_daily: [],
+      payment_methods: [],
+      top_patients: [],
+      value_ranges: [],
       sales_ticket_daily: [],
       daily_leads: [],
       daily_bookings: [],
@@ -486,12 +493,22 @@ function renderGeneralPanel(panel) {
   const projected = Number(panel.projected_revenue || 0);
   const elapsed = panel.elapsed_days || 0;
   const monthDays = panel.month_days || 0;
+  const salesCount = Number(panel.sales_count || 0);
+  const activeDays = Number(panel.active_revenue_days || 0);
+  const dailyFinancial = panel.financial_daily || [];
+  const totalLeads = (panel.daily_leads || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalBookings = (panel.daily_bookings || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
   const monthInput = document.getElementById("generalMonth");
   const goalInput = document.getElementById("monthlyGoalInput");
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
   if (goalInput && document.activeElement !== goalInput) goalInput.value = goal ? Math.round(goal) : "";
+  document.getElementById("generalClinicName").textContent = clinic.name;
+  document.getElementById("generalBoardTitle").textContent = `${clinic.name} · Resumo mensal`;
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = monthLabel(state.selectedMonth);
+  document.getElementById("generalSidebarMonth").textContent = monthLabel(state.selectedMonth).split(" de ")[0] || "Mês";
+  document.getElementById("generalSidebarYear").textContent = (state.selectedMonth || "").slice(0, 4) || "";
   document.getElementById("generalRevenue").textContent = brl.format(revenue);
   document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
   document.getElementById("generalGoalRateHint").textContent = goal
@@ -500,8 +517,176 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalProjection").textContent = brl.format(projected);
   document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
+  document.getElementById("generalQuickRevenue").textContent = brl.format(revenue);
+  document.getElementById("generalQuickSales").textContent = salesCount;
+  document.getElementById("generalQuickTicket").textContent = brl.format(panel.average_ticket || 0);
+  document.getElementById("generalQuickActiveDays").textContent = `${activeDays} de ${monthDays}`;
+  document.getElementById("generalQuickLeads").textContent = totalLeads;
+  document.getElementById("generalQuickBookings").textContent = totalBookings;
+  const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
+  const dailyAverage = monthDays ? revenue / monthDays : 0;
+  const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
+  const strongestDay = revenueDays.reduce((best, item) => Number(item.income || 0) > Number(best?.income || 0) ? item : best, null);
+  const weakestDay = revenueDays.reduce((best, item) => Number(item.income || 0) < Number(best?.income || Infinity) ? item : best, null);
+  document.getElementById("generalAverageActiveDay").textContent = brl.format(activeRevenueAverage);
+  document.getElementById("generalDailyAverage").textContent = brl.format(dailyAverage);
+  document.getElementById("generalStrongDay").textContent = strongestDay ? `${formatDay(strongestDay.day)} · ${brl.format(strongestDay.income || 0)}` : "-";
+  document.getElementById("generalWeakDay").textContent = weakestDay ? `${formatDay(weakestDay.day)} · ${brl.format(weakestDay.income || 0)}` : "-";
+  document.getElementById("generalTotalLeads").textContent = totalLeads;
+  document.getElementById("generalTotalBookings").textContent = totalBookings;
+  document.getElementById("generalDistinctPatients").textContent = Number(panel.distinct_patients || 0);
+  document.getElementById("generalSalesCount").textContent = salesCount;
+  document.getElementById("generalActiveDays").textContent = activeDays;
+  document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
+  document.getElementById("generalAveragePerDay").textContent = brl.format(dailyAverage);
+  document.getElementById("generalBestRevenueDay").textContent = strongestDay ? formatShortDay(strongestDay.day) : "-";
+  document.getElementById("generalWorstRevenueDay").textContent = weakestDay ? formatShortDay(weakestDay.day) : "-";
+  document.getElementById("generalBestRevenueAmount").textContent = strongestDay ? brl.format(strongestDay.income || 0) : "Dia mais forte";
+  document.getElementById("generalWorstRevenueAmount").textContent = weakestDay ? brl.format(weakestDay.income || 0) : "Dia mais fraco";
+  renderGeneralRevenueBarChart(dailyFinancial);
+  renderGeneralPaymentDonut(panel.payment_methods || [], revenue);
+  renderGeneralAccumulatedChart(dailyFinancial);
+  renderGeneralTopPatients(panel.top_patients || []);
+  renderGeneralValueRanges(panel.value_ranges || []);
   renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
   renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+}
+
+function renderGeneralRevenueBarChart(items) {
+  const el = document.getElementById("generalRevenueBarChart");
+  const days = items.filter(item => item.day);
+  const hasSignal = days.some(item => Number(item.income || 0) > 0);
+  if (!hasSignal) {
+    el.innerHTML = `<div class="empty">Sem faturamento no mês selecionado.</div>`;
+    return;
+  }
+  const max = Math.max(...days.map(item => Number(item.income || 0)), 1);
+  el.innerHTML = `
+    <div class="generalBarPlot">
+      ${days.map(item => {
+        const value = Number(item.income || 0);
+        const height = Math.max(value ? 7 : 1, (value / max) * 100);
+        return `
+          <span class="generalBarDay" title="${formatDay(item.day)} · ${escapeHtml(brl.format(value))}">
+            <i style="height:${height}%"></i>
+            <b>${String(Number(item.day.slice(-2))).padStart(2, "0")}</b>
+          </span>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralPaymentDonut(items, total) {
+  const el = document.getElementById("generalPaymentDonut");
+  const sortedItems = [...items].filter(item => Number(item.amount || 0) > 0).sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  if (!sortedItems.length || !total) {
+    el.innerHTML = `<div class="empty">Sem entradas por forma de pagamento.</div>`;
+    return;
+  }
+  const colors = ["#173f31", "#a56739", "#c9b8a4", "#6d63db", "#18b9d4"];
+  let offset = 0;
+  const circles = sortedItems.slice(0, 5).map((item, index) => {
+    const share = Math.max(0, Number(item.amount || 0) / total);
+    const dash = `${(share * 100).toFixed(2)} ${Math.max(0, 100 - share * 100).toFixed(2)}`;
+    const circle = `<circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="${colors[index]}" stroke-width="7" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+    offset += share * 100;
+    return circle;
+  }).join("");
+  el.innerHTML = `
+    <div class="generalDonut">
+      <svg viewBox="0 0 40 40" role="img" aria-label="Formas de pagamento">
+        <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#efe8df" stroke-width="7"></circle>
+        ${circles}
+      </svg>
+      <strong>${brl.format(total)}</strong>
+      <span>Total</span>
+    </div>
+    <div class="generalDonutLegend">
+      ${sortedItems.slice(0, 5).map((item, index) => `
+        <span>
+          <i style="background:${colors[index]}"></i>
+          <b>${escapeHtml(financeTypeLabel(item.type))}</b>
+          <small>${brl.format(item.amount || 0)} · ${formatPercent((item.amount || 0) / total)}</small>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralAccumulatedChart(items) {
+  const el = document.getElementById("generalAccumulatedChart");
+  const days = items.filter(item => item.day);
+  let accumulated = 0;
+  const prepared = days.map(item => {
+    accumulated += Number(item.income || 0);
+    return { day: item.day, total: accumulated };
+  });
+  if (!prepared.some(item => item.total > 0)) {
+    el.innerHTML = `<div class="empty">Sem faturamento acumulado.</div>`;
+    return;
+  }
+  const width = Math.max(360, prepared.length * 18);
+  const height = 190;
+  const pad = { top: 18, right: 18, bottom: 30, left: 46 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const max = Math.max(...prepared.map(item => item.total), 1);
+  const xFor = index => pad.left + (prepared.length === 1 ? chartW / 2 : (index / (prepared.length - 1)) * chartW);
+  const yFor = value => pad.top + chartH - (value / max) * chartH;
+  const path = prepared.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFor(item.total).toFixed(1)}`).join(" ");
+  const area = `${path} L ${xFor(prepared.length - 1).toFixed(1)} ${pad.top + chartH} L ${xFor(0).toFixed(1)} ${pad.top + chartH} Z`;
+  el.innerHTML = `
+    <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento acumulado">
+      <defs>
+        <linearGradient id="generalAccumulatedArea" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#173f31" stop-opacity=".22"></stop>
+          <stop offset="100%" stop-color="#173f31" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <line class="lineGrid" x1="${pad.left}" y1="${pad.top + chartH}" x2="${width - pad.right}" y2="${pad.top + chartH}"></line>
+      <path class="generalAccumulatedArea" d="${area}"></path>
+      <path class="generalAccumulatedLine" d="${path}"></path>
+      ${prepared.map((item, index) => index % Math.ceil(prepared.length / 5) ? "" : `<text class="pointDate" x="${xFor(index)}" y="${height - 8}">${formatShortDay(item.day)}</text>`).join("")}
+    </svg>
+  `;
+}
+
+function renderGeneralTopPatients(items) {
+  const el = document.getElementById("generalTopPatients");
+  const sortedItems = [...items].sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0)).slice(0, 8);
+  const max = Math.max(...sortedItems.map(item => Number(item.amount || 0)), 1);
+  el.innerHTML = sortedItems.length
+    ? sortedItems.map((item, index) => `
+      <div class="generalTopItem">
+        <b>${String(index + 1).padStart(2, "0")}</b>
+        <span>${escapeHtml(item.patient || "Paciente sem nome")}</span>
+        <i><em style="width:${Math.max(6, (Number(item.amount || 0) / max) * 100)}%"></em></i>
+        <strong>${brl.format(item.amount || 0)}</strong>
+      </div>
+    `).join("")
+    : `<div class="empty">Sem pacientes com venda no mês.</div>`;
+}
+
+function renderGeneralValueRanges(items) {
+  const el = document.getElementById("generalValueRanges");
+  const totalSales = items.reduce((sum, item) => sum + Number(item.sales || 0), 0);
+  const maxSales = Math.max(...items.map(item => Number(item.sales || 0)), 1);
+  el.innerHTML = items.length
+    ? items.map(item => {
+      const sales = Number(item.sales || 0);
+      return `
+        <div class="generalRangeItem">
+          <div>
+            <b>${escapeHtml(item.range || "Faixa")}</b>
+            <small>${sales} venda${sales === 1 ? "" : "s"} · ${formatPercent(totalSales ? sales / totalSales : 0)}</small>
+          </div>
+          <i><em style="width:${Math.max(sales ? 8 : 0, (sales / maxSales) * 100)}%"></em></i>
+          <strong>${brl.format(item.amount || 0)}</strong>
+        </div>
+      `;
+    }).join("")
+    : `<div class="empty">Sem vendas para distribuir por faixa.</div>`;
 }
 
 function renderGeneralSalesTicketChart(items) {

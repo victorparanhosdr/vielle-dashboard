@@ -358,68 +358,189 @@
       </div>
 
       <div id="generalView" class="viewPanel active">
-        <section class="panel generalControlPanel">
-          <div class="panelHead">
+        <section class="generalExecutive">
+          <aside class="generalSidebar">
+            <div class="generalBrandMark">V</div>
             <div>
-              <h2>Painel geral</h2>
-              <span class="metaText">Filtro por mês completo</span>
+              <strong id="generalClinicName">Vielle Clinic</strong>
+              <span>Dashboard estratégico</span>
             </div>
-            <div class="generalControls">
-              <label>
-                <span>Mês</span>
-                <input id="generalMonth" type="month">
-              </label>
-              <label>
+            <nav aria-label="Seções do painel geral">
+              <span class="active">Resumo</span>
+              <span>Financeiro</span>
+              <span>Pacientes</span>
+              <span>Leads</span>
+            </nav>
+            <footer>
+              <small id="generalSidebarMonth">Mês atual</small>
+              <b id="generalSidebarYear">2026</b>
+            </footer>
+          </aside>
+
+          <div class="generalBoard">
+            <section class="generalExecutiveHeader">
+              <div>
+                <span>Painel geral</span>
+                <h2 id="generalBoardTitle">Resumo mensal</h2>
+                <small id="generalGoalMonth">-</small>
+              </div>
+              <div class="generalControls">
+                <label>
+                  <span>Mês</span>
+                  <input id="generalMonth" type="month">
+                </label>
+                <label>
+                  <span>Meta mensal</span>
+                  <input id="monthlyGoalInput" type="number" min="0" step="100" placeholder="R$ 0">
+                </label>
+                <button id="saveMonthlyGoalBtn" type="button">Salvar meta</button>
+              </div>
+            </section>
+
+            <section class="generalHeroGrid">
+              <article class="generalMetric featured">
+                <span>Faturamento total</span>
+                <strong id="generalRevenue">R$ 0</strong>
+                <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
+              </article>
+              <article class="generalMetric">
                 <span>Meta mensal</span>
-                <input id="monthlyGoalInput" type="number" min="0" step="100" placeholder="R$ 0">
-              </label>
-              <button id="saveMonthlyGoalBtn" type="button">Salvar meta</button>
-            </div>
-          </div>
-        </section>
+                <strong id="generalGoal">R$ 0</strong>
+                <small>Objetivo do mês</small>
+              </article>
+              <article class="generalMetric">
+                <span>% da meta</span>
+                <strong id="generalGoalRate">-</strong>
+                <small>Realizado até agora</small>
+              </article>
+              <article class="generalMetric">
+                <span>Projeção</span>
+                <strong id="generalProjection">R$ 0</strong>
+                <small id="generalProjectionHint">-</small>
+              </article>
+              <article class="generalMetric">
+                <span>Ticket médio</span>
+                <strong id="generalAverageTicket">R$ 0</strong>
+                <small>Por venda</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Leads</span>
+                <strong id="generalTotalLeads">0</strong>
+                <small>Entrada no mês</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Agendamentos</span>
+                <strong id="generalTotalBookings">0</strong>
+                <small>Realizados no mês</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Pacientes diferentes</span>
+                <strong id="generalDistinctPatients">0</strong>
+                <small>Com vendas</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Quantidade de vendas</span>
+                <strong id="generalSalesCount">0</strong>
+                <small>Lançamentos</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Dias com faturamento</span>
+                <strong id="generalActiveDays">0</strong>
+                <small id="generalActiveDaysHint">No mês</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Média por dia</span>
+                <strong id="generalAveragePerDay">R$ 0</strong>
+                <small>Valor diário</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Maior faturamento</span>
+                <strong id="generalBestRevenueDay">-</strong>
+                <small id="generalBestRevenueAmount">Dia mais forte</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Menor faturamento</span>
+                <strong id="generalWorstRevenueDay">-</strong>
+                <small id="generalWorstRevenueAmount">Dia mais fraco</small>
+              </article>
+            </section>
 
-        <section class="generalHeroGrid">
-          <article class="panel generalMetric goal">
-            <span>Meta mensal</span>
-            <strong id="generalGoal">R$ 0</strong>
-            <small id="generalGoalMonth">-</small>
-          </article>
-          <article class="panel generalMetric revenue">
-            <span>Total faturado até o momento</span>
-            <strong id="generalRevenue">R$ 0</strong>
-            <small>Clínica Experts</small>
-          </article>
-          <article class="panel generalMetric percent">
-            <span>% realizado da meta</span>
-            <strong id="generalGoalRate">-</strong>
-            <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
-          </article>
-          <article class="panel generalMetric projection">
-            <span>Projeção de faturamento</span>
-            <strong id="generalProjection">R$ 0</strong>
-            <small id="generalProjectionHint">-</small>
-          </article>
-          <article class="panel generalMetric ticket">
-            <span>Ticket médio</span>
-            <strong id="generalAverageTicket">R$ 0</strong>
-            <small>Vendas no Clínica Experts</small>
-          </article>
-        </section>
+            <section class="generalDashboardGrid">
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Evolução do faturamento diário</h2>
+                  <span class="metaText">Clínica Experts</span>
+                </div>
+                <div id="generalRevenueBarChart" class="generalRevenueChart"></div>
+                <div class="generalMicroStats">
+                  <span><b id="generalAverageActiveDay">R$ 0</b>Média por dia ativo</span>
+                  <span><b id="generalDailyAverage">R$ 0</b>Média diária geral</span>
+                  <span><b id="generalStrongDay">-</b>Dia mais forte</span>
+                  <span><b id="generalWeakDay">-</b>Dia mais fraco</span>
+                </div>
+              </article>
 
-        <section class="panel">
-          <div class="panelHead">
-            <h2>Vendas e ticket médio por dia</h2>
-            <span class="metaText">Total de vendas + ticket médio</span>
-          </div>
-          <div id="generalSalesTicketChart" class="generalComboChart"></div>
-        </section>
+              <article class="panel generalPaymentCard">
+                <div class="panelHead">
+                  <h2>Formas de pagamento</h2>
+                  <span class="metaText">Entradas</span>
+                </div>
+                <div id="generalPaymentDonut" class="generalDonutWrap"></div>
+              </article>
 
-        <section class="panel">
-          <div class="panelHead">
-            <h2>Leads x agendamentos por dia</h2>
-            <span class="metaText">Kommo + Clínica Experts</span>
+              <aside class="panel generalQuickCard">
+                <div class="panelHead">
+                  <h2>Resumo rápido</h2>
+                </div>
+                <div class="generalQuickList">
+                  <span><b id="generalQuickRevenue">R$ 0</b>Faturamento total</span>
+                  <span><b id="generalQuickSales">0</b>Vendas / lançamentos</span>
+                  <span><b id="generalQuickTicket">R$ 0</b>Ticket médio</span>
+                  <span><b id="generalQuickActiveDays">0</b>Dias com faturamento</span>
+                  <span><b id="generalQuickLeads">0</b>Leads no mês</span>
+                  <span><b id="generalQuickBookings">0</b>Agendamentos</span>
+                </div>
+              </aside>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Faturamento acumulado</h2>
+                </div>
+                <div id="generalAccumulatedChart" class="generalSmallChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Vendas e ticket médio por dia</h2>
+                </div>
+                <div id="generalSalesTicketChart" class="generalComboChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Distribuição por faixa de valor</h2>
+                  <span class="metaText">Vendas</span>
+                </div>
+                <div id="generalValueRanges" class="generalValueRanges"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Top pacientes</h2>
+                  <span class="metaText">Por faturamento</span>
+                </div>
+                <div id="generalTopPatients" class="generalTopList"></div>
+              </article>
+
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Leads x agendamentos por dia</h2>
+                  <span class="metaText">Kommo + Clínica Experts</span>
+                </div>
+                <div id="generalLeadBookingChart" class="generalComboChart"></div>
+              </article>
+            </section>
           </div>
-          <div id="generalLeadBookingChart" class="generalComboChart"></div>
         </section>
       </div>
 

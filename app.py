@@ -3250,6 +3250,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         top_patient_lookup = {}
         procedure_lookup = {}
         category_lookup = {}
+        sale_amounts = []
         performance_lookup = {
             row["day"]: {"day": row["day"], "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0}
             for row in fill_daily_series([], date_from, date_to)
@@ -3267,6 +3268,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             if status_group == "venda":
                 day_bucket["revenue"] += final_amount
                 day_bucket["sales"] += 1
+                sale_amounts.append(final_amount)
                 buyer = first_value(sale, ["buyer", "patient"])
                 patient_uuid = sale_row["patient_uuid"]
                 patient_name = (
@@ -3367,6 +3369,27 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         top_patients = sorted(top_patient_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
         top_procedures = sorted(procedure_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
         procedure_categories = sorted(category_lookup.values(), key=lambda row: row["amount"], reverse=True)
+        value_ranges = [
+            {"range": "Até R$ 1.000", "sales": 0, "amount": 0, "test": lambda amount: amount <= 1000},
+            {"range": "R$ 1.001 a R$ 2.500", "sales": 0, "amount": 0, "test": lambda amount: 1000 < amount <= 2500},
+            {"range": "R$ 2.501 a R$ 5.000", "sales": 0, "amount": 0, "test": lambda amount: 2500 < amount <= 5000},
+            {"range": "Acima de R$ 5.000", "sales": 0, "amount": 0, "test": lambda amount: amount > 5000},
+        ]
+        for amount in sale_amounts:
+            for value_range in value_ranges:
+                if value_range["test"](amount):
+                    value_range["sales"] += 1
+                    value_range["amount"] += amount
+                    break
+        sales_value_ranges = [
+            {
+                "range": item["range"],
+                "sales": item["sales"],
+                "amount": item["amount"],
+                "share": (item["sales"] / len(sale_amounts)) if sale_amounts else 0,
+            }
+            for item in value_ranges
+        ]
         sales_performance = [
             {
                 **item,
@@ -3697,6 +3720,13 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "elapsed_days": elapsed_days,
             "month_days": month_days,
             "average_ticket": (clinica_totals["sales_total"] / clinica_totals["sales"]) if clinica_totals["sales"] else 0,
+            "sales_count": financial_income_count,
+            "active_revenue_days": len([item for item in financial_daily if item.get("income", 0) > 0]),
+            "distinct_patients": len(top_patient_lookup),
+            "financial_daily": financial_daily,
+            "payment_methods": financial_income_by_type,
+            "top_patients": top_patients,
+            "value_ranges": sales_value_ranges,
             "sales_ticket_daily": sales_ticket_daily,
             "daily_leads": daily_new_leads,
             "daily_bookings": daily_bookings,
