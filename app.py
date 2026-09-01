@@ -815,6 +815,28 @@ def account_domain(referrer=None):
     return f"{subdomain}.kommo.com"
 
 
+def jwt_payload(token):
+    parts = str(token or "").split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1]
+    payload += "=" * (-len(payload) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def long_token_domain(token):
+    payload = jwt_payload(token)
+    api_domain = str(payload.get("api_domain") or "").strip()
+    if api_domain:
+        return api_domain.replace("https://", "").replace("http://", "").strip("/")
+    return account_domain()
+
+
 def kommo_request(method, path, token=None, body=None, domain=None):
     target_domain = domain or account_domain()
     url = f"https://{target_domain}{path}"
@@ -1092,7 +1114,7 @@ def get_access_context():
     if configured(long_token):
         return {
             "access_token": long_token,
-            "account_domain": account_domain(),
+            "account_domain": long_token_domain(long_token),
         }
     tokens = refresh_tokens_if_needed()
     return {
