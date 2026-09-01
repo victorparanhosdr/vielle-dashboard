@@ -577,8 +577,13 @@ def monthly_goal_key(month_key, doctor_name=""):
 
 
 def _coerce_goal_value(value):
+    text = str(value or "0").strip()
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    else:
+        text = text.replace(" ", "")
     try:
-        return max(0, float(str(value or "0").replace(".", "").replace(",", ".")))
+        return max(0, float(text))
     except ValueError:
         return 0
 
@@ -632,10 +637,7 @@ def get_monthly_goal_entries(month_key, doctors):
 def save_monthly_goal(month_key, value, doctor_name=""):
     if not month_key:
         raise ValueError("Mês inválido.")
-    try:
-        amount = max(0, float(str(value or "0").replace(".", "").replace(",", ".")))
-    except ValueError as exc:
-        raise ValueError("Meta mensal inválida.") from exc
+    amount = _coerce_goal_value(value)
     with db() as conn:
         conn.execute(
             """
