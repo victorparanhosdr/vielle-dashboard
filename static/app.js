@@ -553,11 +553,8 @@ function renderGeneralPanel(panel) {
   renderGeneralValueRanges(panel.value_ranges || []);
   renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
   renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
-  renderFinanceList("generalExpenseCategories", panel.expenses_by_category || [], "amount", "category", {
-    showShare: true,
-    shareTotal: panel.expenses_total || 0,
-  });
-  renderFinanceList("generalIncomeTypes", panel.income_by_type || [], "amount");
+  renderGeneralExpenseCategories(panel.expenses_by_category || [], panel.expenses_total || 0);
+  renderGeneralIncomeTypes(panel.income_by_type || []);
   renderGeneralExpenseDailyChart(panel.expenses_daily || []);
 }
 
@@ -784,6 +781,80 @@ function renderGeneralLeadBookingChart(leads, bookings) {
   });
 }
 
+function renderGeneralExpenseCategories(items, total) {
+  const el = document.getElementById("generalExpenseCategories");
+  if (!el) return;
+  const sortedItems = [...items]
+    .filter(item => Number(item.amount || 0) > 0)
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  if (!sortedItems.length || !total) {
+    el.innerHTML = `<div class="empty">Sem saídas por categoria no mês selecionado.</div>`;
+    return;
+  }
+  const colors = ["#0b7f9b", "#18b9d4", "#7167e8", "#16c784", "#ef6a73", "#f3b34c", "#66819e"];
+  let offset = 0;
+  const slices = sortedItems.slice(0, 7).map((item, index) => {
+    const share = Number(item.amount || 0) / total;
+    const dash = `${(share * 100).toFixed(2)} ${Math.max(0, 100 - share * 100).toFixed(2)}`;
+    const slice = `<circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="${colors[index % colors.length]}" stroke-width="8" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+    offset += share * 100;
+    return slice;
+  }).join("");
+  const max = Math.max(...sortedItems.map(item => Number(item.amount || 0)), 1);
+  el.innerHTML = `
+    <div class="expenseDonutBlock">
+      <div class="expenseDonut">
+        <svg viewBox="0 0 40 40" role="img" aria-label="Distribuição de saídas por categoria">
+          <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#e9f2f7" stroke-width="8"></circle>
+          ${slices}
+        </svg>
+        <strong>${brl.format(total)}</strong>
+        <span>Total</span>
+      </div>
+    </div>
+    <div class="expenseCategoryRows">
+      ${sortedItems.slice(0, 8).map((item, index) => {
+        const amount = Number(item.amount || 0);
+        const share = total ? amount / total : 0;
+        return `
+          <div class="expenseCategoryRow">
+            <i style="background:${colors[index % colors.length]}"></i>
+            <div>
+              <strong>${escapeHtml(item.category || "Sem categoria")}</strong>
+              <small>${financeListSubtitle(item)} · ${formatPercent(share)}</small>
+              <span><em style="width:${Math.max(5, (amount / max) * 100)}%"></em></span>
+            </div>
+            <b>${brl.format(amount)}</b>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralIncomeTypes(items) {
+  const el = document.getElementById("generalIncomeTypes");
+  if (!el) return;
+  const sortedItems = [...items]
+    .filter(item => Number(item.amount || 0) > 0)
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  const total = sortedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  if (!sortedItems.length) {
+    el.innerHTML = `<div class="empty">Sem entradas por tipo no mês selecionado.</div>`;
+    return;
+  }
+  el.innerHTML = sortedItems.slice(0, 6).map(item => {
+    const amount = Number(item.amount || 0);
+    return `
+      <div class="incomeTypeCard">
+        <span>${escapeHtml(financeTypeLabel(item.type))}</span>
+        <strong>${brl.format(amount)}</strong>
+        <small>${formatPercent(total ? amount / total : 0)} das entradas</small>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderGeneralExpenseDailyChart(items) {
   const prepared = items
     .filter(item => item.day)
@@ -800,19 +871,21 @@ function renderGeneralExpenseDailyChart(items) {
     return;
   }
   const max = Math.max(...active.map(item => item.expenses), 1);
+  const total = active.reduce((sum, item) => sum + item.expenses, 0);
+  const average = total / active.length;
+  const strongest = active.reduce((best, item) => item.expenses > (best?.expenses || 0) ? item : best, null);
   el.innerHTML = `
-    <div class="generalHorizontalLegend">
-      <span><i style="background:#ef6a73"></i>Saídas</span>
-      <span><i style="background:#19c58f"></i>Entrada do dia</span>
+    <div class="expenseDailyStats">
+      <span><b>${active.length}</b> dias com saída</span>
+      <span><b>${brl.format(average)}</b> média diária</span>
+      <span><b>${strongest ? formatDay(strongest.day) : "-"}</b> maior saída</span>
     </div>
-    <div class="generalHorizontalRows">
+    <div class="expenseDayBars" style="--expense-days:${Math.max(active.length, 1)}">
       ${active.map(item => `
-        <div class="generalHorizontalRow" data-tip="${escapeHtml(`${formatDay(item.day)} · Saídas: ${brl.format(item.expenses)} · Entradas: ${brl.format(item.income)}`)}">
-          <b>${formatShortDay(item.day)}</b>
-          <div>
-            <span><i style="width:${Math.max(5, (item.expenses / max) * 100)}%;background:#ef6a73"></i><em>${brl.format(item.expenses)}</em></span>
-          </div>
-        </div>
+        <span class="expenseDayBar" data-tip="${escapeHtml(`${formatDay(item.day)} · Saídas: ${brl.format(item.expenses)} · Entradas: ${brl.format(item.income)}`)}">
+          <i style="height:${Math.max(6, (item.expenses / max) * 100)}%"></i>
+          <b>${String(Number(item.day.slice(-2))).padStart(2, "0")}</b>
+        </span>
       `).join("")}
     </div>
   `;

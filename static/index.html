@@ -491,42 +491,49 @@
                 <div id="generalLeadBookingChart" class="generalComboChart"></div>
               </article>
 
-              <article class="panel generalFinanceSummary">
-                <div class="panelHead">
-                  <h2>Saídas totais</h2>
-                  <span class="metaText">Clínica Experts</span>
-                </div>
-                <div class="generalFinanceTotals">
-                  <strong id="generalExpensesTotal">R$ 0</strong>
-                  <span>Pago: <b id="generalExpensesPaid">R$ 0</b></span>
-                  <span>Aberto: <b id="generalExpensesPending">R$ 0</b></span>
-                  <span>Saldo: <b id="generalBalance">R$ 0</b></span>
-                </div>
-              </article>
+              <section class="generalExpenseDashboard generalWide" aria-label="Painel de saídas">
+                <article class="panel generalFinanceSummary">
+                  <div class="panelHead">
+                    <h2>Painel de saídas</h2>
+                    <span class="metaText">Clínica Experts</span>
+                  </div>
+                  <div class="generalFinanceTotals">
+                    <div class="expenseHeroValue">
+                      <span>Total de saídas</span>
+                      <strong id="generalExpensesTotal">R$ 0</strong>
+                    </div>
+                    <div class="expenseMiniGrid">
+                      <span>Pago/recebido <b id="generalExpensesPaid">R$ 0</b></span>
+                      <span>Em aberto <b id="generalExpensesPending">R$ 0</b></span>
+                      <span>Saldo do período <b id="generalBalance">R$ 0</b></span>
+                    </div>
+                  </div>
+                </article>
 
-              <article class="panel">
-                <div class="panelHead">
-                  <h2>Saídas por categoria</h2>
-                  <span class="metaText">Gastos</span>
-                </div>
-                <div id="generalExpenseCategories" class="financeList compactFinanceList"></div>
-              </article>
+                <article class="panel generalExpenseCategoryPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por categoria</h2>
+                    <span class="metaText">Valor + participação</span>
+                  </div>
+                  <div id="generalExpenseCategories" class="generalExpenseCategories"></div>
+                </article>
 
-              <article class="panel">
-                <div class="panelHead">
-                  <h2>Entradas por tipo</h2>
-                  <span class="metaText">Receitas</span>
-                </div>
-                <div id="generalIncomeTypes" class="financeList compactFinanceList"></div>
-              </article>
+                <article class="panel generalIncomePanel">
+                  <div class="panelHead">
+                    <h2>Entradas por tipo</h2>
+                    <span class="metaText">Receitas</span>
+                  </div>
+                  <div id="generalIncomeTypes" class="generalIncomeTypes"></div>
+                </article>
 
-              <article class="panel generalWide">
-                <div class="panelHead">
-                  <h2>Saídas por dia</h2>
-                  <span class="metaText">Clínica Experts</span>
-                </div>
-                <div id="generalExpenseDailyChart" class="generalComboChart"></div>
-              </article>
+                <article class="panel generalExpenseDailyPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por dia</h2>
+                    <span class="metaText">Passe o mouse para detalhar</span>
+                  </div>
+                  <div id="generalExpenseDailyChart" class="generalExpenseBars"></div>
+                </article>
+              </section>
             </section>
           </div>
         </section>
