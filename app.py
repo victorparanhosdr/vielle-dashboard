@@ -1252,18 +1252,20 @@ def get_tokens():
 
 
 def get_access_context():
+    long_token = config_value("KOMMO_LONG_LIVED_TOKEN", "")
+    if configured(long_token):
+        return {
+            "access_token": long_token,
+            "account_domain": long_token_domain(long_token),
+            "source": "long_lived_token",
+        }
     tokens = get_tokens()
     if tokens:
         tokens = refresh_tokens_if_needed()
         return {
             "access_token": tokens["access_token"],
             "account_domain": tokens["account_domain"],
-        }
-    long_token = config_value("KOMMO_LONG_LIVED_TOKEN", "")
-    if configured(long_token):
-        return {
-            "access_token": long_token,
-            "account_domain": long_token_domain(long_token),
+            "source": "oauth",
         }
     raise RuntimeError("Kommo ainda nao foi conectado.")
 
