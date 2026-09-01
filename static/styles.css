@@ -1306,13 +1306,15 @@ button.danger {
 }
 
 .generalHeroGrid {
-  grid-template-columns: minmax(0, 1.6fr) minmax(340px, .72fr);
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 1.25fr);
+  gap: 12px;
+  align-items: start;
 }
 
 .generalHeroMain {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1320,6 +1322,7 @@ button.danger {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-content: start;
 }
 
 .generalHeroSide .generalMetric:last-child {
@@ -1328,16 +1331,17 @@ button.danger {
 
 .generalMetric.featured,
 .generalMetric.wideMetric {
-  grid-column: span 4;
+  grid-column: span 3;
 }
 
 .generalHeroMain .generalMetric:nth-child(n+3) {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .generalMetric {
   min-width: 0;
-  min-height: 136px;
+  min-height: 130px;
+  padding: 18px;
   border: 1px solid rgba(204, 230, 242, .90);
   border-radius: 10px;
   background:
@@ -1364,7 +1368,7 @@ button.danger {
   overflow: hidden;
   color: #12213a;
   font-family: var(--font);
-  font-size: clamp(24px, 2.15vw, 36px);
+  font-size: clamp(24px, 2vw, 34px);
   font-weight: 950;
   letter-spacing: 0;
   line-height: 1.02;
@@ -1374,7 +1378,7 @@ button.danger {
 
 .generalMetric.featured strong,
 .generalMetric.wideMetric strong {
-  font-size: clamp(25px, 2.25vw, 38px);
+  font-size: clamp(25px, 2.15vw, 38px);
 }
 
 .generalMetric.revenue strong,
@@ -1384,12 +1388,12 @@ button.danger {
 }
 
 .generalMetric.compact {
-  min-height: 136px;
-  padding: 16px;
+  min-height: 118px;
+  padding: 14px;
 }
 
 .generalMetric.compact strong {
-  font-size: clamp(28px, 2.15vw, 36px);
+  font-size: clamp(26px, 2vw, 34px);
 }
 
 .generalHeroSide .generalMetric:last-child strong {

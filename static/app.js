@@ -528,8 +528,10 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
   document.getElementById("generalMarginOne").textContent = formatPercent(panel.margin_1_rate);
+  document.getElementById("generalMarginOneProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_1_expenses || 0))}`;
   document.getElementById("generalMarginOne").title = `Saídas consideradas: ${brl.format(panel.margin_1_expenses || 0)}`;
   document.getElementById("generalMarginTwo").textContent = formatPercent(panel.margin_2_rate);
+  document.getElementById("generalMarginTwoProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_2_expenses || 0))}`;
   document.getElementById("generalMarginTwo").title = `Todas as saídas: ${brl.format(panel.margin_2_expenses || 0)}`;
   const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
   const dailyAverage = monthDays ? revenue / monthDays : 0;
