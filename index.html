@@ -47,16 +47,6 @@
             <button type="button" data-clinic-select="carla">Acessar Carla</button>
           </article>
 
-          <article class="clinicAccessCard casaVitalle">
-            <div>
-              <span class="casaVitalleMark">V</span>
-              <small>Casa Vitalle</small>
-            </div>
-            <img class="casaVitalleLogo" src="casa-vitalle-logo.jpg" alt="Casa Vitalle" style="width: 100%; height: clamp(190px, 23vw, 260px); object-fit: contain; background: #10231b; padding: 14px;">
-            <p>Estética, cirurgia e longevidade em um dashboard próprio, com identidade visual premium.</p>
-            <button type="button" data-clinic-select="casa_vitalle">Acessar Casa Vitalle</button>
-          </article>
-
         </div>
       </div>
     </section>
@@ -377,73 +367,71 @@
                   <span>Mês</span>
                   <input id="generalMonth" type="month">
                 </label>
+                <button id="openGoalsModalBtn" type="button">Configurar metas</button>
               </div>
-            </section>
-
-            <section class="generalGoalsPanel">
-              <div>
-                <span>Metas mensais</span>
-                <strong>Por doutor(a)</strong>
-              </div>
-              <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
-              <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
             </section>
 
             <section class="generalHeroGrid">
-              <div class="generalHeroMain">
-                <article class="generalMetric featured">
-                  <span>Faturamento total</span>
-                  <strong id="generalRevenue">R$ 0</strong>
-                  <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
-                </article>
-                <article class="generalMetric wideMetric">
-                  <span>Meta mensal</span>
-                  <strong id="generalGoal">R$ 0</strong>
-                  <small>Objetivo do mês</small>
-                </article>
-                <article class="generalMetric">
-                  <span>% da meta</span>
-                  <strong id="generalGoalRate">-</strong>
-                  <small>Realizado até agora</small>
-                </article>
-                <article class="generalMetric wideMetric">
-                  <span>Projeção</span>
-                  <strong id="generalProjection">R$ 0</strong>
-                  <small id="generalProjectionHint">-</small>
-                </article>
-                <article class="generalMetric wideMetric">
-                  <span>Ticket médio</span>
-                  <strong id="generalAverageTicket">R$ 0</strong>
-                  <small>Por venda</small>
-                </article>
-              </div>
-              <div class="generalHeroSide">
-                <article class="generalMetric compact">
-                  <span>Leads</span>
-                  <strong id="generalTotalLeads">0</strong>
-                  <small>Entrada no mês</small>
-                </article>
-                <article class="generalMetric compact">
-                  <span>Agendamentos</span>
-                  <strong id="generalTotalBookings">0</strong>
-                  <small>Realizados no mês</small>
-                </article>
-                <article class="generalMetric compact">
-                  <span>Pacientes diferentes</span>
-                  <strong id="generalDistinctPatients">0</strong>
-                  <small>Com vendas</small>
-                </article>
-                <article class="generalMetric compact">
-                  <span>Quantidade de vendas</span>
-                  <strong id="generalSalesCount">0</strong>
-                  <small>Lançamentos</small>
-                </article>
-                <article class="generalMetric compact">
-                  <span>Dias com faturamento</span>
-                  <strong id="generalActiveDays">0</strong>
-                  <small id="generalActiveDaysHint">No mês</small>
-                </article>
-              </div>
+              <article class="generalMetric featured emphasisRevenue">
+                <span>Faturamento total</span>
+                <strong id="generalRevenue">R$ 0</strong>
+                <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
+              </article>
+              <article class="generalMetric emphasisMargin">
+                <span>Margem 1</span>
+                <strong id="generalMarginOne">-</strong>
+                <small id="generalMarginOneProfit">Sem Pró-labore e Cursos</small>
+              </article>
+              <article class="generalMetric compact emphasisLeads">
+                <span>Leads</span>
+                <strong id="generalTotalLeads">0</strong>
+                <small>Entrada no mês</small>
+              </article>
+              <article class="generalMetric compact emphasisBookings">
+                <span>Agendamentos</span>
+                <strong id="generalTotalBookings">0</strong>
+                <small id="generalBookingConversion">Conversão: -</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Meta mensal</span>
+                <strong id="generalGoal">R$ 0</strong>
+                <small>Objetivo do mês</small>
+              </article>
+              <article class="generalMetric mediumMetric marginMetric">
+                <span>Margem 2</span>
+                <strong id="generalMarginTwo">-</strong>
+                <small id="generalMarginTwoProfit">Todas as saídas</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>% da meta</span>
+                <strong id="generalGoalRate">-</strong>
+                <small>Realizado até agora</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Projeção</span>
+                <strong id="generalProjection">R$ 0</strong>
+                <small id="generalProjectionHint">-</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Ticket médio</span>
+                <strong id="generalAverageTicket">R$ 0</strong>
+                <small>Por venda</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Pacientes diferentes</span>
+                <strong id="generalDistinctPatients">0</strong>
+                <small>Com vendas</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Quantidade de vendas</span>
+                <strong id="generalSalesCount">0</strong>
+                <small>Lançamentos</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Dias com faturamento</span>
+                <strong id="generalActiveDays">0</strong>
+                <small id="generalActiveDaysHint">No mês</small>
+              </article>
             </section>
 
             <section class="generalDashboardGrid">
@@ -498,6 +486,50 @@
                 </div>
                 <div id="generalLeadBookingChart" class="generalComboChart"></div>
               </article>
+
+              <section class="generalExpenseDashboard generalWide" aria-label="Painel de saídas">
+                <article class="panel generalFinanceSummary">
+                  <div class="panelHead">
+                    <h2>Painel de saídas</h2>
+                    <span class="metaText">Clínica Experts</span>
+                  </div>
+                  <div class="generalFinanceTotals">
+                    <div class="expenseHeroValue">
+                      <span>Total de saídas</span>
+                      <strong id="generalExpensesTotal">R$ 0</strong>
+                    </div>
+                    <div class="expenseMiniGrid">
+                      <span>Pago/recebido <b id="generalExpensesPaid">R$ 0</b></span>
+                      <span>Em aberto <b id="generalExpensesPending">R$ 0</b></span>
+                      <span>Saldo do período <b id="generalBalance">R$ 0</b></span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="panel generalExpenseCategoryPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por categoria</h2>
+                    <span class="metaText">Valor + participação</span>
+                  </div>
+                  <div id="generalExpenseCategories" class="generalExpenseCategories"></div>
+                </article>
+
+                <article class="panel generalIncomePanel">
+                  <div class="panelHead">
+                    <h2>Entradas por tipo</h2>
+                    <span class="metaText">Receitas</span>
+                  </div>
+                  <div id="generalIncomeTypes" class="generalIncomeTypes"></div>
+                </article>
+
+                <article class="panel generalExpenseDailyPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por dia</h2>
+                    <span class="metaText">Passe o mouse para detalhar</span>
+                  </div>
+                  <div id="generalExpenseDailyChart" class="generalExpenseBars"></div>
+                </article>
+              </section>
             </section>
           </div>
         </section>
@@ -514,6 +546,28 @@
             <button id="rankModalClose" class="secondary" type="button" data-rank-close>Fechar</button>
           </header>
           <div id="rankModalBody" class="rankModalBody"></div>
+        </section>
+      </div>
+
+      <div id="goalsModal" class="rankModal" hidden>
+        <button class="rankModalBackdrop" type="button" data-goals-close aria-label="Fechar metas"></button>
+        <section class="rankModalPanel goalsModalPanel" role="dialog" aria-modal="true" aria-labelledby="goalsModalTitle">
+          <header>
+            <div>
+              <span>Configuração</span>
+              <h2 id="goalsModalTitle">Metas mensais por doutor(a)</h2>
+              <small id="goalsModalMonth">-</small>
+            </div>
+            <button class="secondary" type="button" data-goals-close>Fechar</button>
+          </header>
+          <div class="goalsModalControls">
+            <label>
+              <span>Mês</span>
+              <input id="goalsModalMonthInput" type="month">
+            </label>
+            <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
+          </div>
+          <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
         </section>
       </div>
     </main>

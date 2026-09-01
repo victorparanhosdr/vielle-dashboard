@@ -18,6 +18,8 @@ const state = {
   selectedClinic: "",
 };
 
+let pendingAutoPrint = false;
+
 const clinics = {
   vielle: {
     id: "vielle",
@@ -38,13 +40,6 @@ const clinics = {
     name: "Dr. Carla Ferreira",
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
-    connected: true,
-  },
-  casa_vitalle: {
-    id: "casa_vitalle",
-    name: "Casa Vitalle",
-    title: "DASHBOARD ESTRATÉGICO",
-    status: "Relatório da Casa Vitalle pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
 };
@@ -511,9 +506,12 @@ function renderGeneralPanel(panel) {
   const dailyFinancial = panel.financial_daily || [];
   const totalLeads = (panel.daily_leads || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
   const totalBookings = (panel.daily_bookings || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const bookingConversion = totalLeads ? totalBookings / totalLeads : null;
   const monthInput = document.getElementById("generalMonth");
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
+  const goalsMonthInput = document.getElementById("goalsModalMonthInput");
+  if (goalsMonthInput) goalsMonthInput.value = state.selectedMonth;
   document.getElementById("generalBoardTitle").textContent = "Resumo mensal";
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
@@ -525,6 +523,12 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalProjection").textContent = brl.format(projected);
   document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
+  document.getElementById("generalMarginOne").textContent = formatPercent(panel.margin_1_rate);
+  document.getElementById("generalMarginOneProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_1_expenses || 0))}`;
+  document.getElementById("generalMarginOne").title = `Saídas consideradas: ${brl.format(panel.margin_1_expenses || 0)}`;
+  document.getElementById("generalMarginTwo").textContent = formatPercent(panel.margin_2_rate);
+  document.getElementById("generalMarginTwoProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_2_expenses || 0))}`;
+  document.getElementById("generalMarginTwo").title = `Todas as saídas: ${brl.format(panel.margin_2_expenses || 0)}`;
   const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
   const dailyAverage = monthDays ? revenue / monthDays : 0;
   const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
@@ -536,10 +540,17 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalWeakDay").textContent = weakestDay ? `${formatDay(weakestDay.day)} · ${brl.format(weakestDay.income || 0)}` : "-";
   document.getElementById("generalTotalLeads").textContent = totalLeads;
   document.getElementById("generalTotalBookings").textContent = totalBookings;
+  document.getElementById("generalBookingConversion").textContent = bookingConversion === null
+    ? "Conversão: -"
+    : `Conversão: ${formatPercent(bookingConversion)}`;
   document.getElementById("generalDistinctPatients").textContent = Number(panel.distinct_patients || 0);
   document.getElementById("generalSalesCount").textContent = salesCount;
   document.getElementById("generalActiveDays").textContent = activeDays;
   document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
+  document.getElementById("generalExpensesTotal").textContent = brl.format(panel.expenses_total || 0);
+  document.getElementById("generalExpensesPaid").textContent = brl.format(panel.expenses_paid || 0);
+  document.getElementById("generalExpensesPending").textContent = brl.format(panel.expenses_pending || 0);
+  document.getElementById("generalBalance").textContent = brl.format(panel.balance || 0);
   renderMonthlyGoalRows(panel.goal_entries || []);
   renderGeneralRevenueBarChart(dailyFinancial);
   renderGeneralAccumulatedChart(dailyFinancial);
@@ -547,11 +558,16 @@ function renderGeneralPanel(panel) {
   renderGeneralValueRanges(panel.value_ranges || []);
   renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
   renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+  renderGeneralExpenseCategories(panel.expenses_by_category || [], panel.expenses_total || 0);
+  renderGeneralIncomeTypes(panel.income_by_type || []);
+  renderGeneralExpenseDailyChart(panel.expenses_daily || []);
 }
 
 function renderMonthlyGoalRows(entries) {
   const el = document.getElementById("monthlyGoalsList");
   if (!el) return;
+  const monthLabelEl = document.getElementById("goalsModalMonth");
+  if (monthLabelEl) monthLabelEl.textContent = monthLabel(state.selectedMonth);
   const knownGoals = new Map(entries.map(entry => [entry.doctor, Number(entry.goal || 0)]));
   const doctors = [...new Set([
     ...state.allGeneralDoctors,
@@ -567,6 +583,20 @@ function renderMonthlyGoalRows(entries) {
       </label>
     `).join("")
     : `<div class="empty">Sem profissionais para cadastrar meta.</div>`;
+}
+
+function openGoalsModal() {
+  const modal = document.getElementById("goalsModal");
+  const monthInput = document.getElementById("goalsModalMonthInput");
+  if (monthInput) monthInput.value = state.selectedMonth || currentMonthValue();
+  renderMonthlyGoalRows(state.report?.general_panel?.goal_entries || []);
+  modal.hidden = false;
+  document.body.classList.add("modalOpen");
+}
+
+function closeGoalsModal() {
+  document.getElementById("goalsModal").hidden = true;
+  document.body.classList.remove("modalOpen");
 }
 
 function renderGeneralRevenueBarChart(items) {
@@ -754,6 +784,116 @@ function renderGeneralLeadBookingChart(leads, bookings) {
     firstFormatter: value => `${Math.round(value || 0)}`,
     secondFormatter: value => `${Math.round(value || 0)}`,
   });
+}
+
+function renderGeneralExpenseCategories(items, total) {
+  const el = document.getElementById("generalExpenseCategories");
+  if (!el) return;
+  const sortedItems = [...items]
+    .filter(item => Number(item.amount || 0) > 0)
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  if (!sortedItems.length || !total) {
+    el.innerHTML = `<div class="empty">Sem saídas por categoria no mês selecionado.</div>`;
+    return;
+  }
+  const colors = ["#0b7f9b", "#18b9d4", "#7167e8", "#16c784", "#ef6a73", "#f3b34c", "#66819e"];
+  let offset = 0;
+  const slices = sortedItems.slice(0, 7).map((item, index) => {
+    const share = Number(item.amount || 0) / total;
+    const dash = `${(share * 100).toFixed(2)} ${Math.max(0, 100 - share * 100).toFixed(2)}`;
+    const slice = `<circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="${colors[index % colors.length]}" stroke-width="8" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+    offset += share * 100;
+    return slice;
+  }).join("");
+  const max = Math.max(...sortedItems.map(item => Number(item.amount || 0)), 1);
+  el.innerHTML = `
+    <div class="expenseDonutBlock">
+      <div class="expenseDonut">
+        <svg viewBox="0 0 40 40" role="img" aria-label="Distribuição de saídas por categoria">
+          <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#e9f2f7" stroke-width="8"></circle>
+          ${slices}
+        </svg>
+        <strong>${brl.format(total)}</strong>
+        <span>Total</span>
+      </div>
+    </div>
+    <div class="expenseCategoryRows">
+      ${sortedItems.slice(0, 8).map((item, index) => {
+        const amount = Number(item.amount || 0);
+        const share = total ? amount / total : 0;
+        return `
+          <div class="expenseCategoryRow">
+            <i style="background:${colors[index % colors.length]}"></i>
+            <div>
+              <strong>${escapeHtml(item.category || "Sem categoria")}</strong>
+              <small>${financeListSubtitle(item)} · ${formatPercent(share)}</small>
+              <span><em style="width:${Math.max(5, (amount / max) * 100)}%"></em></span>
+            </div>
+            <b>${brl.format(amount)}</b>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralIncomeTypes(items) {
+  const el = document.getElementById("generalIncomeTypes");
+  if (!el) return;
+  const sortedItems = [...items]
+    .filter(item => Number(item.amount || 0) > 0)
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  const total = sortedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  if (!sortedItems.length) {
+    el.innerHTML = `<div class="empty">Sem entradas por tipo no mês selecionado.</div>`;
+    return;
+  }
+  el.innerHTML = sortedItems.slice(0, 6).map(item => {
+    const amount = Number(item.amount || 0);
+    return `
+      <div class="incomeTypeCard">
+        <span>${escapeHtml(financeTypeLabel(item.type))}</span>
+        <strong>${brl.format(amount)}</strong>
+        <small>${formatPercent(total ? amount / total : 0)} das entradas</small>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderGeneralExpenseDailyChart(items) {
+  const prepared = items
+    .filter(item => item.day)
+    .map(item => ({
+      day: item.day,
+      expenses: Number(item.expenses || 0),
+      income: Number(item.income || 0),
+    }));
+  const active = prepared.filter(item => item.expenses > 0);
+  const el = document.getElementById("generalExpenseDailyChart");
+  if (!el) return;
+  if (!active.length) {
+    el.innerHTML = `<div class="empty">Sem saídas no mês selecionado.</div>`;
+    return;
+  }
+  const max = Math.max(...active.map(item => item.expenses), 1);
+  const total = active.reduce((sum, item) => sum + item.expenses, 0);
+  const average = total / active.length;
+  const strongest = active.reduce((best, item) => item.expenses > (best?.expenses || 0) ? item : best, null);
+  el.innerHTML = `
+    <div class="expenseDailyStats">
+      <span><b>${active.length}</b> dias com saída</span>
+      <span><b>${brl.format(average)}</b> média diária</span>
+      <span><b>${strongest ? formatDay(strongest.day) : "-"}</b> maior saída</span>
+    </div>
+    <div class="expenseDayBars" style="--expense-days:${Math.max(active.length, 1)}">
+      ${active.map(item => `
+        <span class="expenseDayBar" data-tip="${escapeHtml(`${formatDay(item.day)} · Saídas: ${brl.format(item.expenses)} · Entradas: ${brl.format(item.income)}`)}">
+          <i style="height:${Math.max(6, (item.expenses / max) * 100)}%"></i>
+          <b>${String(Number(item.day.slice(-2))).padStart(2, "0")}</b>
+        </span>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderHorizontalComparisonChart(id, items, config) {
@@ -1597,6 +1737,7 @@ async function loadReport() {
   }
   state.report = payload;
   render();
+  scheduleAutoPrint();
 }
 
 async function syncNow() {
@@ -1682,15 +1823,27 @@ function friendlyError(message) {
 function exportPdf() {
   const btn = document.getElementById("exportPdfBtn");
   const original = btn.textContent;
-  const params = new URLSearchParams(buildQuery().replace(/^\?/, ""));
-  params.set("view", document.querySelector(".tabBtn.active")?.dataset.view || "commercialView");
   btn.disabled = true;
-  btn.textContent = "Gerando PDF...";
-  window.location.href = `/api/export-pdf?${params.toString()}`;
+  btn.textContent = "Abrindo PDF...";
+  requestAnimationFrame(() => {
+    window.print();
+    btn.disabled = false;
+    btn.textContent = original;
+  });
   setTimeout(() => {
     btn.disabled = false;
     btn.textContent = original;
-  }, 1600);
+  }, 2400);
+}
+
+function scheduleAutoPrint() {
+  if (!pendingAutoPrint) return;
+  pendingAutoPrint = false;
+  const cleanParams = new URLSearchParams(window.location.search);
+  cleanParams.delete("print");
+  const cleanQuery = cleanParams.toString();
+  history.replaceState(null, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}`);
+  setTimeout(() => window.print(), 700);
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
@@ -1708,9 +1861,15 @@ document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);
 });
+document.querySelectorAll("[data-goals-close]").forEach(button => {
+  button.addEventListener("click", closeGoalsModal);
+});
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !document.getElementById("rankModal").hidden) {
     closeRankModal();
+  }
+  if (event.key === "Escape" && !document.getElementById("goalsModal").hidden) {
+    closeGoalsModal();
   }
 });
 document.querySelectorAll(".tabBtn").forEach(button => {
@@ -1729,10 +1888,16 @@ document.getElementById("generalMonth").addEventListener("change", event => {
   normalizeGeneralMonth();
   loadReport();
 });
+document.getElementById("goalsModalMonthInput").addEventListener("change", event => {
+  state.selectedMonth = event.target.value || currentMonthValue();
+  normalizeGeneralMonth();
+  loadReport();
+});
 document.getElementById("generalDoctorFilter").addEventListener("change", event => {
   state.selectedGeneralDoctor = event.target.value;
   loadReport();
 });
+document.getElementById("openGoalsModalBtn").addEventListener("click", openGoalsModal);
 document.getElementById("saveMonthlyGoalBtn").addEventListener("click", saveMonthlyGoal);
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();
@@ -1764,6 +1929,11 @@ document.getElementById("dateTo").addEventListener("change", event => {
 });
 
 const params = new URLSearchParams(window.location.search);
+pendingAutoPrint = params.get("print") === "1";
+const initialView = params.get("view");
+if (initialView && document.getElementById(initialView)) {
+  state.activeView = initialView;
+}
 if (params.get("error")) showNotice(decodeURIComponent(params.get("error")));
 if (params.get("connected")) showNotice("Kommo conectado. A primeira sincronizacao foi iniciada.");
 

@@ -8,7 +8,6 @@ const clinicLabels = {
   vielle: "Vielle Clinic",
   inspire: "Clínica Inspire",
   carla: "Dr. Carla Ferreira",
-  casa_vitalle: "Casa Vitalle",
 };
 
 document.querySelectorAll("[data-clinic-label]").forEach(element => {
