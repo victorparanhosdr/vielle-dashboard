@@ -18,6 +18,8 @@ const state = {
   selectedClinic: "",
 };
 
+let pendingAutoPrint = false;
+
 const clinics = {
   vielle: {
     id: "vielle",
@@ -1742,6 +1744,7 @@ async function loadReport() {
   }
   state.report = payload;
   render();
+  scheduleAutoPrint();
 }
 
 async function syncNow() {
@@ -1840,6 +1843,16 @@ function exportPdf() {
   }, 2400);
 }
 
+function scheduleAutoPrint() {
+  if (!pendingAutoPrint) return;
+  pendingAutoPrint = false;
+  const cleanParams = new URLSearchParams(window.location.search);
+  cleanParams.delete("print");
+  const cleanQuery = cleanParams.toString();
+  history.replaceState(null, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}`);
+  setTimeout(() => window.print(), 700);
+}
+
 document.getElementById("connectBtn").addEventListener("click", () => {
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (clinic.commercialSource === "midas") {
@@ -1923,6 +1936,11 @@ document.getElementById("dateTo").addEventListener("change", event => {
 });
 
 const params = new URLSearchParams(window.location.search);
+pendingAutoPrint = params.get("print") === "1";
+const initialView = params.get("view");
+if (initialView && document.getElementById(initialView)) {
+  state.activeView = initialView;
+}
 if (params.get("error")) showNotice(decodeURIComponent(params.get("error")));
 if (params.get("connected")) showNotice("Kommo conectado. A primeira sincronizacao foi iniciada.");
 

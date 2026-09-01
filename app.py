@@ -4479,21 +4479,19 @@ class Handler(SimpleHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/export-pdf":
-            with clinic_context(self.request_clinic_id(parsed)):
-                if not self.require_clinic_access(parsed):
-                    return
-                params = urllib.parse.parse_qs(parsed.query)
-                try:
-                    args = query_report_args(params)
-                    report = report_data(**args)
-                    view = params.get("view", ["commercial"])[0]
-                    pdf = generate_report_pdf(report, view="financial" if view == "financialView" else "commercial")
-                    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-                    return binary_response(self, pdf, f"{current_clinic_id()}-dashboard-{stamp}.pdf", "application/pdf")
-                except ValueError as exc:
-                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
-                except Exception as exc:
-                    return json_response(self, {"ok": False, "error": f"Não foi possível gerar o PDF: {exc}"}, HTTPStatus.BAD_REQUEST)
+            params = urllib.parse.parse_qs(parsed.query)
+            clinic_id = self.request_clinic_id(parsed)
+            query_pairs = [("clinic", clinic_id)]
+            view = params.get("view", [""])[0]
+            for key, values in params.items():
+                if key in ("clinic", "view"):
+                    continue
+                for value in values:
+                    query_pairs.append((key, value))
+            if view:
+                query_pairs.append(("view", view))
+            query_pairs.append(("print", "1"))
+            return redirect(self, f"/?{urllib.parse.urlencode(query_pairs)}")
         if parsed.path == "/api/sync":
             with clinic_context(self.request_clinic_id(parsed)):
                 if not self.require_clinic_access(parsed):
