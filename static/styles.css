@@ -1307,40 +1307,16 @@ button.danger {
 
 .generalHeroGrid {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(320px, 1.25fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: dense;
   gap: 12px;
-  align-items: start;
-}
-
-.generalHeroMain {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.generalHeroSide {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-content: start;
-}
-
-.generalHeroSide .generalMetric:last-child {
-  grid-column: 1 / -1;
-}
-
-.generalMetric.featured,
-.generalMetric.wideMetric {
-  grid-column: span 3;
-}
-
-.generalHeroMain .generalMetric:nth-child(n+3) {
-  grid-column: span 2;
+  align-items: stretch;
 }
 
 .generalMetric {
+  grid-column: span 3;
   min-width: 0;
-  min-height: 130px;
+  min-height: 126px;
   padding: 18px;
   border: 1px solid rgba(204, 230, 242, .90);
   border-radius: 10px;
@@ -1350,16 +1326,23 @@ button.danger {
   box-shadow: var(--shadow);
 }
 
+.generalMetric.featured,
+.generalMetric.emphasisMargin {
+  grid-column: span 4;
+}
+
 .generalMetric.featured {
+  grid-row: span 2;
+  min-height: 264px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(230, 248, 253, .9)),
-    linear-gradient(135deg, rgba(21, 27, 75, .12), transparent 58%);
-  color: #12213a;
+    radial-gradient(circle at 92% 14%, rgba(50, 205, 215, .32), transparent 30%),
+    linear-gradient(135deg, #132456, #0b7894 90%);
+  color: #fff;
 }
 
 .generalMetric.featured span,
 .generalMetric.featured small {
-  color: var(--muted);
+  color: rgba(255, 255, 255, .78);
 }
 
 .generalMetric.featured strong,
@@ -1376,14 +1359,58 @@ button.danger {
   white-space: nowrap;
 }
 
-.generalMetric.featured strong,
-.generalMetric.wideMetric strong {
-  font-size: clamp(25px, 2.15vw, 38px);
+.generalMetric.featured strong {
+  color: #fff;
+  font-size: clamp(34px, 3.4vw, 54px);
+}
+
+.generalMetric.mediumMetric {
+  grid-column: span 3;
+}
+
+.generalMetric.mediumMetric strong {
+  font-size: clamp(24px, 2vw, 34px);
+}
+
+.generalMetric.emphasisMargin {
+  background:
+    radial-gradient(circle at 90% 18%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #0d7891, #16c7a9);
+}
+
+.generalMetric.emphasisMargin span,
+.generalMetric.emphasisMargin strong,
+.generalMetric.emphasisMargin small,
+.generalMetric.emphasisLeads span,
+.generalMetric.emphasisLeads strong,
+.generalMetric.emphasisLeads small,
+.generalMetric.emphasisBookings span,
+.generalMetric.emphasisBookings strong,
+.generalMetric.emphasisBookings small {
+  color: #fff;
+}
+
+.generalMetric.emphasisLeads,
+.generalMetric.emphasisBookings,
+.generalMetric.compact {
+  grid-column: span 2;
+}
+
+.generalMetric.emphasisLeads {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .24), transparent 28%),
+    linear-gradient(135deg, #078766, #1fbfd5);
+}
+
+.generalMetric.emphasisBookings {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #3157d8, #17b8cf);
 }
 
 .generalMetric.revenue strong,
 .generalMetric.ticket strong,
-.generalMetric.compact strong {
+.generalMetric.compact:not(.emphasisLeads):not(.emphasisBookings) strong {
   color: var(--brand-dark);
 }
 
@@ -1394,10 +1421,6 @@ button.danger {
 
 .generalMetric.compact strong {
   font-size: clamp(26px, 2vw, 34px);
-}
-
-.generalHeroSide .generalMetric:last-child strong {
-  font-size: clamp(28px, 2vw, 34px);
 }
 
 .generalMetric::after {
@@ -3587,8 +3610,7 @@ select {
 
   .generalExecutiveHeader,
   .generalDashboardGrid,
-  .generalHeroMain,
-  .generalHeroSide,
+  .generalHeroGrid,
   .generalDonutWrap,
   .generalMicroStats {
     grid-template-columns: 1fr;
@@ -3596,9 +3618,11 @@ select {
 
   .generalMetric.featured,
   .generalMetric.wideMetric,
-  .generalHeroMain .generalMetric:nth-child(n+3),
-  .generalHeroSide .generalMetric:last-child {
+  .generalMetric.mediumMetric,
+  .generalMetric.emphasisMargin,
+  .generalMetric.compact {
     grid-column: auto;
+    grid-row: auto;
   }
 
   .generalExecutive .generalControls,

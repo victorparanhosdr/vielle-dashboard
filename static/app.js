@@ -511,6 +511,7 @@ function renderGeneralPanel(panel) {
   const dailyFinancial = panel.financial_daily || [];
   const totalLeads = (panel.daily_leads || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
   const totalBookings = (panel.daily_bookings || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const bookingConversion = totalLeads ? totalBookings / totalLeads : null;
   const monthInput = document.getElementById("generalMonth");
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
@@ -544,6 +545,9 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalWeakDay").textContent = weakestDay ? `${formatDay(weakestDay.day)} · ${brl.format(weakestDay.income || 0)}` : "-";
   document.getElementById("generalTotalLeads").textContent = totalLeads;
   document.getElementById("generalTotalBookings").textContent = totalBookings;
+  document.getElementById("generalBookingConversion").textContent = bookingConversion === null
+    ? "Conversão: -"
+    : `Conversão: ${formatPercent(bookingConversion)}`;
   document.getElementById("generalDistinctPatients").textContent = Number(panel.distinct_patients || 0);
   document.getElementById("generalSalesCount").textContent = salesCount;
   document.getElementById("generalActiveDays").textContent = activeDays;
