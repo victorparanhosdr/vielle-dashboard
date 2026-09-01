@@ -1060,6 +1060,21 @@ def money_value(value):
     return number / 100
 
 
+def is_settled_financial_status(status):
+    return str(status or "").strip().lower() in {
+        "paid",
+        "received",
+        "settled",
+        "done",
+        "pago",
+        "paga",
+        "quitado",
+        "quitada",
+        "liquidado",
+        "liquidada",
+    }
+
+
 def stable_numeric_id(value, namespace="midas"):
     text = f"{namespace}:{value or ''}"
     return int(hashlib.sha1(text.encode("utf-8")).hexdigest()[:15], 16)
@@ -1662,6 +1677,7 @@ def save_clinica_parcel(conn, parcel, synced_at):
     if not uuid:
         return False
     bill = first_value(parcel, ["bill", "bill_uuid"])
+    status = first_value(parcel, ["status"])
     amount = money_value(first_value(parcel, [
         "amount",
         "value",
@@ -1672,6 +1688,22 @@ def save_clinica_parcel(conn, parcel, synced_at):
         "received_amount",
         "net_amount",
     ]))
+    paid_at_keys = [
+        "paid_at",
+        "payment_date",
+        "payment_at",
+        "paid_on",
+        "received_at",
+        "paid_date",
+        "execution_date",
+        "compensation_date",
+        "liquidation_date",
+        "settled_at",
+        "settlement_date",
+    ]
+    if is_settled_financial_status(status):
+        paid_at_keys.append("calc_compensation_date")
+    paid_at = first_value(parcel, paid_at_keys)
     conn.execute(
         """
         insert into clinica_parcels
@@ -1685,7 +1717,11 @@ def save_clinica_parcel(conn, parcel, synced_at):
             category_name=coalesce(excluded.category_name, clinica_parcels.category_name),
             account_name=coalesce(excluded.account_name, clinica_parcels.account_name),
             due_date=coalesce(excluded.due_date, clinica_parcels.due_date),
-            paid_at=coalesce(excluded.paid_at, clinica_parcels.paid_at),
+            paid_at=case
+                when lower(coalesce(excluded.status, '')) in ('paid', 'received', 'settled', 'done', 'pago', 'paga', 'quitado', 'quitada', 'liquidado', 'liquidada')
+                then coalesce(excluded.paid_at, clinica_parcels.paid_at)
+                else excluded.paid_at
+            end,
             amount=coalesce(excluded.amount, clinica_parcels.amount),
             raw_json=excluded.raw_json,
             synced_at=excluded.synced_at
@@ -1694,20 +1730,12 @@ def save_clinica_parcel(conn, parcel, synced_at):
             str(uuid),
             str(bill.get("uuid") or bill.get("id")) if isinstance(bill, dict) else str(bill) if bill else None,
             first_value(parcel, ["type"]),
-            first_value(parcel, ["status"]),
+            status,
             first_value(parcel, ["description", "name", "title"]),
             nested_name(parcel, "category") or nested_name(parcel, "financial_category"),
             nested_name(parcel, "account") or nested_name(parcel, "financial_account"),
             first_value(parcel, ["due_date", "expires_at", "date"]),
-            first_value(parcel, [
-                "paid_at",
-                "payment_date",
-                "received_at",
-                "paid_date",
-                "execution_date",
-                "compensation_date",
-                "calc_compensation_date",
-            ]),
+            paid_at,
             amount,
             json.dumps(parcel, ensure_ascii=False),
             synced_at,
@@ -1731,6 +1759,32 @@ def sync_clinica_list(path, preferred_keys, saver, max_pages=100):
                     total += 1
         if len(items) < 100:
             break
+    return total
+
+
+def sync_clinica_list_variants(paths, preferred_keys, saver, max_pages=100):
+    total = 0
+    seen = set()
+    synced_at = int(time.time())
+    for path in paths:
+        for page in range(1, max_pages + 1):
+            sep = "&" if "?" in path else "?"
+            try:
+                payload = clinica_request(f"{path}{sep}page={page}")
+            except RuntimeError:
+                break
+            items = extract_items(payload, preferred_keys)
+            if not items:
+                break
+            with db() as conn:
+                for item in items:
+                    uuid = first_value(item, ["uuid", "id", "parcel_uuid", "bill_uuid"])
+                    key = str(uuid) if uuid else json.dumps(item, sort_keys=True, ensure_ascii=False)
+                    if saver(conn, item, synced_at) and key not in seen:
+                        seen.add(key)
+                        total += 1
+            if len(items) < 100:
+                break
     return total
 
 
@@ -1759,6 +1813,55 @@ def sync_clinica_sales_period(date_from, date_to):
             if len(items) < 100:
                 break
     return total
+
+
+def expanded_financial_period(date_from, date_to, days=75):
+    start = datetime.strptime(date_from, "%Y-%m-%d") - timedelta(days=days)
+    end = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=days)
+    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+
+def sync_clinica_bills_period(date_from, date_to):
+    financial_from, financial_to = expanded_financial_period(date_from, date_to)
+    starts_at = f"{financial_from}T00:00:00-03:00"
+    ends_at = f"{financial_to}T23:59:59-03:00"
+    sort_columns = (
+        None,
+        "emission_date",
+        "due_date",
+        "execution_date",
+        "payment_date",
+        "paid_at",
+        "updated_at",
+        "created_at",
+    )
+    paths = []
+    for sort_column in sort_columns:
+        suffix = f"&sort_column={sort_column}" if sort_column else ""
+        paths.append(f"/bills?starts_at={starts_at}&ends_at={ends_at}{suffix}&per_page=100")
+    return sync_clinica_list_variants(paths, ["data", "bills"], save_clinica_bill)
+
+
+def sync_clinica_parcels_period(date_from, date_to):
+    financial_from, financial_to = expanded_financial_period(date_from, date_to)
+    starts_at = f"{financial_from}T00:00:00-03:00"
+    ends_at = f"{financial_to}T23:59:59-03:00"
+    sort_columns = (
+        None,
+        "due_date",
+        "execution_date",
+        "payment_date",
+        "paid_at",
+        "compensation_date",
+        "calc_compensation_date",
+        "updated_at",
+        "created_at",
+    )
+    paths = []
+    for sort_column in sort_columns:
+        suffix = f"&sort_column={sort_column}" if sort_column else ""
+        paths.append(f"/parcels?starts_at={starts_at}&ends_at={ends_at}{suffix}&per_page=100")
+    return sync_clinica_list_variants(paths, ["data", "parcels"], save_clinica_parcel)
 
 
 def sync_clinica_sale_quotes_period(date_from, date_to):
@@ -1817,16 +1920,8 @@ def sync_clinica_period(date_from, date_to):
             raise
         sale_quotes = 0
         sale_quote_warnings.append(str(exc))
-    bills = sync_clinica_list(
-        f"/bills?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
-        ["data", "bills"],
-        save_clinica_bill,
-    )
-    parcels = sync_clinica_list(
-        f"/parcels?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
-        ["data", "parcels"],
-        save_clinica_parcel,
-    )
+    bills = sync_clinica_bills_period(date_from, date_to)
+    parcels = sync_clinica_parcels_period(date_from, date_to)
     return bookings, sales, sale_quotes, bills, parcels, sale_quote_warnings
 
 
@@ -2912,7 +3007,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         parcel_date_expr = "substr(coalesce(paid_at, due_date), 1, 10)"
         parcel_amount_expr = "coalesce(json_extract(raw_json, '$.final_amount') / 100.0, amount, 0)"
         parcel_balance_expr = "coalesce(json_extract(raw_json, '$.balance') / 100.0, 0)"
-        parcel_paid_filter = "lower(coalesce(status, '')) in ('paid', 'received', 'settled', 'done')"
+        parcel_paid_filter = (
+            "lower(coalesce(status, '')) in "
+            "('paid', 'received', 'settled', 'done', 'pago', 'paga', 'quitado', 'quitada', 'liquidado', 'liquidada')"
+        )
         parcel_settled_expr = (
             f"case when {parcel_paid_filter} then {parcel_amount_expr} "
             f"when {parcel_balance_expr} > 0 and {parcel_balance_expr} < {parcel_amount_expr} "
