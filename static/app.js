@@ -175,6 +175,7 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
   renderStatusColumnChart(report.all_current_status || []);
@@ -384,6 +385,15 @@ function emptyReportForClinic(clinicId) {
         performance_daily: [],
         basis: "Aguardando integração da clínica.",
       },
+    },
+    paid_traffic: {
+      connected: false,
+      basis: "Meta Ads",
+      account_id: "",
+      totals: { spend: 0, impressions: 0, reach: 0, clicks: 0, leads: 0, ctr: null, cpc: null, cpl: null },
+      daily: [],
+      campaigns: [],
+      last_sync: null,
     },
     general_panel: {
       month: monthFromDate(dateFrom),
@@ -1380,9 +1390,89 @@ function financeTypeLabel(type) {
   return labels[String(type || "").toLowerCase()] || type || "Sem tipo";
 }
 
+function integerFormat(value) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
 function formatPercent(value) {
   if (value === null || value === undefined) return "-";
   return new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 }).format(value);
+}
+
+function formatNullableMoney(value) {
+  const number = Number(value || 0);
+  return number ? brl.format(number) : "-";
+}
+
+function renderPaidTraffic(traffic) {
+  const totals = traffic.totals || {};
+  document.getElementById("trafficBasis").textContent = traffic.basis || "Meta Ads";
+  document.getElementById("trafficAccount").textContent = traffic.account_id
+    ? `Conta ${traffic.account_id}`
+    : "Conta de anúncios";
+  document.getElementById("trafficLastSync").textContent = traffic.last_sync
+    ? `Atualizado: ${fmtDate(traffic.last_sync)}`
+    : (traffic.connected ? "Token configurado. Clique para atualizar." : "Configure o token da Meta em Configurações.");
+  document.getElementById("trafficSpend").textContent = brl.format(totals.spend || 0);
+  document.getElementById("trafficLeads").textContent = integerFormat(totals.leads || 0);
+  document.getElementById("trafficImpressions").textContent = integerFormat(totals.impressions || 0);
+  document.getElementById("trafficReach").textContent = integerFormat(totals.reach || 0);
+  document.getElementById("trafficClicks").textContent = integerFormat(totals.clicks || 0);
+  document.getElementById("trafficCtr").textContent = formatPercent(totals.ctr);
+  document.getElementById("trafficCpc").textContent = formatNullableMoney(totals.cpc);
+  document.getElementById("trafficCpl").textContent = formatNullableMoney(totals.cpl);
+  renderTrafficDailyChart(traffic.daily || []);
+  renderTrafficCampaigns(traffic.campaigns || []);
+}
+
+function renderTrafficDailyChart(items) {
+  const prepared = (items || []).map(item => ({
+    ...item,
+    spend: Number(item.spend || 0),
+    leads: Number(item.leads || 0),
+  }));
+  renderHorizontalComparisonChart("trafficDailyChart", prepared, {
+    firstKey: "spend",
+    secondKey: "leads",
+    firstLabel: "Investimento",
+    secondLabel: "Leads",
+    firstColor: "#7c3aed",
+    secondColor: "#13b8cf",
+    firstFormatter: value => brl.format(value || 0),
+    secondFormatter: value => integerFormat(value || 0),
+    independentScale: true,
+    empty: "Ainda não há dados de tráfego pago para o período.",
+    detail: item => `Cliques: ${integerFormat(item.clicks || 0)} · CPL: ${formatNullableMoney(item.cpl)}`,
+  });
+}
+
+function renderTrafficCampaigns(campaigns) {
+  const el = document.getElementById("trafficCampaigns");
+  const rows = [...(campaigns || [])]
+    .sort((a, b) => Number(b.spend || 0) - Number(a.spend || 0));
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty">Nenhuma campanha sincronizada ainda.</div>`;
+    return;
+  }
+  const maxSpend = Math.max(...rows.map(row => Number(row.spend || 0)), 1);
+  el.innerHTML = rows.map(row => {
+    const spend = Number(row.spend || 0);
+    const leads = Number(row.leads || 0);
+    const cpl = leads ? spend / leads : 0;
+    return `
+      <article class="trafficCampaignRow">
+        <div class="trafficCampaignName">
+          <strong>${escapeHtml(row.campaign_name || "Campanha sem nome")}</strong>
+          <span>${integerFormat(row.impressions || 0)} impressões · ${integerFormat(row.clicks || 0)} cliques</span>
+          <i><b style="width:${Math.max(spend ? 4 : 0, (spend / maxSpend) * 100)}%"></b></i>
+        </div>
+        <div><span>Investimento</span><strong>${brl.format(spend)}</strong></div>
+        <div><span>Leads</span><strong>${integerFormat(leads)}</strong></div>
+        <div><span>CPL</span><strong>${formatNullableMoney(cpl)}</strong></div>
+        <div><span>CTR</span><strong>${formatPercent(row.ctr)}</strong></div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderStatusColumnChart(items) {
@@ -1778,6 +1868,26 @@ async function syncClinicaNow() {
   }
 }
 
+async function syncTrafficNow() {
+  const btn = document.getElementById("syncTrafficBtn");
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Atualizando tráfego...";
+  try {
+    const res = await fetch(`/api/sync-traffic${buildQuery()}`);
+    const payload = await res.json();
+    if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar o tráfego pago.");
+    showNotice(`Tráfego pago atualizado: ${payload.rows || 0} linhas.`);
+    await loadReport();
+  } catch (error) {
+    showNotice(friendlyError(error.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 async function saveMonthlyGoal() {
   const month = state.selectedMonth || currentMonthValue();
   const goals = {};
@@ -1857,6 +1967,7 @@ document.getElementById("connectBtn").addEventListener("click", () => {
 
 document.getElementById("syncBtn").addEventListener("click", syncNow);
 document.getElementById("syncClinicaBtn").addEventListener("click", syncClinicaNow);
+document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTrafficNow);
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);

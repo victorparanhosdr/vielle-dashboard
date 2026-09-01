@@ -586,6 +586,7 @@ button.danger {
   min-height: 40px;
   background: linear-gradient(135deg, var(--green), var(--brand));
   color: #082034;
+  white-space: nowrap;
 }
 
 .generalHeroGrid {
@@ -1266,7 +1267,7 @@ button.danger {
 }
 
 .generalExecutive .generalControls {
-  grid-template-columns: minmax(210px, 260px) minmax(155px, 190px);
+  grid-template-columns: minmax(210px, 260px) minmax(155px, 190px) auto;
   border-color: rgba(204, 230, 242, .92);
   background: rgba(255, 255, 255, .86);
   box-shadow: 0 12px 30px rgba(21, 27, 75, .08);
@@ -1278,25 +1279,6 @@ button.danger {
   background: rgba(255, 255, 255, .94);
 }
 
-.generalGoalsPanel {
-  display: grid;
-  grid-template-columns: minmax(170px, auto) minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: end;
-  margin: 12px 0 14px;
-  padding: 16px 18px;
-  border: 1px solid rgba(204, 230, 242, .9);
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(239, 249, 252, .88));
-  box-shadow: var(--shadow);
-}
-
-.generalGoalsPanel > div:first-child {
-  display: grid;
-  gap: 3px;
-}
-
-.generalGoalsPanel > div:first-child span,
 .monthlyGoalRow span {
   color: var(--muted);
   font-size: 11px;
@@ -1305,16 +1287,12 @@ button.danger {
   text-transform: uppercase;
 }
 
-.generalGoalsPanel > div:first-child strong {
-  color: #12213a;
-  font-size: 20px;
-  font-weight: 950;
-}
-
 .monthlyGoalsList {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 10px;
+  overflow: auto;
+  padding: 4px 2px 2px;
 }
 
 .monthlyGoalRow {
@@ -1327,52 +1305,19 @@ button.danger {
   font-weight: 850;
 }
 
-.generalGoalsPanel button {
-  min-width: 138px;
-  align-self: stretch;
-  border: 0;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--green), var(--brand));
-  color: #102136;
-  font-size: 15px;
-  font-weight: 950;
-  cursor: pointer;
-  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
-}
-
 .generalHeroGrid {
-  grid-template-columns: minmax(0, 1.6fr) minmax(340px, .72fr);
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  gap: 12px;
   align-items: stretch;
 }
 
-.generalHeroMain {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.generalHeroSide {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.generalHeroSide .generalMetric:last-child {
-  grid-column: 1 / -1;
-}
-
-.generalMetric.featured,
-.generalMetric.wideMetric {
-  grid-column: span 3;
-}
-
-.generalHeroMain .generalMetric:nth-child(n+3) {
-  grid-column: span 2;
-}
-
 .generalMetric {
+  grid-column: span 3;
   min-width: 0;
-  min-height: 136px;
+  min-height: 126px;
+  padding: 18px;
   border: 1px solid rgba(204, 230, 242, .90);
   border-radius: 10px;
   background:
@@ -1381,16 +1326,23 @@ button.danger {
   box-shadow: var(--shadow);
 }
 
+.generalMetric.featured,
+.generalMetric.emphasisMargin {
+  grid-column: span 4;
+}
+
 .generalMetric.featured {
+  grid-row: span 2;
+  min-height: 264px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(230, 248, 253, .9)),
-    linear-gradient(135deg, rgba(21, 27, 75, .12), transparent 58%);
-  color: #12213a;
+    radial-gradient(circle at 92% 14%, rgba(50, 205, 215, .32), transparent 30%),
+    linear-gradient(135deg, #132456, #0b7894 90%);
+  color: #fff;
 }
 
 .generalMetric.featured span,
 .generalMetric.featured small {
-  color: var(--muted);
+  color: rgba(255, 255, 255, .78);
 }
 
 .generalMetric.featured strong,
@@ -1399,7 +1351,7 @@ button.danger {
   overflow: hidden;
   color: #12213a;
   font-family: var(--font);
-  font-size: clamp(24px, 2.15vw, 36px);
+  font-size: clamp(24px, 2vw, 34px);
   font-weight: 950;
   letter-spacing: 0;
   line-height: 1.02;
@@ -1407,28 +1359,68 @@ button.danger {
   white-space: nowrap;
 }
 
-.generalMetric.featured strong,
-.generalMetric.wideMetric strong {
-  font-size: clamp(25px, 2.25vw, 38px);
+.generalMetric.featured strong {
+  color: #fff;
+  font-size: clamp(34px, 3.4vw, 54px);
+}
+
+.generalMetric.mediumMetric {
+  grid-column: span 3;
+}
+
+.generalMetric.mediumMetric strong {
+  font-size: clamp(24px, 2vw, 34px);
+}
+
+.generalMetric.emphasisMargin {
+  background:
+    radial-gradient(circle at 90% 18%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #0d7891, #16c7a9);
+}
+
+.generalMetric.emphasisMargin span,
+.generalMetric.emphasisMargin strong,
+.generalMetric.emphasisMargin small,
+.generalMetric.emphasisLeads span,
+.generalMetric.emphasisLeads strong,
+.generalMetric.emphasisLeads small,
+.generalMetric.emphasisBookings span,
+.generalMetric.emphasisBookings strong,
+.generalMetric.emphasisBookings small {
+  color: #fff;
+}
+
+.generalMetric.emphasisLeads,
+.generalMetric.emphasisBookings,
+.generalMetric.compact {
+  grid-column: span 2;
+}
+
+.generalMetric.emphasisLeads {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .24), transparent 28%),
+    linear-gradient(135deg, #078766, #1fbfd5);
+}
+
+.generalMetric.emphasisBookings {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #3157d8, #17b8cf);
 }
 
 .generalMetric.revenue strong,
 .generalMetric.ticket strong,
-.generalMetric.compact strong {
+.generalMetric.compact:not(.emphasisLeads):not(.emphasisBookings) strong {
   color: var(--brand-dark);
 }
 
 .generalMetric.compact {
-  min-height: 136px;
-  padding: 16px;
+  min-height: 118px;
+  padding: 14px;
 }
 
 .generalMetric.compact strong {
-  font-size: clamp(28px, 2.15vw, 36px);
-}
-
-.generalHeroSide .generalMetric:last-child strong {
-  font-size: clamp(28px, 2vw, 34px);
+  font-size: clamp(26px, 2vw, 34px);
 }
 
 .generalMetric::after {
@@ -1456,6 +1448,249 @@ button.danger {
 
 .generalWide {
   grid-column: 1 / -1;
+}
+
+.generalExpenseDashboard {
+  display: grid;
+  grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr);
+  gap: 12px;
+}
+
+.generalExpenseDashboard .panel {
+  min-width: 0;
+}
+
+.generalFinanceSummary {
+  min-height: 268px;
+}
+
+.generalExpenseCategoryPanel {
+  grid-row: span 2;
+}
+
+.generalExpenseDailyPanel {
+  grid-column: 1 / -1;
+}
+
+.generalFinanceTotals {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.expenseHeroValue {
+  display: grid;
+  min-height: 128px;
+  align-content: center;
+  gap: 10px;
+  border: 1px solid rgba(204, 230, 242, .90);
+  border-radius: 10px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 90% 8%, rgba(113, 103, 232, .14), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, .96), rgba(231, 247, 252, .84));
+}
+
+.expenseHeroValue span,
+.expenseMiniGrid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.expenseHeroValue strong {
+  overflow: hidden;
+  color: #12213a;
+  font-size: clamp(31px, 3.2vw, 46px);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenseMiniGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.expenseMiniGrid span {
+  display: grid;
+  gap: 7px;
+  min-height: 76px;
+  align-content: center;
+  border: 1px solid rgba(204, 230, 242, .86);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, .72);
+}
+
+.expenseMiniGrid span:last-child {
+  grid-column: 1 / -1;
+}
+
+.expenseMiniGrid b {
+  overflow: hidden;
+  color: var(--brand-dark);
+  font-size: clamp(20px, 1.8vw, 29px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generalExpenseCategories {
+  display: grid;
+  grid-template-columns: minmax(190px, .7fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+}
+
+.expenseDonutBlock {
+  display: grid;
+  place-items: center;
+}
+
+.expenseDonut {
+  position: relative;
+  display: grid;
+  width: min(230px, 100%);
+  place-items: center;
+}
+
+.expenseDonut svg {
+  width: 100%;
+  max-width: 230px;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0 16px 26px rgba(18, 33, 58, .12));
+}
+
+.expenseDonut strong,
+.expenseDonut span {
+  position: absolute;
+  text-align: center;
+}
+
+.expenseDonut strong {
+  max-width: 118px;
+  overflow: hidden;
+  color: #12213a;
+  font-size: 18px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenseDonut span {
+  margin-top: 42px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.expenseCategoryRows {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.expenseCategoryRow {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(94px, auto);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid rgba(83, 113, 145, .12);
+  padding: 0 0 10px;
+}
+
+.expenseCategoryRow > i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.expenseCategoryRow strong {
+  display: block;
+  overflow: hidden;
+  color: #12213a;
+  font-size: 13px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenseCategoryRow small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.expenseCategoryRow span {
+  display: block;
+  height: 8px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(225, 238, 246, .92);
+}
+
+.expenseCategoryRow em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+}
+
+.expenseCategoryRow b {
+  color: var(--brand-dark);
+  font-size: 14px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.generalIncomeTypes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 10px;
+  padding: 18px;
+}
+
+.incomeTypeCard {
+  display: grid;
+  min-height: 102px;
+  align-content: center;
+  gap: 7px;
+  border: 1px solid rgba(204, 230, 242, .86);
+  border-radius: 10px;
+  padding: 13px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .92), rgba(238, 248, 252, .72));
+}
+
+.incomeTypeCard span,
+.incomeTypeCard small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.incomeTypeCard strong {
+  overflow: hidden;
+  color: #12213a;
+  font-size: clamp(22px, 2vw, 30px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .generalQuickCard {
@@ -1591,6 +1826,273 @@ button.danger {
   font-size: 11px;
   font-style: normal;
   font-weight: 950;
+}
+
+.trafficActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px 0;
+}
+
+.trafficActions div {
+  display: grid;
+  gap: 4px;
+}
+
+.trafficActions strong {
+  color: #12213a;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.trafficActions span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.trafficActions button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--brand));
+  color: #102136;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(24, 185, 212, .20);
+}
+
+.trafficActions button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.trafficMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.trafficMetric {
+  display: grid;
+  align-content: space-between;
+  min-height: 132px;
+  padding: 16px;
+  border: 1px solid rgba(204, 230, 242, .90);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(239, 248, 252, .88)),
+    linear-gradient(135deg, rgba(24, 185, 212, .12), transparent 62%);
+  box-shadow: var(--shadow);
+}
+
+.trafficMetric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.trafficMetric strong {
+  margin-top: 18px;
+  color: #12213a;
+  font-size: clamp(25px, 2.2vw, 38px);
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trafficMetric small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.trafficMetric.emphasisRevenue,
+.trafficMetric.emphasisLeads {
+  background:
+    radial-gradient(circle at 95% 10%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #14235a, #0a86a0 92%);
+}
+
+.trafficMetric.emphasisRevenue span,
+.trafficMetric.emphasisLeads span,
+.trafficMetric.emphasisRevenue small,
+.trafficMetric.emphasisLeads small,
+.trafficMetric.emphasisRevenue strong,
+.trafficMetric.emphasisLeads strong {
+  color: #fff;
+}
+
+.trafficMetric.emphasisRevenue small,
+.trafficMetric.emphasisLeads small {
+  opacity: .78;
+}
+
+.trafficDailyChart {
+  padding: 18px 20px 22px;
+}
+
+.trafficCampaigns {
+  display: grid;
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+.trafficCampaignRow {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(128px, .35fr) minmax(86px, .2fr) minmax(88px, .2fr) minmax(86px, .2fr);
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(204, 230, 242, .86);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .74);
+}
+
+.trafficCampaignRow > div {
+  min-width: 0;
+}
+
+.trafficCampaignRow span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.trafficCampaignRow strong {
+  display: block;
+  overflow: hidden;
+  color: #12213a;
+  font-size: 15px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trafficCampaignName {
+  display: grid;
+  gap: 6px;
+}
+
+.trafficCampaignName i {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(224, 234, 242, .9);
+}
+
+.trafficCampaignName b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--brand), var(--accent));
+}
+
+.generalExpenseBars {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 16px 18px 18px;
+}
+
+.expenseDailyStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.expenseDailyStats span {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(204, 230, 242, .86);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, .68);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.expenseDailyStats b {
+  overflow: hidden;
+  color: #12213a;
+  font-size: 18px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenseDayBars {
+  display: grid;
+  min-width: 760px;
+  min-height: 258px;
+  grid-template-columns: repeat(var(--expense-days, 31), minmax(22px, 1fr));
+  gap: 9px;
+  align-items: end;
+  border: 1px solid rgba(204, 230, 242, .88);
+  border-radius: 10px;
+  padding: 16px 14px 0;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 55px, rgba(92, 116, 145, .10) 56px 57px),
+    linear-gradient(180deg, rgba(255, 255, 255, .84), rgba(238, 247, 252, .58));
+}
+
+.expenseDayBar {
+  position: relative;
+  display: grid;
+  height: 238px;
+  grid-template-rows: 1fr 28px;
+  align-items: end;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.expenseDayBar i {
+  display: block;
+  width: 100%;
+  min-height: 3px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, #ef6a73, #18b9d4);
+  box-shadow: 0 12px 24px rgba(239, 106, 115, .18);
+}
+
+.expenseDayBar b {
+  align-self: center;
+}
+
+.expenseDayBar:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 25;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 280px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: #12213a;
+  padding: 9px 11px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 14px 28px rgba(18, 33, 58, .24);
 }
 
 .generalMicroStats {
@@ -2586,7 +3088,7 @@ select {
 
 .rankModal {
   position: fixed;
-  z-index: 30;
+  z-index: 200;
   inset: 0;
   display: grid;
   place-items: center;
@@ -2649,6 +3151,64 @@ select {
 .rankModalBody .rankItem:hover {
   opacity: 1;
   transform: none;
+}
+
+.goalsModalPanel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(900px, 94vw);
+}
+
+.goalsModalPanel header span,
+.goalsModalPanel header small,
+.goalsModalControls span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.goalsModalPanel header small {
+  display: block;
+  margin-top: 4px;
+}
+
+.goalsModalControls {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid rgba(24, 185, 212, .10);
+}
+
+.goalsModalControls label {
+  display: grid;
+  gap: 6px;
+}
+
+.goalsModalControls button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--brand));
+  color: #102136;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
+}
+
+.goalsModalPanel .monthlyGoalsList {
+  align-content: start;
+  padding: 18px 24px 24px;
+}
+
+.goalsModalPanel .monthlyGoalRow {
+  padding: 12px;
+  border: 1px solid rgba(204, 230, 242, .88);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .72);
 }
 
 .doctorCross {
@@ -3219,10 +3779,8 @@ select {
   }
 
   .generalExecutiveHeader,
-  .generalGoalsPanel,
   .generalDashboardGrid,
-  .generalHeroMain,
-  .generalHeroSide,
+  .generalHeroGrid,
   .generalDonutWrap,
   .generalMicroStats {
     grid-template-columns: 1fr;
@@ -3230,12 +3788,15 @@ select {
 
   .generalMetric.featured,
   .generalMetric.wideMetric,
-  .generalHeroMain .generalMetric:nth-child(n+3),
-  .generalHeroSide .generalMetric:last-child {
+  .generalMetric.mediumMetric,
+  .generalMetric.emphasisMargin,
+  .generalMetric.compact {
     grid-column: auto;
+    grid-row: auto;
   }
 
   .generalExecutive .generalControls,
+  .goalsModalControls,
   .generalRangeItem,
   .generalTopItem {
     grid-template-columns: 1fr;
@@ -3272,8 +3833,18 @@ select {
   }
 
   .metrics, .split, .kommoPanel, .sourceBody, .settingsGrid, .compactSettings, .insightGrid,
-  .generalHeroGrid, .generalControls {
+  .generalHeroGrid, .generalControls, .trafficMetricGrid {
     grid-template-columns: 1fr;
+  }
+
+  .trafficActions,
+  .trafficCampaignRow {
+    grid-template-columns: 1fr;
+  }
+
+  .trafficActions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .settingsIntro {
@@ -3310,7 +3881,7 @@ select {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 10mm;
+    margin: 8mm;
   }
 
   * {
@@ -3318,92 +3889,12 @@ select {
     -webkit-print-color-adjust: exact;
   }
 
-  body {
-    background: #ffffff;
-  }
-
-  .clinicLanding, .ambient, .actions, .viewTabs, .notice, .filterPanel::before, .panel::before,
-  .metrics article::before, .shell::before {
-    display: none !important;
-  }
-
-  .shell {
-    width: 100%;
-    padding: 0;
-  }
-
-  .topbar {
-    margin-bottom: 8px;
-    padding: 12px 14px;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  h1 {
-    font-size: 28px;
-  }
-
-  .printStamp {
-    display: block;
-    margin: 0 0 8px;
-    padding: 8px 10px;
-    border: 1px solid #d7e6ef;
-    color: #496174;
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .filterPanel, .panel, .metrics article, .sourcePanel {
-    break-inside: avoid;
-    border: 1px solid #d7e6ef;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-
-  .filterPanel {
-    padding: 10px;
-  }
-
-  .filterGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  input, select, .pipelineSelect summary {
-    border-color: #d7e6ef;
-    background: #ffffff;
-    box-shadow: none;
-  }
-
   .viewPanel:not(.active) {
     display: none !important;
   }
 
-  .metrics, .doctorCross, .clinicaGrid, .financeGrid {
-    gap: 8px;
-  }
-
-  .panel {
-    margin-bottom: 8px;
-  }
-
-  .dailyChart {
-    min-height: auto;
-  }
-
-  .lineChartScroller, .financeDailyList, .statusRankList {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .lineChart, .performanceSvg {
-    height: 220px;
-  }
-
-  .financeDailyRow summary {
-    grid-template-columns: 64px minmax(160px, 1fr) minmax(220px, .9fr);
-  }
-
-  .financeDailyRow summary::after {
-    display: none;
+  .clinicLanding:not(.hidden) ~ .shell,
+  .dashboardHidden {
+    display: none !important;
   }
 }

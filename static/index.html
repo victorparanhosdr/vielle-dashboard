@@ -87,6 +87,7 @@
         <button class="tabBtn active" type="button" data-view="generalView">Painel geral</button>
         <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
+        <button class="tabBtn" type="button" data-view="trafficView">Tráfego pago</button>
       </nav>
 
       <section class="filterPanel" aria-label="Filtros">
@@ -532,6 +533,80 @@
               </section>
             </section>
           </div>
+        </section>
+      </div>
+
+      <div id="trafficView" class="viewPanel">
+        <section class="trafficHero panel">
+          <div class="panelHead">
+            <h2>Tráfego pago</h2>
+            <span id="trafficBasis" class="metaText">Meta Ads</span>
+          </div>
+          <div class="trafficActions">
+            <div>
+              <strong id="trafficAccount">Conta de anúncios</strong>
+              <span id="trafficLastSync">Aguardando sincronização</span>
+            </div>
+            <button id="syncTrafficBtn" type="button">Atualizar Tráfego Pago</button>
+          </div>
+          <div class="trafficMetricGrid">
+            <article class="trafficMetric emphasisRevenue">
+              <span>Investimento</span>
+              <strong id="trafficSpend">R$ 0</strong>
+              <small>Valor gasto no período</small>
+            </article>
+            <article class="trafficMetric emphasisLeads">
+              <span>Leads Meta</span>
+              <strong id="trafficLeads">0</strong>
+              <small>Resultados de lead</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Impressões</span>
+              <strong id="trafficImpressions">0</strong>
+              <small>Exibições</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Alcance</span>
+              <strong id="trafficReach">0</strong>
+              <small>Pessoas alcançadas</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Cliques</span>
+              <strong id="trafficClicks">0</strong>
+              <small>Cliques totais</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CTR</span>
+              <strong id="trafficCtr">-</strong>
+              <small>Cliques / impressões</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CPC</span>
+              <strong id="trafficCpc">-</strong>
+              <small>Custo por clique</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CPL</span>
+              <strong id="trafficCpl">-</strong>
+              <small>Custo por lead</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Investimento e leads dia a dia</h2>
+            <span class="metaText">Passe o mouse para detalhar</span>
+          </div>
+          <div id="trafficDailyChart" class="trafficDailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Campanhas</h2>
+            <span class="metaText">Ordenado por investimento</span>
+          </div>
+          <div id="trafficCampaigns" class="trafficCampaigns"></div>
         </section>
       </div>
 

@@ -34,6 +34,9 @@ CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_CLIENT_SECRET",
     "KOMMO_LONG_LIVED_TOKEN",
     "KOMMO_REDIRECT_URI",
+    "META_AD_ACCOUNT_ID",
+    "META_ACCESS_TOKEN",
+    "META_API_VERSION",
     "MIDAS_API_BASE_URL",
     "MIDAS_API_TOKEN",
     "MIDAS_LOCATION_ID",
@@ -79,6 +82,9 @@ CONFIG_DEFAULTS = {
     "KOMMO_CLIENT_SECRET": KOMMO_CLIENT_SECRET,
     "KOMMO_LONG_LIVED_TOKEN": KOMMO_LONG_LIVED_TOKEN,
     "KOMMO_REDIRECT_URI": KOMMO_REDIRECT_URI,
+    "META_AD_ACCOUNT_ID": os.getenv("META_AD_ACCOUNT_ID", "800459392397447"),
+    "META_ACCESS_TOKEN": os.getenv("META_ACCESS_TOKEN", ""),
+    "META_API_VERSION": os.getenv("META_API_VERSION", "v22.0"),
     "MIDAS_API_BASE_URL": os.getenv("MIDAS_API_BASE_URL", "https://app.midasone.com.br"),
     "MIDAS_API_TOKEN": os.getenv("MIDAS_API_TOKEN", ""),
     "MIDAS_LOCATION_ID": os.getenv("MIDAS_LOCATION_ID", ""),
@@ -108,6 +114,7 @@ CLINIC_CONFIG_DEFAULTS = {
 SECRET_CONFIG_KEYS = {
     "KOMMO_CLIENT_SECRET",
     "KOMMO_LONG_LIVED_TOKEN",
+    "META_ACCESS_TOKEN",
     "MIDAS_API_TOKEN",
     "CLINICA_EXPERTS_TOKEN",
     "APP_SECRET",
@@ -882,6 +889,20 @@ def init_db():
                 ok integer not null default 0,
                 message text
             );
+
+            create table if not exists paid_traffic_insights (
+                day text not null,
+                campaign_id text not null,
+                campaign_name text,
+                spend real not null default 0,
+                impressions integer not null default 0,
+                reach integer not null default 0,
+                clicks integer not null default 0,
+                leads integer not null default 0,
+                raw_json text not null,
+                synced_at integer not null,
+                primary key (day, campaign_id)
+            );
             """
         )
         for statement in (
@@ -1023,6 +1044,210 @@ def kommo_request(method, path, token=None, body=None, domain=None):
                 "Revise a chave/token da integração desta clínica."
             ) from exc
         raise RuntimeError(f"Kommo retornou {exc.code}: {detail}") from exc
+
+
+def meta_ad_account_path():
+    account_id = config_value("META_AD_ACCOUNT_ID", "")
+    account_id = account_id.replace("act_", "").strip()
+    if not account_id:
+        raise RuntimeError("META_AD_ACCOUNT_ID nao foi configurado.")
+    return f"act_{account_id}"
+
+
+def meta_request(path, params=None):
+    token = config_value("META_ACCESS_TOKEN", "")
+    if not configured(token):
+        raise RuntimeError("META_ACCESS_TOKEN nao foi configurado.")
+    version = config_value("META_API_VERSION", "v22.0") or "v22.0"
+    clean_version = version if version.startswith("v") else f"v{version}"
+    query = dict(params or {})
+    query["access_token"] = token
+    url = f"https://graph.facebook.com/{clean_version}/{path.lstrip('/')}?{urllib.parse.urlencode(query)}"
+    try:
+        with urllib.request.urlopen(url, timeout=45) as res:
+            content = res.read().decode("utf-8")
+            return json.loads(content) if content else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code in (400, 401) and "token" in detail.lower():
+            raise RuntimeError("Meta Ads retornou erro de token. Revise o token de acesso em Configurações.") from exc
+        raise RuntimeError(f"Meta Ads retornou {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Falha ao acessar Meta Ads: {exc}") from exc
+
+
+def meta_next_page(next_url):
+    try:
+        with urllib.request.urlopen(next_url, timeout=45) as res:
+            content = res.read().decode("utf-8")
+            return json.loads(content) if content else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Meta Ads retornou {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Falha ao acessar Meta Ads: {exc}") from exc
+
+
+def meta_leads_from_actions(row):
+    lead_action_types = {
+        "lead",
+        "onsite_conversion.lead_grouped",
+        "offsite_conversion.fb_pixel_lead",
+        "leadgen_grouped",
+    }
+    total = 0
+    for action in row.get("actions") or []:
+        action_type = str(action.get("action_type") or "").lower()
+        if action_type in lead_action_types or action_type.endswith(".lead"):
+            total += int(float(action.get("value") or 0))
+    return total
+
+
+def sync_paid_traffic(date_from=None, date_to=None):
+    if not date_from or not date_to:
+        date_from, date_to = default_period()
+    account = meta_ad_account_path()
+    params = {
+        "level": "campaign",
+        "fields": "date_start,date_stop,campaign_id,campaign_name,spend,impressions,reach,clicks,actions",
+        "time_increment": "1",
+        "time_range": json.dumps({"since": date_from, "until": date_to}),
+        "limit": "500",
+    }
+    payload = meta_request(f"{account}/insights", params)
+    rows = []
+    while payload:
+        rows.extend(payload.get("data") or [])
+        next_url = (payload.get("paging") or {}).get("next")
+        payload = meta_next_page(next_url) if next_url else None
+    now = int(time.time())
+    with db() as conn:
+        conn.execute(
+            "delete from paid_traffic_insights where day >= ? and day <= ?",
+            (date_from, date_to),
+        )
+        for row in rows:
+            day = str(row.get("date_start") or row.get("date_stop") or "")[:10]
+            campaign_id = str(row.get("campaign_id") or row.get("campaign_name") or "sem-campanha")
+            if not day:
+                continue
+            conn.execute(
+                """
+                insert or replace into paid_traffic_insights
+                (day, campaign_id, campaign_name, spend, impressions, reach, clicks, leads, raw_json, synced_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    day,
+                    campaign_id,
+                    str(row.get("campaign_name") or "Campanha sem nome"),
+                    money_value(row.get("spend")),
+                    int(float(row.get("impressions") or 0)),
+                    int(float(row.get("reach") or 0)),
+                    int(float(row.get("clicks") or 0)),
+                    meta_leads_from_actions(row),
+                    json.dumps(row, ensure_ascii=False),
+                    now,
+                ),
+            )
+        conn.execute(
+            """
+            insert or replace into app_settings (key, value, updated_at)
+            values ('PAID_TRAFFIC_LAST_SYNC', ?, ?)
+            """,
+            (str(now), now),
+        )
+    return {"ok": True, "rows": len(rows), "account": account, "date_from": date_from, "date_to": date_to}
+
+
+def paid_traffic_report(conn, date_from, date_to):
+    connected = configured(config_value("META_ACCESS_TOKEN", ""))
+    account_id = config_value("META_AD_ACCOUNT_ID", "")
+    totals_row = conn.execute(
+        """
+        select coalesce(sum(spend), 0) as spend,
+               coalesce(sum(impressions), 0) as impressions,
+               coalesce(sum(reach), 0) as reach,
+               coalesce(sum(clicks), 0) as clicks,
+               coalesce(sum(leads), 0) as leads
+        from paid_traffic_insights
+        where day >= ? and day <= ?
+        """,
+        (date_from, date_to),
+    ).fetchone()
+    daily_rows = conn.execute(
+        """
+        select day,
+               coalesce(sum(spend), 0) as spend,
+               coalesce(sum(impressions), 0) as impressions,
+               coalesce(sum(reach), 0) as reach,
+               coalesce(sum(clicks), 0) as clicks,
+               coalesce(sum(leads), 0) as leads
+        from paid_traffic_insights
+        where day >= ? and day <= ?
+        group by day
+        order by day
+        """,
+        (date_from, date_to),
+    ).fetchall()
+    campaign_rows = conn.execute(
+        """
+        select campaign_id,
+               campaign_name,
+               coalesce(sum(spend), 0) as spend,
+               coalesce(sum(impressions), 0) as impressions,
+               coalesce(sum(reach), 0) as reach,
+               coalesce(sum(clicks), 0) as clicks,
+               coalesce(sum(leads), 0) as leads
+        from paid_traffic_insights
+        where day >= ? and day <= ?
+        group by campaign_id, campaign_name
+        order by spend desc, leads desc, campaign_name
+        """,
+        (date_from, date_to),
+    ).fetchall()
+    last_sync_row = conn.execute(
+        "select value from app_settings where key = 'PAID_TRAFFIC_LAST_SYNC'"
+    ).fetchone()
+
+    def with_rates(row):
+        item = dict(row)
+        impressions = float(item.get("impressions") or 0)
+        clicks = float(item.get("clicks") or 0)
+        leads = float(item.get("leads") or 0)
+        spend = float(item.get("spend") or 0)
+        item["ctr"] = (clicks / impressions) if impressions else None
+        item["cpc"] = (spend / clicks) if clicks else None
+        item["cpl"] = (spend / leads) if leads else None
+        return item
+
+    daily_lookup = {row["day"]: dict(row) for row in daily_rows}
+    start = datetime.strptime(date_from, "%Y-%m-%d")
+    end = datetime.strptime(date_to, "%Y-%m-%d")
+    daily = []
+    current = start
+    while current <= end:
+        day = current.strftime("%Y-%m-%d")
+        daily.append(with_rates(daily_lookup.get(day, {
+            "day": day,
+            "spend": 0,
+            "impressions": 0,
+            "reach": 0,
+            "clicks": 0,
+            "leads": 0,
+        })))
+        current += timedelta(days=1)
+    campaigns = [with_rates(row) for row in campaign_rows]
+    totals = with_rates(totals_row)
+    return {
+        "connected": connected,
+        "account_id": account_id,
+        "last_sync": int(last_sync_row["value"]) if last_sync_row and str(last_sync_row["value"]).isdigit() else None,
+        "totals": totals,
+        "daily": daily,
+        "campaigns": campaigns,
+        "basis": "Meta Ads · nível campanha",
+    }
 
 
 def clinica_request(path, api_prefix="/api/v1"):
@@ -2052,6 +2277,7 @@ def clear_local_data(clear_oauth=False):
         "clinica_bills",
         "clinica_parcels",
         "clinica_sync_log",
+        "paid_traffic_insights",
     ]
     with db() as conn:
         for table in tables:
@@ -3882,6 +4108,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                     "lead_to_booking_rate": (bookings_total / lead_total) if lead_total else None,
                 }
             )
+        paid_traffic = paid_traffic_report(conn, date_from, date_to)
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
@@ -3965,6 +4192,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 "basis": "Vendas ativas; orçado usa vendas inativas/orçamentos quando retornados pela API.",
             },
         },
+        "paid_traffic": paid_traffic,
         "general_panel": {
             "month": month_key,
             "goal": month_goal,
@@ -4537,6 +4765,21 @@ class Handler(SimpleHTTPRequestHandler):
                             date_from=params.get("date_from", [""])[0],
                             date_to=params.get("date_to", [""])[0],
                             historical=params.get("historical", [""])[0] in ("1", "true", "yes"),
+                        ),
+                    )
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/sync-traffic":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                params = urllib.parse.parse_qs(parsed.query)
+                try:
+                    return json_response(
+                        self,
+                        sync_paid_traffic(
+                            date_from=params.get("date_from", [""])[0],
+                            date_to=params.get("date_to", [""])[0],
                         ),
                     )
                 except Exception as exc:

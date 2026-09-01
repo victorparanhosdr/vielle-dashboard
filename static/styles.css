@@ -1828,6 +1828,176 @@ button.danger {
   font-weight: 950;
 }
 
+.trafficActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px 0;
+}
+
+.trafficActions div {
+  display: grid;
+  gap: 4px;
+}
+
+.trafficActions strong {
+  color: #12213a;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.trafficActions span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.trafficActions button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--brand));
+  color: #102136;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 14px 28px rgba(24, 185, 212, .20);
+}
+
+.trafficActions button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.trafficMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.trafficMetric {
+  display: grid;
+  align-content: space-between;
+  min-height: 132px;
+  padding: 16px;
+  border: 1px solid rgba(204, 230, 242, .90);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(239, 248, 252, .88)),
+    linear-gradient(135deg, rgba(24, 185, 212, .12), transparent 62%);
+  box-shadow: var(--shadow);
+}
+
+.trafficMetric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.trafficMetric strong {
+  margin-top: 18px;
+  color: #12213a;
+  font-size: clamp(25px, 2.2vw, 38px);
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trafficMetric small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.trafficMetric.emphasisRevenue,
+.trafficMetric.emphasisLeads {
+  background:
+    radial-gradient(circle at 95% 10%, rgba(255, 255, 255, .22), transparent 28%),
+    linear-gradient(135deg, #14235a, #0a86a0 92%);
+}
+
+.trafficMetric.emphasisRevenue span,
+.trafficMetric.emphasisLeads span,
+.trafficMetric.emphasisRevenue small,
+.trafficMetric.emphasisLeads small,
+.trafficMetric.emphasisRevenue strong,
+.trafficMetric.emphasisLeads strong {
+  color: #fff;
+}
+
+.trafficMetric.emphasisRevenue small,
+.trafficMetric.emphasisLeads small {
+  opacity: .78;
+}
+
+.trafficDailyChart {
+  padding: 18px 20px 22px;
+}
+
+.trafficCampaigns {
+  display: grid;
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+.trafficCampaignRow {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(128px, .35fr) minmax(86px, .2fr) minmax(88px, .2fr) minmax(86px, .2fr);
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(204, 230, 242, .86);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .74);
+}
+
+.trafficCampaignRow > div {
+  min-width: 0;
+}
+
+.trafficCampaignRow span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.trafficCampaignRow strong {
+  display: block;
+  overflow: hidden;
+  color: #12213a;
+  font-size: 15px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trafficCampaignName {
+  display: grid;
+  gap: 6px;
+}
+
+.trafficCampaignName i {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(224, 234, 242, .9);
+}
+
+.trafficCampaignName b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--brand), var(--accent));
+}
+
 .generalExpenseBars {
   overflow-x: auto;
   overflow-y: visible;
@@ -3663,8 +3833,18 @@ select {
   }
 
   .metrics, .split, .kommoPanel, .sourceBody, .settingsGrid, .compactSettings, .insightGrid,
-  .generalHeroGrid, .generalControls {
+  .generalHeroGrid, .generalControls, .trafficMetricGrid {
     grid-template-columns: 1fr;
+  }
+
+  .trafficActions,
+  .trafficCampaignRow {
+    grid-template-columns: 1fr;
+  }
+
+  .trafficActions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .settingsIntro {
