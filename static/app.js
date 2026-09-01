@@ -1827,15 +1827,17 @@ function friendlyError(message) {
 function exportPdf() {
   const btn = document.getElementById("exportPdfBtn");
   const original = btn.textContent;
-  const params = new URLSearchParams(buildQuery().replace(/^\?/, ""));
-  params.set("view", document.querySelector(".tabBtn.active")?.dataset.view || "commercialView");
   btn.disabled = true;
-  btn.textContent = "Gerando PDF...";
-  window.location.href = `/api/export-pdf?${params.toString()}`;
+  btn.textContent = "Abrindo PDF...";
+  requestAnimationFrame(() => {
+    window.print();
+    btn.disabled = false;
+    btn.textContent = original;
+  });
   setTimeout(() => {
     btn.disabled = false;
     btn.textContent = original;
-  }, 1600);
+  }, 2400);
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {

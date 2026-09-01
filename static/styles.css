@@ -3701,7 +3701,7 @@ select {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 10mm;
+    margin: 8mm;
   }
 
   * {
@@ -3709,92 +3709,12 @@ select {
     -webkit-print-color-adjust: exact;
   }
 
-  body {
-    background: #ffffff;
-  }
-
-  .clinicLanding, .ambient, .actions, .viewTabs, .notice, .filterPanel::before, .panel::before,
-  .metrics article::before, .shell::before {
-    display: none !important;
-  }
-
-  .shell {
-    width: 100%;
-    padding: 0;
-  }
-
-  .topbar {
-    margin-bottom: 8px;
-    padding: 12px 14px;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  h1 {
-    font-size: 28px;
-  }
-
-  .printStamp {
-    display: block;
-    margin: 0 0 8px;
-    padding: 8px 10px;
-    border: 1px solid #d7e6ef;
-    color: #496174;
-    font-size: 11px;
-    font-weight: 800;
-  }
-
-  .filterPanel, .panel, .metrics article, .sourcePanel {
-    break-inside: avoid;
-    border: 1px solid #d7e6ef;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-
-  .filterPanel {
-    padding: 10px;
-  }
-
-  .filterGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  input, select, .pipelineSelect summary {
-    border-color: #d7e6ef;
-    background: #ffffff;
-    box-shadow: none;
-  }
-
   .viewPanel:not(.active) {
     display: none !important;
   }
 
-  .metrics, .doctorCross, .clinicaGrid, .financeGrid {
-    gap: 8px;
-  }
-
-  .panel {
-    margin-bottom: 8px;
-  }
-
-  .dailyChart {
-    min-height: auto;
-  }
-
-  .lineChartScroller, .financeDailyList, .statusRankList {
-    max-height: none;
-    overflow: visible;
-  }
-
-  .lineChart, .performanceSvg {
-    height: 220px;
-  }
-
-  .financeDailyRow summary {
-    grid-template-columns: 64px minmax(160px, 1fr) minmax(220px, .9fr);
-  }
-
-  .financeDailyRow summary::after {
-    display: none;
+  .clinicLanding:not(.hidden) ~ .shell,
+  .dashboardHidden {
+    display: none !important;
   }
 }
