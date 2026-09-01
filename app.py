@@ -451,6 +451,16 @@ def config_value(key, default=None):
 
     clinic_id = current_clinic_id()
     fallback = CONFIG_DEFAULTS.get(key, default or "")
+    stale_vielle_subdomains = {"contatoconsultingvpnet"}
+
+    def normalize_config_value(raw_value):
+        value = clean_config(raw_value)
+        if key == "KOMMO_SUBDOMAIN" and clinic_id == "vielle":
+            normalized = value.replace(".kommo.com", "").strip().lower()
+            if normalized in stale_vielle_subdomains:
+                return clean_config(fallback)
+        return value
+
     if key in KOMMO_CONFIG_KEYS:
         try:
             with db() as conn:
@@ -461,12 +471,12 @@ def config_value(key, default=None):
                 if disabled is not None and str(disabled["value"]).strip() == "1":
                     row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
                     if row is not None:
-                        row_value = clean_config(row["value"])
+                        row_value = normalize_config_value(row["value"])
                         if configured(row_value):
                             return row_value
                         if key not in SECRET_CONFIG_KEYS and row_value:
                             return row_value
-                    fallback_value = clean_config(fallback)
+                    fallback_value = normalize_config_value(fallback)
                     if configured(fallback_value):
                         return fallback_value
                     return ""
@@ -480,24 +490,24 @@ def config_value(key, default=None):
             with db() as conn:
                 row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
                 if row is not None and configured(row["value"]):
-                    return clean_config(row["value"])
+                    return normalize_config_value(row["value"])
         except sqlite3.Error:
             pass
     scoped_env = clinic_env_value(key)
     if scoped_env:
-        return clean_config(scoped_env)
+        return normalize_config_value(scoped_env)
     try:
         with db() as conn:
             row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
             if row is not None:
-                row_value = clean_config(row["value"])
+                row_value = normalize_config_value(row["value"])
                 if configured(row_value):
                     return row_value
                 if key not in SECRET_CONFIG_KEYS and row_value:
                     return row_value
     except sqlite3.Error:
         pass
-    return clean_config(fallback)
+    return normalize_config_value(fallback)
 
 
 def config_int(key, default):
