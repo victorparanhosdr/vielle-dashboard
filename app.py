@@ -3403,6 +3403,14 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         ).fetchall()
         financial_income_total = (financial_income_row["amount"] or 0) + (financial_manual_income_row["amount"] or 0)
         financial_expense_total = financial_expense_row["amount"] or 0
+        financial_expense_categories = [dict(row) for row in financial_expense_by_category]
+        margin_1_excluded_categories = {"pro-labore", "pro labore", "cursos e treinamentos"}
+        margin_1_expenses = sum(
+            row.get("amount") or 0
+            for row in financial_expense_categories
+            if normalize_lookup_text(row.get("category")).replace("ó", "o") not in margin_1_excluded_categories
+        )
+        margin_2_expenses = financial_expense_total
         financial_income_settled = (financial_income_row["settled"] or 0) + (financial_manual_income_row["settled"] or 0)
         financial_income_open = (financial_income_row["open_amount"] or 0) + (financial_manual_income_row["open_amount"] or 0)
         financial_expense_settled = financial_expense_row["settled"] or 0
@@ -3924,7 +3932,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "daily": financial_daily,
             "daily_details": financial_details_by_day,
             "income_by_type": financial_income_by_type,
-            "expenses_by_category": [dict(row) for row in financial_expense_by_category],
+            "expenses_by_category": financial_expense_categories,
             "recent": financial_recent,
             "sales_intelligence": {
                 "top_patients": top_patients,
@@ -3943,6 +3951,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "expenses_paid": financial_expense_settled,
             "expenses_pending": financial_expense_open,
             "balance": financial_income_total - financial_expense_total,
+            "margin_1_rate": ((financial_income_total - margin_1_expenses) / financial_income_total) if financial_income_total else None,
+            "margin_1_expenses": margin_1_expenses,
+            "margin_2_rate": ((financial_income_total - margin_2_expenses) / financial_income_total) if financial_income_total else None,
+            "margin_2_expenses": margin_2_expenses,
             "goal_rate": (financial_income_total / month_goal) if month_goal else None,
             "projected_revenue": projected_revenue,
             "elapsed_days": elapsed_days,
@@ -3953,7 +3965,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "distinct_patients": len(top_patient_lookup),
             "financial_daily": financial_daily,
             "income_by_type": financial_income_by_type,
-            "expenses_by_category": [dict(row) for row in financial_expense_by_category],
+            "expenses_by_category": financial_expense_categories,
             "expenses_daily": financial_daily,
             "top_patients": top_patients,
             "value_ranges": sales_value_ranges,

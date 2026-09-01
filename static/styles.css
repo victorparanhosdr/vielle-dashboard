@@ -1312,7 +1312,7 @@ button.danger {
 
 .generalHeroMain {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1328,11 +1328,11 @@ button.danger {
 
 .generalMetric.featured,
 .generalMetric.wideMetric {
-  grid-column: span 3;
+  grid-column: span 4;
 }
 
 .generalHeroMain .generalMetric:nth-child(n+3) {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .generalMetric {
