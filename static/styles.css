@@ -1278,26 +1278,38 @@ button.danger {
 }
 
 .generalHeroGrid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.6fr) minmax(340px, .72fr);
   align-items: stretch;
 }
 
-.generalMetric.featured {
-  grid-column: span 2;
+.generalHeroMain {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
 }
 
+.generalHeroSide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.generalHeroSide .generalMetric:last-child {
+  grid-column: 1 / -1;
+}
+
+.generalMetric.featured,
 .generalMetric.wideMetric {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
-.generalMetric:nth-child(3),
-.generalMetric.compact {
-  grid-column: span 1;
+.generalHeroMain .generalMetric:nth-child(n+3) {
+  grid-column: span 2;
 }
 
 .generalMetric {
   min-width: 0;
-  min-height: 132px;
+  min-height: 136px;
   border: 1px solid rgba(204, 230, 242, .90);
   border-radius: 10px;
   background:
@@ -1334,7 +1346,7 @@ button.danger {
 
 .generalMetric.featured strong,
 .generalMetric.wideMetric strong {
-  font-size: clamp(24px, 2.35vw, 40px);
+  font-size: clamp(25px, 2.25vw, 38px);
 }
 
 .generalMetric.revenue strong,
@@ -1344,18 +1356,16 @@ button.danger {
 }
 
 .generalMetric.compact {
-  min-height: 112px;
+  min-height: 136px;
+  padding: 16px;
 }
 
 .generalMetric.compact strong {
-  font-size: clamp(23px, 1.9vw, 32px);
+  font-size: clamp(28px, 2.15vw, 36px);
 }
 
-.generalHeroGrid .generalMetric:nth-child(1),
-.generalHeroGrid .generalMetric:nth-child(2),
-.generalHeroGrid .generalMetric:nth-child(4),
-.generalHeroGrid .generalMetric:nth-child(5) {
-  min-height: 142px;
+.generalHeroSide .generalMetric:last-child strong {
+  font-size: clamp(28px, 2vw, 34px);
 }
 
 .generalMetric::after {
@@ -3143,9 +3153,18 @@ select {
 
   .generalExecutiveHeader,
   .generalDashboardGrid,
+  .generalHeroMain,
+  .generalHeroSide,
   .generalDonutWrap,
   .generalMicroStats {
     grid-template-columns: 1fr;
+  }
+
+  .generalMetric.featured,
+  .generalMetric.wideMetric,
+  .generalHeroMain .generalMetric:nth-child(n+3),
+  .generalHeroSide .generalMetric:last-child {
+    grid-column: auto;
   }
 
   .generalExecutive .generalControls,
