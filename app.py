@@ -95,6 +95,16 @@ CONFIG_DEFAULTS = {
     "MASTER_PASSWORD": os.getenv("MASTER_PASSWORD", ""),
 }
 
+CLINIC_CONFIG_DEFAULTS = {
+    "inspire": {
+        "KOMMO_SUBDOMAIN": "clinicamedicainspire",
+        "KOMMO_CLIENT_ID": "ef169598-d428-4910-9b37-614588e01da9",
+        "KOMMO_CLIENT_SECRET": "w4PZsiGaUcNNnEeaxWb6lHxGCJT4cbjYs4RFIThM1VM1mXanIU1bEYWPoQbuFc5g",
+        "KOMMO_LONG_LIVED_TOKEN": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6Ijg2NzMwMDM0NmJkOTRmNGUwYmFiNDcwMDVmZGI3YmYwMDZhZmE0ZGEyMDk1YTJjNWZhYjJiYTYzYmE4YWE3ZjE3ZjU4MWZiOTliNDNlMzFmIn0.eyJhdWQiOiJlZjE2OTU5OC1kNDI4LTQ5MTAtOWIzNy02MTQ1ODhlMDFkYTkiLCJqdGkiOiI4NjczMDAzNDZiZDk0ZjRlMGJhYjQ3MDA1ZmRiN2JmMDA2YWZhNGRhMjA5NWEyYzVmYWIyYmE2M2JhOGFhN2YxN2Y1ODFmYjk5YjQzZTMxZiIsImlhdCI6MTc4ODI4ODY0MSwibmJmIjoxNzg4Mjg4NjQxLCJleHAiOjE4NDU0MTc2MDAsInN1YiI6IjE0MDk4NjMxIiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjM1NDQyNTA3LCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJwdXNoX25vdGlmaWNhdGlvbnMiLCJmaWxlcyIsImNybSIsImZpbGVzX2RlbGV0ZSIsIm5vdGlmaWNhdGlvbnMiXSwiaGFzaF91dWlkIjoiNTBlNmMzZWYtYmRmNi00NzUwLWI1MTUtMjkzZGVlMDc1MTQyIiwiYXBpX2RvbWFpbiI6ImFwaS1nLmtvbW1vLmNvbSJ9.CO96HvnB9mI5uXyCIJe7kuOcuvXk4W4sYQFCvQDMLw9f9aoEFF1I_OTAjtFmcwDbJ9o9jTVwUpl90RtU6ENsfWyKNqG-ltBYAV1P4eIoNE7Zo-SoTPu8cpGJvZ4w8yUsNByik4bXeNJ_RJrgPshoxZTtRONaB8SZIr3sL6ToGqbNxJPira0qQwq1etG_nJ0-HLi6SA87Rurk5zv-9zRvTuztswwQWfL8VpYqQ6qfiHlA49rG3aq92iv-PJ1DWG4re8EUJGOEuw2H_j9YPwWfF4x9nwMFj4Ev__IobGMjwXjceP5Vk6PDxy1nnXQuoTySoQek-7VjafWT4W9jRybjHA",
+        "KOMMO_REDIRECT_URI": KOMMO_REDIRECT_URI,
+    },
+}
+
 SECRET_CONFIG_KEYS = {
     "KOMMO_CLIENT_SECRET",
     "KOMMO_LONG_LIVED_TOKEN",
@@ -449,14 +459,30 @@ def config_value(key, default=None):
         return value.strip("'\"").strip()
 
     clinic_id = current_clinic_id()
-    fallback = CONFIG_DEFAULTS.get(key, default or "")
+    clinic_defaults = CLINIC_CONFIG_DEFAULTS.get(clinic_id, {})
+    fallback = clinic_defaults.get(key, CONFIG_DEFAULTS.get(key, default or ""))
     stale_vielle_subdomains = {"contatoconsultingvpnet"}
+    stale_vielle_client_ids = {KOMMO_CLIENT_ID}
+    stale_vielle_secrets = {KOMMO_CLIENT_SECRET}
 
     def normalize_config_value(raw_value):
         value = clean_config(raw_value)
         if key == "KOMMO_SUBDOMAIN" and clinic_id == "vielle":
             normalized = value.replace(".kommo.com", "").strip().lower()
             if normalized in stale_vielle_subdomains:
+                return clean_config(fallback)
+        if key == "KOMMO_SUBDOMAIN" and clinic_id == "inspire":
+            normalized = value.replace(".kommo.com", "").strip().lower()
+            if normalized in stale_vielle_subdomains or normalized == "vielleclinic":
+                return clean_config(fallback)
+        if key == "KOMMO_CLIENT_ID" and clinic_id == "inspire" and value in stale_vielle_client_ids:
+            return clean_config(fallback)
+        if key == "KOMMO_CLIENT_SECRET" and clinic_id == "inspire" and value in stale_vielle_secrets:
+            return clean_config(fallback)
+        if key == "KOMMO_LONG_LIVED_TOKEN" and clinic_id == "inspire":
+            expected_client_id = clinic_defaults.get("KOMMO_CLIENT_ID", "")
+            token_client_id = str(jwt_payload(value).get("aud") or "")
+            if expected_client_id and token_client_id and token_client_id != expected_client_id:
                 return clean_config(fallback)
         return value
 
@@ -482,9 +508,9 @@ def config_value(key, default=None):
         except sqlite3.Error:
             pass
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
-        fallback = default or ""
+        fallback = clinic_defaults.get(key, default or "")
         if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
-            fallback = CONFIG_DEFAULTS.get(key, fallback)
+            fallback = clinic_defaults.get(key, CONFIG_DEFAULTS.get(key, fallback))
         try:
             with db() as conn:
                 row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
