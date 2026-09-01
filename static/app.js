@@ -3,9 +3,11 @@ const state = {
   allPipelines: [],
   allDoctors: [],
   allSellers: [],
+  allGeneralDoctors: [],
   allBookingRegistryUsers: [],
   selectedPipelines: new Set(),
   selectedDoctor: "",
+  selectedGeneralDoctor: "",
   selectedSeller: "",
   selectedBookingRegistryUser: "",
   activeView: "generalView",
@@ -74,16 +76,17 @@ function escapeHtml(value) {
 function buildQuery() {
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
-  if (state.selectedPipelines.size) {
-    params.set("pipeline_ids", [...state.selectedPipelines].join(","));
-  }
-  if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
-  if (state.selectedSeller) params.set("seller", state.selectedSeller);
   if (state.activeView === "generalView") {
+    if (state.selectedGeneralDoctor) params.set("doctor", state.selectedGeneralDoctor);
     const range = monthRange(state.selectedMonth || currentMonthValue());
     params.set("date_from", range.from);
     params.set("date_to", range.to);
   } else {
+    if (state.selectedPipelines.size) {
+      params.set("pipeline_ids", [...state.selectedPipelines].join(","));
+    }
+    if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
+    if (state.selectedSeller) params.set("seller", state.selectedSeller);
     if (state.dateFrom) params.set("date_from", state.dateFrom);
     if (state.dateTo) params.set("date_to", state.dateTo);
   }
@@ -131,7 +134,11 @@ function syncFilterState(report) {
   const filters = report.filters || {};
   state.dateFrom = filters.date_from || state.dateFrom || "";
   state.dateTo = filters.date_to || state.dateTo || "";
-  state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
+  if (state.activeView === "generalView") {
+    state.selectedGeneralDoctor = filters.doctor || state.selectedGeneralDoctor || "";
+  } else {
+    state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
+  }
   state.selectedSeller = filters.seller || state.selectedSeller || "";
   document.getElementById("dateFrom").value = state.dateFrom;
   document.getElementById("dateTo").value = state.dateTo;
@@ -143,6 +150,7 @@ function syncFilterState(report) {
     state.selectedBookingRegistryUser = "";
   }
   renderDoctorFilter();
+  renderGeneralDoctorFilter();
   renderSellerFilter();
   renderBookingRegistryUserFilter();
 }
@@ -172,6 +180,7 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
   renderStatusColumnChart(report.all_current_status || []);
 
@@ -279,10 +288,12 @@ function requestClinicAccess(clinicId, updateUrl = true) {
   state.report = emptyReportForClinic(validClinicId);
   state.allPipelines = [];
   state.allDoctors = [];
+  state.allGeneralDoctors = [];
   state.allSellers = [];
   state.allBookingRegistryUsers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedGeneralDoctor = "";
   state.selectedSeller = "";
   state.selectedBookingRegistryUser = "";
   state.dateFrom = "";
@@ -298,10 +309,12 @@ function selectClinic(clinicId, updateUrl = true) {
   state.report = null;
   state.allPipelines = [];
   state.allDoctors = [];
+  state.allGeneralDoctors = [];
   state.allSellers = [];
   state.allBookingRegistryUsers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedGeneralDoctor = "";
   state.selectedSeller = "";
   state.selectedBookingRegistryUser = "";
   state.dateFrom = "";
@@ -499,13 +512,11 @@ function renderGeneralPanel(panel) {
   const totalLeads = (panel.daily_leads || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
   const totalBookings = (panel.daily_bookings || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
   const monthInput = document.getElementById("generalMonth");
-  const goalInput = document.getElementById("monthlyGoalInput");
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
-  if (goalInput && document.activeElement !== goalInput) goalInput.value = goal ? Math.round(goal) : "";
-  document.getElementById("generalBoardTitle").textContent = `${clinic.name} · Resumo mensal`;
+  document.getElementById("generalBoardTitle").textContent = "Resumo mensal";
   document.getElementById("generalGoal").textContent = brl.format(goal);
-  document.getElementById("generalGoalMonth").textContent = monthLabel(state.selectedMonth);
+  document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
   document.getElementById("generalRevenue").textContent = brl.format(revenue);
   document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
   document.getElementById("generalGoalRateHint").textContent = goal
@@ -529,12 +540,33 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalSalesCount").textContent = salesCount;
   document.getElementById("generalActiveDays").textContent = activeDays;
   document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
+  renderMonthlyGoalRows(panel.goal_entries || []);
   renderGeneralRevenueBarChart(dailyFinancial);
   renderGeneralAccumulatedChart(dailyFinancial);
   renderGeneralTopPatients(panel.top_patients || []);
   renderGeneralValueRanges(panel.value_ranges || []);
   renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
   renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+}
+
+function renderMonthlyGoalRows(entries) {
+  const el = document.getElementById("monthlyGoalsList");
+  if (!el) return;
+  const knownGoals = new Map(entries.map(entry => [entry.doctor, Number(entry.goal || 0)]));
+  const doctors = [...new Set([
+    ...state.allGeneralDoctors,
+    ...entries.map(entry => entry.doctor).filter(Boolean),
+    ...state.allDoctors,
+  ])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  state.allGeneralDoctors = doctors;
+  el.innerHTML = doctors.length
+    ? doctors.map(doctor => `
+      <label class="monthlyGoalRow">
+        <span>${escapeHtml(doctor)}</span>
+        <input type="number" min="0" step="100" data-goal-doctor="${escapeHtml(doctor)}" value="${knownGoals.get(doctor) ? Math.round(knownGoals.get(doctor)) : ""}" placeholder="R$ 0">
+      </label>
+    `).join("")
+    : `<div class="empty">Sem profissionais para cadastrar meta.</div>`;
 }
 
 function renderGeneralRevenueBarChart(items) {
@@ -1301,6 +1333,28 @@ function renderDoctorFilter() {
   select.value = state.selectedDoctor;
 }
 
+function renderGeneralDoctorFilter() {
+  const select = document.getElementById("generalDoctorFilter");
+  if (!select) return;
+  const rows = state.report?.clinica_experts?.doctor_cross || [];
+  const rowDoctors = rows.map(row => row.doctor).filter(Boolean);
+  const allDoctors = [...new Set([...state.allGeneralDoctors, ...rowDoctors, ...state.allDoctors])]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  state.allGeneralDoctors = allDoctors;
+  if (state.selectedGeneralDoctor && !allDoctors.includes(state.selectedGeneralDoctor)) {
+    state.selectedGeneralDoctor = "";
+  }
+  const currentOptions = [...select.options].map(option => option.value).join("|");
+  const nextOptions = ["", ...allDoctors].join("|");
+  if (currentOptions !== nextOptions) {
+    select.innerHTML = `
+      <option value="">Todos os profissionais</option>
+      ${allDoctors.map(doctor => `<option value="${escapeHtml(doctor)}">${escapeHtml(doctor)}</option>`).join("")}
+    `;
+  }
+  select.value = state.selectedGeneralDoctor;
+}
+
 function renderSellerFilter() {
   const select = document.getElementById("sellerFilter");
   if (!select) return;
@@ -1585,22 +1639,25 @@ async function syncClinicaNow() {
 
 async function saveMonthlyGoal() {
   const month = state.selectedMonth || currentMonthValue();
-  const goal = document.getElementById("monthlyGoalInput").value || "0";
+  const goals = {};
+  document.querySelectorAll("[data-goal-doctor]").forEach(input => {
+    goals[input.dataset.goalDoctor] = input.value || "0";
+  });
   const btn = document.getElementById("saveMonthlyGoalBtn");
   const original = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Salvando...";
+  btn.textContent = "Salvando metas...";
   try {
     const params = new URLSearchParams();
     if (state.selectedClinic) params.set("clinic", state.selectedClinic);
     const res = await fetch(`/api/monthly-goal?${params.toString()}`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({month, goal}),
+      body: JSON.stringify({month, goals}),
     });
     const payload = await res.json();
     if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar a meta.");
-    showNotice("Meta mensal salva.");
+    showNotice("Metas mensais salvas.");
     await loadReport();
   } catch (error) {
     showNotice(error.message || "Não foi possível salvar a meta.");
@@ -1670,6 +1727,10 @@ document.querySelectorAll(".tabBtn").forEach(button => {
 document.getElementById("generalMonth").addEventListener("change", event => {
   state.selectedMonth = event.target.value || currentMonthValue();
   normalizeGeneralMonth();
+  loadReport();
+});
+document.getElementById("generalDoctorFilter").addEventListener("change", event => {
+  state.selectedGeneralDoctor = event.target.value;
   loadReport();
 });
 document.getElementById("saveMonthlyGoalBtn").addEventListener("click", saveMonthlyGoal);

@@ -368,15 +368,25 @@
               </div>
               <div class="generalControls">
                 <label>
+                  <span>Profissional</span>
+                  <select id="generalDoctorFilter">
+                    <option value="">Todos os profissionais</option>
+                  </select>
+                </label>
+                <label>
                   <span>Mês</span>
                   <input id="generalMonth" type="month">
                 </label>
-                <label>
-                  <span>Meta mensal</span>
-                  <input id="monthlyGoalInput" type="number" min="0" step="100" placeholder="R$ 0">
-                </label>
-                <button id="saveMonthlyGoalBtn" type="button">Salvar meta</button>
               </div>
+            </section>
+
+            <section class="generalGoalsPanel">
+              <div>
+                <span>Metas mensais</span>
+                <strong>Por doutor(a)</strong>
+              </div>
+              <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
+              <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
             </section>
 
             <section class="generalHeroGrid">

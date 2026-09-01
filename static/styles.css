@@ -1235,7 +1235,7 @@ button.danger {
 }
 
 .generalExecutiveHeader {
-  grid-template-columns: minmax(240px, 1fr) minmax(420px, auto);
+  grid-template-columns: minmax(220px, 1fr) minmax(420px, auto);
   padding: 18px;
   border: 1px solid rgba(204, 230, 242, .88);
   border-radius: 10px;
@@ -1253,10 +1253,10 @@ button.danger {
 .generalExecutiveHeader h2 {
   color: #12213a;
   font-family: var(--font);
-  font-size: clamp(28px, 3.2vw, 46px);
+  font-size: clamp(24px, 2.2vw, 34px);
   font-weight: 950;
   letter-spacing: 0;
-  line-height: 1.02;
+  line-height: 1.08;
   text-transform: uppercase;
 }
 
@@ -1266,15 +1266,78 @@ button.danger {
 }
 
 .generalExecutive .generalControls {
-  grid-template-columns: minmax(155px, 190px) minmax(160px, 210px) 132px;
+  grid-template-columns: minmax(210px, 260px) minmax(155px, 190px);
   border-color: rgba(204, 230, 242, .92);
   background: rgba(255, 255, 255, .86);
   box-shadow: 0 12px 30px rgba(21, 27, 75, .08);
 }
 
-.generalExecutive .generalControls input {
+.generalExecutive .generalControls input,
+.generalExecutive .generalControls select {
   border-color: rgba(204, 230, 242, .94);
   background: rgba(255, 255, 255, .94);
+}
+
+.generalGoalsPanel {
+  display: grid;
+  grid-template-columns: minmax(170px, auto) minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin: 12px 0 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(204, 230, 242, .9);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(239, 249, 252, .88));
+  box-shadow: var(--shadow);
+}
+
+.generalGoalsPanel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.generalGoalsPanel > div:first-child span,
+.monthlyGoalRow span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.generalGoalsPanel > div:first-child strong {
+  color: #12213a;
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.monthlyGoalsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.monthlyGoalRow {
+  display: grid;
+  gap: 6px;
+}
+
+.monthlyGoalRow input {
+  height: 38px;
+  font-weight: 850;
+}
+
+.generalGoalsPanel button {
+  min-width: 138px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--brand));
+  color: #102136;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
 }
 
 .generalHeroGrid {
@@ -1593,6 +1656,10 @@ button.danger {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(240, 249, 252, .88)),
     linear-gradient(90deg, rgba(21, 27, 75, .08), transparent);
+}
+
+.generalMode .filterPanel {
+  display: none;
 }
 
 .filterPanel:has(details[open]) {
@@ -3152,6 +3219,7 @@ select {
   }
 
   .generalExecutiveHeader,
+  .generalGoalsPanel,
   .generalDashboardGrid,
   .generalHeroMain,
   .generalHeroSide,

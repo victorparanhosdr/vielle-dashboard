@@ -47,6 +47,16 @@
             <button type="button" data-clinic-select="carla">Acessar Carla</button>
           </article>
 
+          <article class="clinicAccessCard casaVitalle">
+            <div>
+              <span class="casaVitalleMark">V</span>
+              <small>Casa Vitalle</small>
+            </div>
+            <img class="casaVitalleLogo" src="casa-vitalle-logo.jpg" alt="Casa Vitalle" style="width: 100%; height: clamp(190px, 23vw, 260px); object-fit: contain; background: #10231b; padding: 14px;">
+            <p>Estética, cirurgia e longevidade em um dashboard próprio, com identidade visual premium.</p>
+            <button type="button" data-clinic-select="casa_vitalle">Acessar Casa Vitalle</button>
+          </article>
+
         </div>
       </div>
     </section>
@@ -84,7 +94,8 @@
       <section id="printStamp" class="printStamp"></section>
 
       <nav class="viewTabs" aria-label="Áreas do dashboard">
-        <button class="tabBtn active" type="button" data-view="commercialView">Comercial</button>
+        <button class="tabBtn active" type="button" data-view="generalView">Painel geral</button>
+        <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
       </nav>
 
@@ -129,7 +140,7 @@
 
       <section id="status" class="notice"></section>
 
-      <div id="commercialView" class="viewPanel active">
+      <div id="commercialView" class="viewPanel">
         <section class="panel">
           <div class="panelHead">
             <h2>Leads x Agendamentos por doutor(a)</h2>
@@ -342,6 +353,152 @@
               <h2>Últimos lançamentos</h2>
             </div>
             <div id="financeRecent" class="financeRecent"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="generalView" class="viewPanel active">
+        <section class="generalExecutive">
+          <div class="generalBoard">
+            <section class="generalExecutiveHeader">
+              <div>
+                <span>Painel geral</span>
+                <h2 id="generalBoardTitle">Resumo mensal</h2>
+                <small id="generalGoalMonth">-</small>
+              </div>
+              <div class="generalControls">
+                <label>
+                  <span>Profissional</span>
+                  <select id="generalDoctorFilter">
+                    <option value="">Todos os profissionais</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Mês</span>
+                  <input id="generalMonth" type="month">
+                </label>
+              </div>
+            </section>
+
+            <section class="generalGoalsPanel">
+              <div>
+                <span>Metas mensais</span>
+                <strong>Por doutor(a)</strong>
+              </div>
+              <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
+              <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
+            </section>
+
+            <section class="generalHeroGrid">
+              <div class="generalHeroMain">
+                <article class="generalMetric featured">
+                  <span>Faturamento total</span>
+                  <strong id="generalRevenue">R$ 0</strong>
+                  <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
+                </article>
+                <article class="generalMetric wideMetric">
+                  <span>Meta mensal</span>
+                  <strong id="generalGoal">R$ 0</strong>
+                  <small>Objetivo do mês</small>
+                </article>
+                <article class="generalMetric">
+                  <span>% da meta</span>
+                  <strong id="generalGoalRate">-</strong>
+                  <small>Realizado até agora</small>
+                </article>
+                <article class="generalMetric wideMetric">
+                  <span>Projeção</span>
+                  <strong id="generalProjection">R$ 0</strong>
+                  <small id="generalProjectionHint">-</small>
+                </article>
+                <article class="generalMetric wideMetric">
+                  <span>Ticket médio</span>
+                  <strong id="generalAverageTicket">R$ 0</strong>
+                  <small>Por venda</small>
+                </article>
+              </div>
+              <div class="generalHeroSide">
+                <article class="generalMetric compact">
+                  <span>Leads</span>
+                  <strong id="generalTotalLeads">0</strong>
+                  <small>Entrada no mês</small>
+                </article>
+                <article class="generalMetric compact">
+                  <span>Agendamentos</span>
+                  <strong id="generalTotalBookings">0</strong>
+                  <small>Realizados no mês</small>
+                </article>
+                <article class="generalMetric compact">
+                  <span>Pacientes diferentes</span>
+                  <strong id="generalDistinctPatients">0</strong>
+                  <small>Com vendas</small>
+                </article>
+                <article class="generalMetric compact">
+                  <span>Quantidade de vendas</span>
+                  <strong id="generalSalesCount">0</strong>
+                  <small>Lançamentos</small>
+                </article>
+                <article class="generalMetric compact">
+                  <span>Dias com faturamento</span>
+                  <strong id="generalActiveDays">0</strong>
+                  <small id="generalActiveDaysHint">No mês</small>
+                </article>
+              </div>
+            </section>
+
+            <section class="generalDashboardGrid">
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Evolução do faturamento diário</h2>
+                  <span class="metaText">Clínica Experts</span>
+                </div>
+                <div id="generalRevenueBarChart" class="generalRevenueChart"></div>
+                <div class="generalMicroStats">
+                  <span><b id="generalAverageActiveDay">R$ 0</b>Média por dia ativo</span>
+                  <span><b id="generalDailyAverage">R$ 0</b>Média diária geral</span>
+                  <span><b id="generalStrongDay">-</b>Dia mais forte</span>
+                  <span><b id="generalWeakDay">-</b>Dia mais fraco</span>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Faturamento acumulado</h2>
+                </div>
+                <div id="generalAccumulatedChart" class="generalSmallChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Vendas e ticket médio por dia</h2>
+                </div>
+                <div id="generalSalesTicketChart" class="generalComboChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Distribuição por faixa de valor</h2>
+                  <span class="metaText">Vendas</span>
+                </div>
+                <div id="generalValueRanges" class="generalValueRanges"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Top pacientes</h2>
+                  <span class="metaText">Por faturamento</span>
+                </div>
+                <div id="generalTopPatients" class="generalTopList"></div>
+              </article>
+
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Leads x agendamentos por dia</h2>
+                  <span class="metaText">Kommo + Clínica Experts</span>
+                </div>
+                <div id="generalLeadBookingChart" class="generalComboChart"></div>
+              </article>
+            </section>
           </div>
         </section>
       </div>

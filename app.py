@@ -569,25 +569,67 @@ def month_key_from_range(date_from, date_to):
     return start.strftime("%Y-%m")
 
 
-def monthly_goal_key(month_key):
+def monthly_goal_key(month_key, doctor_name=""):
+    doctor_name = (doctor_name or "").strip()
+    if doctor_name:
+        return f"MONTHLY_GOAL:{month_key}:DOCTOR:{doctor_name}"
     return f"MONTHLY_GOAL:{month_key}"
 
 
-def get_monthly_goal(month_key):
+def _coerce_goal_value(value):
+    try:
+        return max(0, float(str(value or "0").replace(".", "").replace(",", ".")))
+    except ValueError:
+        return 0
+
+
+def get_monthly_goal(month_key, doctor_name="", doctors=None):
     if not month_key:
         return 0
+    doctor_name = (doctor_name or "").strip()
     with db() as conn:
+        if doctor_name:
+            row = conn.execute(
+                "select value from app_settings where key = ?",
+                (monthly_goal_key(month_key, doctor_name),),
+            ).fetchone()
+            return _coerce_goal_value(row["value"]) if row else 0
+        if doctors:
+            keys = [monthly_goal_key(month_key, doctor) for doctor in doctors]
+            placeholders = ",".join("?" for _ in keys)
+            rows = conn.execute(
+                f"select value from app_settings where key in ({placeholders})",
+                keys,
+            ).fetchall()
+            total = sum(_coerce_goal_value(row["value"]) for row in rows)
+            if total:
+                return total
         row = conn.execute(
             "select value from app_settings where key = ?",
             (monthly_goal_key(month_key),),
         ).fetchone()
-    try:
-        return float(row["value"]) if row else 0
-    except (TypeError, ValueError):
-        return 0
+    return _coerce_goal_value(row["value"]) if row else 0
 
 
-def save_monthly_goal(month_key, value):
+def get_monthly_goal_entries(month_key, doctors):
+    entries = []
+    if not month_key:
+        return entries
+    doctors = list(doctors or [])
+    with db() as conn:
+        for doctor_name in doctors:
+            row = conn.execute(
+                "select value from app_settings where key = ?",
+                (monthly_goal_key(month_key, doctor_name),),
+            ).fetchone()
+            entries.append({
+                "doctor": doctor_name,
+                "goal": _coerce_goal_value(row["value"]) if row else 0,
+            })
+    return entries
+
+
+def save_monthly_goal(month_key, value, doctor_name=""):
     if not month_key:
         raise ValueError("Mês inválido.")
     try:
@@ -603,9 +645,35 @@ def save_monthly_goal(month_key, value):
                 value=excluded.value,
                 updated_at=excluded.updated_at
             """,
-            (monthly_goal_key(month_key), str(amount), int(time.time())),
+            (monthly_goal_key(month_key, doctor_name), str(amount), int(time.time())),
         )
     return amount
+
+
+def save_monthly_goals(month_key, goals):
+    if not month_key:
+        raise ValueError("Mês inválido.")
+    if not isinstance(goals, dict):
+        raise ValueError("Metas inválidas.")
+    saved = {}
+    with db() as conn:
+        for doctor_name, value in goals.items():
+            doctor_name = (doctor_name or "").strip()
+            if not doctor_name:
+                continue
+            amount = _coerce_goal_value(value)
+            conn.execute(
+                """
+                insert into app_settings (key, value, updated_at)
+                values (?, ?, ?)
+                on conflict(key) do update set
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (monthly_goal_key(month_key, doctor_name), str(amount), int(time.time())),
+            )
+            saved[doctor_name] = amount
+    return saved
 
 
 def init_db():
@@ -3398,7 +3466,12 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             for item in sorted(performance_lookup.values(), key=lambda row: row["day"])
         ]
         month_key = month_key_from_range(date_from, date_to)
-        month_goal = get_monthly_goal(month_key)
+        month_goal_entries = get_monthly_goal_entries(month_key, doctor_professionals.keys())
+        month_goal = get_monthly_goal(
+            month_key,
+            selected_doctor,
+            doctors=doctor_professionals.keys(),
+        )
         try:
             start_date = datetime.strptime(date_from, "%Y-%m-%d")
             end_date = datetime.strptime(date_to, "%Y-%m-%d")
@@ -3714,6 +3787,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         "general_panel": {
             "month": month_key,
             "goal": month_goal,
+            "goal_entries": month_goal_entries,
             "revenue": financial_income_total,
             "goal_rate": (financial_income_total / month_goal) if month_goal else None,
             "projected_revenue": projected_revenue,
@@ -4289,7 +4363,19 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 params = urllib.parse.parse_qs(parsed.query)
                 month_key = params.get("month", [""])[0]
-                return json_response(self, {"ok": True, "month": month_key, "goal": get_monthly_goal(month_key)})
+                doctor_name = params.get("doctor", [""])[0]
+                with db() as conn:
+                    doctors = clinic_doctor_professionals(conn).keys()
+                return json_response(
+                    self,
+                    {
+                        "ok": True,
+                        "month": month_key,
+                        "doctor": doctor_name,
+                        "goal": get_monthly_goal(month_key, doctor_name, doctors=doctors),
+                        "goals": get_monthly_goal_entries(month_key, doctors),
+                    },
+                )
         if parsed.path == "/auth/start":
             with clinic_context(self.request_clinic_id(parsed)):
                 client_id = config_value("KOMMO_CLIENT_ID", "")
@@ -4402,7 +4488,10 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     payload = self.read_json_body()
                     month_key = str(payload.get("month", "")).strip()
-                    goal = save_monthly_goal(month_key, payload.get("goal", 0))
+                    if isinstance(payload.get("goals"), dict):
+                        goals = save_monthly_goals(month_key, payload.get("goals"))
+                        return json_response(self, {"ok": True, "month": month_key, "goals": goals})
+                    goal = save_monthly_goal(month_key, payload.get("goal", 0), payload.get("doctor", ""))
                     return json_response(self, {"ok": True, "month": month_key, "goal": goal})
                 except ValueError as exc:
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)

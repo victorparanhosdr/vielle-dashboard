@@ -3,11 +3,15 @@ const state = {
   allPipelines: [],
   allDoctors: [],
   allSellers: [],
+  allGeneralDoctors: [],
   allBookingRegistryUsers: [],
   selectedPipelines: new Set(),
   selectedDoctor: "",
+  selectedGeneralDoctor: "",
   selectedSeller: "",
   selectedBookingRegistryUser: "",
+  activeView: "generalView",
+  selectedMonth: "",
   dateFrom: "",
   dateTo: "",
   rankings: {},
@@ -34,6 +38,13 @@ const clinics = {
     name: "Dr. Carla Ferreira",
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
+    connected: true,
+  },
+  casa_vitalle: {
+    id: "casa_vitalle",
+    name: "Casa Vitalle",
+    title: "DASHBOARD ESTRATÉGICO",
+    status: "Relatório da Casa Vitalle pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
 };
@@ -65,22 +76,69 @@ function escapeHtml(value) {
 function buildQuery() {
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
-  if (state.selectedPipelines.size) {
-    params.set("pipeline_ids", [...state.selectedPipelines].join(","));
+  if (state.activeView === "generalView") {
+    if (state.selectedGeneralDoctor) params.set("doctor", state.selectedGeneralDoctor);
+    const range = monthRange(state.selectedMonth || currentMonthValue());
+    params.set("date_from", range.from);
+    params.set("date_to", range.to);
+  } else {
+    if (state.selectedPipelines.size) {
+      params.set("pipeline_ids", [...state.selectedPipelines].join(","));
+    }
+    if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
+    if (state.selectedSeller) params.set("seller", state.selectedSeller);
+    if (state.dateFrom) params.set("date_from", state.dateFrom);
+    if (state.dateTo) params.set("date_to", state.dateTo);
   }
-  if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
-  if (state.selectedSeller) params.set("seller", state.selectedSeller);
-  if (state.dateFrom) params.set("date_from", state.dateFrom);
-  if (state.dateTo) params.set("date_to", state.dateTo);
   const query = params.toString();
   return query ? `?${query}` : "";
+}
+
+function monthRange(monthValue) {
+  const month = monthValue || currentMonthValue();
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return {
+    from: `${year}-${String(monthNumber).padStart(2, "0")}-01`,
+    to: `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthFromDate(dateValue) {
+  return dateValue ? dateValue.slice(0, 7) : currentMonthValue();
+}
+
+function monthLabel(monthValue) {
+  if (!monthValue) return "-";
+  const [year, month] = monthValue.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+}
+
+function normalizeGeneralMonth() {
+  if (!state.selectedMonth) state.selectedMonth = monthFromDate(state.dateFrom);
+  const range = monthRange(state.selectedMonth);
+  state.dateFrom = range.from;
+  state.dateTo = range.to;
+  document.getElementById("dateFrom").value = range.from;
+  document.getElementById("dateTo").value = range.to;
+  const monthInput = document.getElementById("generalMonth");
+  if (monthInput) monthInput.value = state.selectedMonth;
 }
 
 function syncFilterState(report) {
   const filters = report.filters || {};
   state.dateFrom = filters.date_from || state.dateFrom || "";
   state.dateTo = filters.date_to || state.dateTo || "";
-  state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
+  if (state.activeView === "generalView") {
+    state.selectedGeneralDoctor = filters.doctor || state.selectedGeneralDoctor || "";
+  } else {
+    state.selectedDoctor = filters.doctor || state.selectedDoctor || "";
+  }
   state.selectedSeller = filters.seller || state.selectedSeller || "";
   document.getElementById("dateFrom").value = state.dateFrom;
   document.getElementById("dateTo").value = state.dateTo;
@@ -92,6 +150,7 @@ function syncFilterState(report) {
     state.selectedBookingRegistryUser = "";
   }
   renderDoctorFilter();
+  renderGeneralDoctorFilter();
   renderSellerFilter();
   renderBookingRegistryUserFilter();
 }
@@ -100,6 +159,7 @@ function render() {
   const report = state.report || {};
   const totals = report.totals || {};
   syncFilterState(report);
+  if (state.activeView === "generalView") normalizeGeneralMonth();
 
   document.getElementById("totalLeads").textContent = totals.total_leads || 0;
   document.getElementById("interactedLeads").textContent = report.interacted_leads?.total || 0;
@@ -120,6 +180,8 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  renderGeneralDoctorFilter();
+  renderGeneralPanel(report.general_panel || {});
   renderStatusColumnChart(report.all_current_status || []);
 
   applyClinicHeader();
@@ -173,6 +235,23 @@ function showClinicLanding() {
 function showDashboard() {
   document.getElementById("clinicLanding").classList.add("hidden");
   document.getElementById("dashboardShell").classList.remove("dashboardHidden");
+  applyActiveViewState();
+}
+
+function applyActiveViewState() {
+  document.querySelectorAll(".tabBtn").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.view === state.activeView);
+  });
+  document.querySelectorAll(".viewPanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === state.activeView);
+  });
+  const monthMode = state.activeView === "generalView";
+  document.body.classList.toggle("generalMode", monthMode);
+  const dateFrom = document.getElementById("dateFrom");
+  const dateTo = document.getElementById("dateTo");
+  if (dateFrom) dateFrom.disabled = monthMode;
+  if (dateTo) dateTo.disabled = monthMode;
+  if (monthMode) normalizeGeneralMonth();
 }
 
 function clinicAccessKey(clinicId) {
@@ -209,10 +288,12 @@ function requestClinicAccess(clinicId, updateUrl = true) {
   state.report = emptyReportForClinic(validClinicId);
   state.allPipelines = [];
   state.allDoctors = [];
+  state.allGeneralDoctors = [];
   state.allSellers = [];
   state.allBookingRegistryUsers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedGeneralDoctor = "";
   state.selectedSeller = "";
   state.selectedBookingRegistryUser = "";
   state.dateFrom = "";
@@ -228,10 +309,12 @@ function selectClinic(clinicId, updateUrl = true) {
   state.report = null;
   state.allPipelines = [];
   state.allDoctors = [];
+  state.allGeneralDoctors = [];
   state.allSellers = [];
   state.allBookingRegistryUsers = [];
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
+  state.selectedGeneralDoctor = "";
   state.selectedSeller = "";
   state.selectedBookingRegistryUser = "";
   state.dateFrom = "";
@@ -306,6 +389,26 @@ function emptyReportForClinic(clinicId) {
         performance_daily: [],
         basis: "Aguardando integração da clínica.",
       },
+    },
+    general_panel: {
+      month: monthFromDate(dateFrom),
+      goal: 0,
+      revenue: 0,
+      goal_rate: null,
+      projected_revenue: 0,
+      elapsed_days: 0,
+      month_days: 0,
+      average_ticket: 0,
+      sales_count: 0,
+      active_revenue_days: 0,
+      distinct_patients: 0,
+      financial_daily: [],
+      payment_methods: [],
+      top_patients: [],
+      value_ranges: [],
+      sales_ticket_daily: [],
+      daily_leads: [],
+      daily_bookings: [],
     },
     last_sync: null,
   };
@@ -392,6 +495,385 @@ function renderFinancial(financial) {
   });
   renderFinanceRecent(financial.recent || []);
   renderSalesIntelligence(financial.sales_intelligence || {});
+}
+
+function renderGeneralPanel(panel) {
+  const month = panel.month || state.selectedMonth || monthFromDate(state.dateFrom);
+  state.selectedMonth = month || currentMonthValue();
+  const goal = Number(panel.goal || 0);
+  const revenue = Number(panel.revenue || 0);
+  const goalRate = panel.goal_rate;
+  const projected = Number(panel.projected_revenue || 0);
+  const elapsed = panel.elapsed_days || 0;
+  const monthDays = panel.month_days || 0;
+  const salesCount = Number(panel.sales_count || 0);
+  const activeDays = Number(panel.active_revenue_days || 0);
+  const dailyFinancial = panel.financial_daily || [];
+  const totalLeads = (panel.daily_leads || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalBookings = (panel.daily_bookings || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const monthInput = document.getElementById("generalMonth");
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
+  if (monthInput) monthInput.value = state.selectedMonth;
+  document.getElementById("generalBoardTitle").textContent = "Resumo mensal";
+  document.getElementById("generalGoal").textContent = brl.format(goal);
+  document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
+  document.getElementById("generalRevenue").textContent = brl.format(revenue);
+  document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
+  document.getElementById("generalGoalRateHint").textContent = goal
+    ? `${brl.format(Math.max(0, goal - revenue))} faltando para a meta`
+    : "Cadastre uma meta mensal";
+  document.getElementById("generalProjection").textContent = brl.format(projected);
+  document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
+  document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
+  const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
+  const dailyAverage = monthDays ? revenue / monthDays : 0;
+  const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
+  const strongestDay = revenueDays.reduce((best, item) => Number(item.income || 0) > Number(best?.income || 0) ? item : best, null);
+  const weakestDay = revenueDays.reduce((best, item) => Number(item.income || 0) < Number(best?.income || Infinity) ? item : best, null);
+  document.getElementById("generalAverageActiveDay").textContent = brl.format(activeRevenueAverage);
+  document.getElementById("generalDailyAverage").textContent = brl.format(dailyAverage);
+  document.getElementById("generalStrongDay").textContent = strongestDay ? `${formatDay(strongestDay.day)} · ${brl.format(strongestDay.income || 0)}` : "-";
+  document.getElementById("generalWeakDay").textContent = weakestDay ? `${formatDay(weakestDay.day)} · ${brl.format(weakestDay.income || 0)}` : "-";
+  document.getElementById("generalTotalLeads").textContent = totalLeads;
+  document.getElementById("generalTotalBookings").textContent = totalBookings;
+  document.getElementById("generalDistinctPatients").textContent = Number(panel.distinct_patients || 0);
+  document.getElementById("generalSalesCount").textContent = salesCount;
+  document.getElementById("generalActiveDays").textContent = activeDays;
+  document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
+  renderMonthlyGoalRows(panel.goal_entries || []);
+  renderGeneralRevenueBarChart(dailyFinancial);
+  renderGeneralAccumulatedChart(dailyFinancial);
+  renderGeneralTopPatients(panel.top_patients || []);
+  renderGeneralValueRanges(panel.value_ranges || []);
+  renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
+  renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+}
+
+function renderMonthlyGoalRows(entries) {
+  const el = document.getElementById("monthlyGoalsList");
+  if (!el) return;
+  const knownGoals = new Map(entries.map(entry => [entry.doctor, Number(entry.goal || 0)]));
+  const doctors = [...new Set([
+    ...state.allGeneralDoctors,
+    ...entries.map(entry => entry.doctor).filter(Boolean),
+    ...state.allDoctors,
+  ])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  state.allGeneralDoctors = doctors;
+  el.innerHTML = doctors.length
+    ? doctors.map(doctor => `
+      <label class="monthlyGoalRow">
+        <span>${escapeHtml(doctor)}</span>
+        <input type="number" min="0" step="100" data-goal-doctor="${escapeHtml(doctor)}" value="${knownGoals.get(doctor) ? Math.round(knownGoals.get(doctor)) : ""}" placeholder="R$ 0">
+      </label>
+    `).join("")
+    : `<div class="empty">Sem profissionais para cadastrar meta.</div>`;
+}
+
+function renderGeneralRevenueBarChart(items) {
+  const el = document.getElementById("generalRevenueBarChart");
+  const days = items.filter(item => item.day);
+  const hasSignal = days.some(item => Number(item.income || 0) > 0);
+  if (!hasSignal) {
+    el.innerHTML = `<div class="empty">Sem faturamento no mês selecionado.</div>`;
+    return;
+  }
+  const max = Math.max(...days.map(item => Number(item.income || 0)), 1);
+  el.innerHTML = `
+    <div class="generalBarPlot" style="--bar-count:${Math.max(days.length, 1)}">
+      ${days.map(item => {
+        const value = Number(item.income || 0);
+        const height = Math.max(value ? 7 : 1, (value / max) * 100);
+        return `
+          <span class="generalBarDay" data-tip="${escapeHtml(formatDay(item.day))} · ${escapeHtml(brl.format(value))}">
+            <i style="height:${height}%"></i>
+            <b>${String(Number(item.day.slice(-2))).padStart(2, "0")}</b>
+          </span>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralPaymentDonut(items, total) {
+  const el = document.getElementById("generalPaymentDonut");
+  const sortedItems = [...items].filter(item => Number(item.amount || 0) > 0).sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+  if (!sortedItems.length || !total) {
+    el.innerHTML = `<div class="empty">Sem entradas por forma de pagamento.</div>`;
+    return;
+  }
+  const colors = ["#173f31", "#a56739", "#c9b8a4", "#6d63db", "#18b9d4"];
+  let offset = 0;
+  const circles = sortedItems.slice(0, 5).map((item, index) => {
+    const share = Math.max(0, Number(item.amount || 0) / total);
+    const dash = `${(share * 100).toFixed(2)} ${Math.max(0, 100 - share * 100).toFixed(2)}`;
+    const circle = `<circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="${colors[index]}" stroke-width="7" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset).toFixed(2)}"></circle>`;
+    offset += share * 100;
+    return circle;
+  }).join("");
+  el.innerHTML = `
+    <div class="generalDonut">
+      <svg viewBox="0 0 40 40" role="img" aria-label="Formas de pagamento">
+        <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#efe8df" stroke-width="7"></circle>
+        ${circles}
+      </svg>
+      <strong>${brl.format(total)}</strong>
+      <span>Total</span>
+    </div>
+    <div class="generalDonutLegend">
+      ${sortedItems.slice(0, 5).map((item, index) => `
+        <span>
+          <i style="background:${colors[index]}"></i>
+          <b>${escapeHtml(financeTypeLabel(item.type))}</b>
+          <small>${brl.format(item.amount || 0)} · ${formatPercent((item.amount || 0) / total)}</small>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderGeneralAccumulatedChart(items) {
+  const el = document.getElementById("generalAccumulatedChart");
+  const days = items.filter(item => item.day);
+  let accumulated = 0;
+  const prepared = days.map(item => {
+    accumulated += Number(item.income || 0);
+    return { day: item.day, total: accumulated };
+  });
+  if (!prepared.some(item => item.total > 0)) {
+    el.innerHTML = `<div class="empty">Sem faturamento acumulado.</div>`;
+    return;
+  }
+  const width = Math.max(360, prepared.length * 18);
+  const height = 190;
+  const pad = { top: 18, right: 18, bottom: 30, left: 46 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const max = Math.max(...prepared.map(item => item.total), 1);
+  const xFor = index => pad.left + (prepared.length === 1 ? chartW / 2 : (index / (prepared.length - 1)) * chartW);
+  const yFor = value => pad.top + chartH - (value / max) * chartH;
+  const path = prepared.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFor(item.total).toFixed(1)}`).join(" ");
+  const area = `${path} L ${xFor(prepared.length - 1).toFixed(1)} ${pad.top + chartH} L ${xFor(0).toFixed(1)} ${pad.top + chartH} Z`;
+  el.innerHTML = `
+    <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento acumulado">
+      <defs>
+        <linearGradient id="generalAccumulatedArea" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#173f31" stop-opacity=".22"></stop>
+          <stop offset="100%" stop-color="#173f31" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <line class="lineGrid" x1="${pad.left}" y1="${pad.top + chartH}" x2="${width - pad.right}" y2="${pad.top + chartH}"></line>
+      <path class="generalAccumulatedArea" d="${area}"></path>
+      <path class="generalAccumulatedLine" d="${path}"></path>
+      ${prepared.map((item, index) => `
+        <g class="generalAccumulatedPoint">
+          <circle cx="${xFor(index).toFixed(1)}" cy="${yFor(item.total).toFixed(1)}" r="5"></circle>
+          <rect x="${(xFor(index) - 10).toFixed(1)}" y="${pad.top}" width="20" height="${chartH}" rx="8"></rect>
+          <title>${formatDay(item.day)} · acumulado ${brl.format(item.total || 0)}</title>
+        </g>
+      `).join("")}
+      ${prepared.map((item, index) => index % Math.ceil(prepared.length / 5) ? "" : `<text class="pointDate" x="${xFor(index)}" y="${height - 8}">${formatShortDay(item.day)}</text>`).join("")}
+    </svg>
+  `;
+}
+
+function renderGeneralTopPatients(items) {
+  const el = document.getElementById("generalTopPatients");
+  const sortedItems = [...items].sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0)).slice(0, 8);
+  const max = Math.max(...sortedItems.map(item => Number(item.amount || 0)), 1);
+  el.innerHTML = sortedItems.length
+    ? sortedItems.map((item, index) => `
+      <div class="generalTopItem">
+        <b>${String(index + 1).padStart(2, "0")}</b>
+        <span>${escapeHtml(item.patient || "Paciente sem nome")}</span>
+        <i><em style="width:${Math.max(6, (Number(item.amount || 0) / max) * 100)}%"></em></i>
+        <strong>${brl.format(item.amount || 0)}</strong>
+      </div>
+    `).join("")
+    : `<div class="empty">Sem pacientes com venda no mês.</div>`;
+}
+
+function renderGeneralValueRanges(items) {
+  const el = document.getElementById("generalValueRanges");
+  const totalSales = items.reduce((sum, item) => sum + Number(item.sales || 0), 0);
+  const maxSales = Math.max(...items.map(item => Number(item.sales || 0)), 1);
+  el.innerHTML = items.length
+    ? items.map(item => {
+      const sales = Number(item.sales || 0);
+      return `
+        <div class="generalRangeItem">
+          <div>
+            <b>${escapeHtml(item.range || "Faixa")}</b>
+            <small>${sales} venda${sales === 1 ? "" : "s"} · ${formatPercent(totalSales ? sales / totalSales : 0)}</small>
+          </div>
+          <i><em style="width:${Math.max(sales ? 8 : 0, (sales / maxSales) * 100)}%"></em></i>
+          <strong>${brl.format(item.amount || 0)}</strong>
+        </div>
+      `;
+    }).join("")
+    : `<div class="empty">Sem vendas para distribuir por faixa.</div>`;
+}
+
+function renderGeneralSalesTicketChart(items) {
+  const prepared = items.map(item => ({
+    day: item.day,
+    sales: Number(item.sales || 0),
+    average_ticket: Number(item.average_ticket || 0),
+    revenue: Number(item.revenue || 0),
+  }));
+  renderHorizontalComparisonChart("generalSalesTicketChart", prepared, {
+    empty: "Sem vendas no mês selecionado.",
+    firstKey: "revenue",
+    secondKey: "average_ticket",
+    firstLabel: "Faturamento",
+    secondLabel: "Ticket médio",
+    firstColor: "#7167e8",
+    secondColor: "#18b9d4",
+    independentScale: true,
+    firstFormatter: value => brl.format(value || 0),
+    secondFormatter: value => brl.format(value || 0),
+    detail: item => `${item.sales || 0} venda${item.sales === 1 ? "" : "s"}`,
+  });
+}
+
+function renderGeneralLeadBookingChart(leads, bookings) {
+  const bookingLookup = Object.fromEntries(bookings.map(item => [item.day, Number(item.total || 0)]));
+  const days = [...new Set([...leads.map(item => item.day), ...bookings.map(item => item.day)])].filter(Boolean).sort();
+  const prepared = days.map(day => ({
+    day,
+    leads: Number((leads.find(item => item.day === day) || {}).total || 0),
+    bookings: bookingLookup[day] || 0,
+  }));
+  renderHorizontalComparisonChart("generalLeadBookingChart", prepared, {
+    empty: "Sem leads ou agendamentos no mês selecionado.",
+    firstKey: "leads",
+    secondKey: "bookings",
+    firstLabel: "Leads",
+    secondLabel: "Agendamentos",
+    firstColor: "#7167e8",
+    secondColor: "#18b9d4",
+    firstFormatter: value => `${Math.round(value || 0)}`,
+    secondFormatter: value => `${Math.round(value || 0)}`,
+  });
+}
+
+function renderHorizontalComparisonChart(id, items, config) {
+  const el = document.getElementById(id);
+  const active = items.filter(item => item.day);
+  const hasSignal = active.some(item => Number(item[config.firstKey] || 0) || Number(item[config.secondKey] || 0));
+  if (!active.length || !hasSignal) {
+    el.innerHTML = `<div class="empty">${config.empty}</div>`;
+    return;
+  }
+  const maxFirst = Math.max(...active.map(item => Number(item[config.firstKey] || 0)), 1);
+  const maxSecond = Math.max(...active.map(item => Number(item[config.secondKey] || 0)), 1);
+  const sharedMax = Math.max(maxFirst, maxSecond, 1);
+  el.innerHTML = `
+    <div class="generalHorizontalLegend">
+      <span><i style="background:${config.firstColor}"></i>${escapeHtml(config.firstLabel)}</span>
+      <span><i style="background:${config.secondColor}"></i>${escapeHtml(config.secondLabel)}</span>
+    </div>
+    <div class="generalHorizontalRows">
+      ${active.map(item => {
+        const first = Number(item[config.firstKey] || 0);
+        const second = Number(item[config.secondKey] || 0);
+        const tooltip = `${formatDay(item.day)} · ${config.firstLabel}: ${config.firstFormatter(first)} · ${config.secondLabel}: ${config.secondFormatter(second)}${config.detail ? ` · ${config.detail(item)}` : ""}`;
+        return `
+          <div class="generalHorizontalRow" data-tip="${escapeHtml(tooltip)}">
+            <b>${formatShortDay(item.day)}</b>
+            <div>
+              <span><i style="width:${Math.max(first ? 5 : 0, (first / (config.independentScale ? maxFirst : sharedMax)) * 100)}%;background:${config.firstColor}"></i><em>${config.firstFormatter(first)}</em></span>
+              <span><i style="width:${Math.max(second ? 5 : 0, (second / (config.independentScale ? maxSecond : sharedMax)) * 100)}%;background:${config.secondColor}"></i><em>${config.secondFormatter(second)}</em></span>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderDualAxisChart(id, items, config) {
+  const el = document.getElementById(id);
+  const hasSignal = items.some(item => (item[config.leftKey] || 0) || (item[config.rightKey] || 0));
+  const active = items.filter(item => item.day);
+  if (!hasSignal || !active.length) {
+    el.innerHTML = `<div class="empty">${config.empty}</div>`;
+    return;
+  }
+  const width = Math.max(760, active.length * 42);
+  const height = 310;
+  const pad = { top: 28, right: 86, bottom: 54, left: 72 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const maxLeft = Math.max(...active.map(item => item[config.leftKey] || 0), 1);
+  const maxRight = Math.max(...active.map(item => item[config.rightKey] || 0), 1);
+  const xFor = index => pad.left + (active.length === 1 ? chartW / 2 : (index / (active.length - 1)) * chartW);
+  const yLeft = value => pad.top + chartH - ((value || 0) / maxLeft) * chartH;
+  const yRight = value => pad.top + chartH - ((value || 0) / maxRight) * chartH;
+  const linePath = (key, yFn) => active.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFn(item[key]).toFixed(1)}`).join(" ");
+  const ticks = [0, .25, .5, .75, 1].map(ratio => {
+    const leftValue = maxLeft * ratio;
+    const rightValue = maxRight * ratio;
+    const y = yLeft(leftValue);
+    return `
+      <line class="lineGrid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}"></line>
+      <text class="chartAxis" x="${pad.left - 12}" y="${y + 4}" text-anchor="end">${escapeHtml(config.leftFormatter(leftValue))}</text>
+      <text class="chartAxis" x="${width - pad.right + 12}" y="${y + 4}">${escapeHtml(config.rightFormatter(rightValue))}</text>
+    `;
+  }).join("");
+  const labels = active.map((item, index) => {
+    if (active.length > 16 && index % Math.ceil(active.length / 12)) return "";
+    return `<text class="pointDate tilted" x="${xFor(index)}" y="${height - 18}">${formatShortDay(item.day)}</text>`;
+  }).join("");
+  const points = active.map((item, index) => {
+    const x = xFor(index);
+    return `
+      <circle class="chartPoint" style="stroke:${config.leftColor};fill:#fff" cx="${x}" cy="${yLeft(item[config.leftKey])}" r="4.5"></circle>
+      <circle class="chartPoint" style="stroke:${config.rightColor};fill:#fff" cx="${x}" cy="${yRight(item[config.rightKey])}" r="4.5"></circle>
+    `;
+  }).join("");
+  const zones = active.map((item, index) => {
+    const x = xFor(index);
+    const previous = index ? xFor(index - 1) : pad.left;
+    const next = index < active.length - 1 ? xFor(index + 1) : width - pad.right;
+    const hitW = Math.max(24, (next - previous) / 2);
+    return `<rect class="chartHitZone" data-index="${index}" x="${x - hitW / 2}" y="${pad.top}" width="${hitW}" height="${chartH}"></rect>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="generalChartLegend">
+      <span><i style="background:${config.leftColor}"></i>${escapeHtml(config.leftLabel)}</span>
+      <span><i style="background:${config.rightColor}"></i>${escapeHtml(config.rightLabel)}</span>
+    </div>
+    <div class="lineChartScroller">
+      <svg class="performanceSvg" viewBox="0 0 ${width} ${height}" role="img">
+        ${ticks}
+        <path class="performanceLine" style="stroke:${config.leftColor}" d="${linePath(config.leftKey, yLeft)}"></path>
+        <path class="performanceLine" style="stroke:${config.rightColor}" d="${linePath(config.rightKey, yRight)}"></path>
+        ${points}
+        ${zones}
+        ${labels}
+      </svg>
+      <div class="chartTooltip" hidden></div>
+    </div>
+  `;
+  const tooltip = el.querySelector(".chartTooltip");
+  el.querySelectorAll(".chartHitZone").forEach(zone => {
+    zone.addEventListener("mouseenter", event => showGeneralTooltip(event, active[Number(zone.dataset.index)], tooltip, el, config));
+    zone.addEventListener("mousemove", event => showGeneralTooltip(event, active[Number(zone.dataset.index)], tooltip, el, config));
+    zone.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
+  });
+}
+
+function showGeneralTooltip(event, item, tooltip, container, config) {
+  tooltip.innerHTML = config.tooltip(item);
+  const bounds = container.getBoundingClientRect();
+  tooltip.hidden = false;
+  const tooltipWidth = tooltip.offsetWidth || 250;
+  const left = Math.min(Math.max(12, event.clientX - bounds.left - tooltipWidth / 2), bounds.width - tooltipWidth - 12);
+  const top = Math.max(52, event.clientY - bounds.top - tooltip.offsetHeight - 18);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function renderSalesIntelligence(data) {
@@ -851,6 +1333,28 @@ function renderDoctorFilter() {
   select.value = state.selectedDoctor;
 }
 
+function renderGeneralDoctorFilter() {
+  const select = document.getElementById("generalDoctorFilter");
+  if (!select) return;
+  const rows = state.report?.clinica_experts?.doctor_cross || [];
+  const rowDoctors = rows.map(row => row.doctor).filter(Boolean);
+  const allDoctors = [...new Set([...state.allGeneralDoctors, ...rowDoctors, ...state.allDoctors])]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  state.allGeneralDoctors = allDoctors;
+  if (state.selectedGeneralDoctor && !allDoctors.includes(state.selectedGeneralDoctor)) {
+    state.selectedGeneralDoctor = "";
+  }
+  const currentOptions = [...select.options].map(option => option.value).join("|");
+  const nextOptions = ["", ...allDoctors].join("|");
+  if (currentOptions !== nextOptions) {
+    select.innerHTML = `
+      <option value="">Todos os profissionais</option>
+      ${allDoctors.map(doctor => `<option value="${escapeHtml(doctor)}">${escapeHtml(doctor)}</option>`).join("")}
+    `;
+  }
+  select.value = state.selectedGeneralDoctor;
+}
+
 function renderSellerFilter() {
   const select = document.getElementById("sellerFilter");
   if (!select) return;
@@ -1133,6 +1637,36 @@ async function syncClinicaNow() {
   }
 }
 
+async function saveMonthlyGoal() {
+  const month = state.selectedMonth || currentMonthValue();
+  const goals = {};
+  document.querySelectorAll("[data-goal-doctor]").forEach(input => {
+    goals[input.dataset.goalDoctor] = input.value || "0";
+  });
+  const btn = document.getElementById("saveMonthlyGoalBtn");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Salvando metas...";
+  try {
+    const params = new URLSearchParams();
+    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    const res = await fetch(`/api/monthly-goal?${params.toString()}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({month, goals}),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar a meta.");
+    showNotice("Metas mensais salvas.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível salvar a meta.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 function friendlyError(message) {
   const text = String(message || "");
   if (text.includes("502") || text.includes("503") || text.includes("504") || text.includes("Bad gateway")) {
@@ -1181,12 +1715,25 @@ document.addEventListener("keydown", event => {
 });
 document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
-    document.querySelectorAll(".tabBtn").forEach(tab => tab.classList.toggle("active", tab === button));
-    document.querySelectorAll(".viewPanel").forEach(panel => {
-      panel.classList.toggle("active", panel.id === button.dataset.view);
-    });
+    state.activeView = button.dataset.view || "commercialView";
+    applyActiveViewState();
+    if (state.activeView === "generalView") {
+      loadReport();
+    } else {
+      render();
+    }
   });
 });
+document.getElementById("generalMonth").addEventListener("change", event => {
+  state.selectedMonth = event.target.value || currentMonthValue();
+  normalizeGeneralMonth();
+  loadReport();
+});
+document.getElementById("generalDoctorFilter").addEventListener("change", event => {
+  state.selectedGeneralDoctor = event.target.value;
+  loadReport();
+});
+document.getElementById("saveMonthlyGoalBtn").addEventListener("click", saveMonthlyGoal);
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();
   state.selectedDoctor = "";
