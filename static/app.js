@@ -514,6 +514,8 @@ function renderGeneralPanel(panel) {
   const monthInput = document.getElementById("generalMonth");
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
+  const goalsMonthInput = document.getElementById("goalsModalMonthInput");
+  if (goalsMonthInput) goalsMonthInput.value = state.selectedMonth;
   document.getElementById("generalBoardTitle").textContent = "Resumo mensal";
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
@@ -552,6 +554,8 @@ function renderGeneralPanel(panel) {
 function renderMonthlyGoalRows(entries) {
   const el = document.getElementById("monthlyGoalsList");
   if (!el) return;
+  const monthLabelEl = document.getElementById("goalsModalMonth");
+  if (monthLabelEl) monthLabelEl.textContent = monthLabel(state.selectedMonth);
   const knownGoals = new Map(entries.map(entry => [entry.doctor, Number(entry.goal || 0)]));
   const doctors = [...new Set([
     ...state.allGeneralDoctors,
@@ -567,6 +571,20 @@ function renderMonthlyGoalRows(entries) {
       </label>
     `).join("")
     : `<div class="empty">Sem profissionais para cadastrar meta.</div>`;
+}
+
+function openGoalsModal() {
+  const modal = document.getElementById("goalsModal");
+  const monthInput = document.getElementById("goalsModalMonthInput");
+  if (monthInput) monthInput.value = state.selectedMonth || currentMonthValue();
+  renderMonthlyGoalRows(state.report?.general_panel?.goal_entries || []);
+  modal.hidden = false;
+  document.body.classList.add("modalOpen");
+}
+
+function closeGoalsModal() {
+  document.getElementById("goalsModal").hidden = true;
+  document.body.classList.remove("modalOpen");
 }
 
 function renderGeneralRevenueBarChart(items) {
@@ -1708,9 +1726,15 @@ document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);
 });
+document.querySelectorAll("[data-goals-close]").forEach(button => {
+  button.addEventListener("click", closeGoalsModal);
+});
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !document.getElementById("rankModal").hidden) {
     closeRankModal();
+  }
+  if (event.key === "Escape" && !document.getElementById("goalsModal").hidden) {
+    closeGoalsModal();
   }
 });
 document.querySelectorAll(".tabBtn").forEach(button => {
@@ -1729,10 +1753,16 @@ document.getElementById("generalMonth").addEventListener("change", event => {
   normalizeGeneralMonth();
   loadReport();
 });
+document.getElementById("goalsModalMonthInput").addEventListener("change", event => {
+  state.selectedMonth = event.target.value || currentMonthValue();
+  normalizeGeneralMonth();
+  loadReport();
+});
 document.getElementById("generalDoctorFilter").addEventListener("change", event => {
   state.selectedGeneralDoctor = event.target.value;
   loadReport();
 });
+document.getElementById("openGoalsModalBtn").addEventListener("click", openGoalsModal);
 document.getElementById("saveMonthlyGoalBtn").addEventListener("click", saveMonthlyGoal);
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();

@@ -377,16 +377,8 @@
                   <span>Mês</span>
                   <input id="generalMonth" type="month">
                 </label>
+                <button id="openGoalsModalBtn" type="button">Configurar metas</button>
               </div>
-            </section>
-
-            <section class="generalGoalsPanel">
-              <div>
-                <span>Metas mensais</span>
-                <strong>Por doutor(a)</strong>
-              </div>
-              <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
-              <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
             </section>
 
             <section class="generalHeroGrid">
@@ -514,6 +506,28 @@
             <button id="rankModalClose" class="secondary" type="button" data-rank-close>Fechar</button>
           </header>
           <div id="rankModalBody" class="rankModalBody"></div>
+        </section>
+      </div>
+
+      <div id="goalsModal" class="rankModal" hidden>
+        <button class="rankModalBackdrop" type="button" data-goals-close aria-label="Fechar metas"></button>
+        <section class="rankModalPanel goalsModalPanel" role="dialog" aria-modal="true" aria-labelledby="goalsModalTitle">
+          <header>
+            <div>
+              <span>Configuração</span>
+              <h2 id="goalsModalTitle">Metas mensais por doutor(a)</h2>
+              <small id="goalsModalMonth">-</small>
+            </div>
+            <button class="secondary" type="button" data-goals-close>Fechar</button>
+          </header>
+          <div class="goalsModalControls">
+            <label>
+              <span>Mês</span>
+              <input id="goalsModalMonthInput" type="month">
+            </label>
+            <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
+          </div>
+          <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
         </section>
       </div>
     </main>

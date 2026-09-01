@@ -586,6 +586,7 @@ button.danger {
   min-height: 40px;
   background: linear-gradient(135deg, var(--green), var(--brand));
   color: #082034;
+  white-space: nowrap;
 }
 
 .generalHeroGrid {
@@ -1266,7 +1267,7 @@ button.danger {
 }
 
 .generalExecutive .generalControls {
-  grid-template-columns: minmax(210px, 260px) minmax(155px, 190px);
+  grid-template-columns: minmax(210px, 260px) minmax(155px, 190px) auto;
   border-color: rgba(204, 230, 242, .92);
   background: rgba(255, 255, 255, .86);
   box-shadow: 0 12px 30px rgba(21, 27, 75, .08);
@@ -1278,25 +1279,6 @@ button.danger {
   background: rgba(255, 255, 255, .94);
 }
 
-.generalGoalsPanel {
-  display: grid;
-  grid-template-columns: minmax(170px, auto) minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: end;
-  margin: 12px 0 14px;
-  padding: 16px 18px;
-  border: 1px solid rgba(204, 230, 242, .9);
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(239, 249, 252, .88));
-  box-shadow: var(--shadow);
-}
-
-.generalGoalsPanel > div:first-child {
-  display: grid;
-  gap: 3px;
-}
-
-.generalGoalsPanel > div:first-child span,
 .monthlyGoalRow span {
   color: var(--muted);
   font-size: 11px;
@@ -1305,16 +1287,12 @@ button.danger {
   text-transform: uppercase;
 }
 
-.generalGoalsPanel > div:first-child strong {
-  color: #12213a;
-  font-size: 20px;
-  font-weight: 950;
-}
-
 .monthlyGoalsList {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 10px;
+  overflow: auto;
+  padding: 4px 2px 2px;
 }
 
 .monthlyGoalRow {
@@ -1325,19 +1303,6 @@ button.danger {
 .monthlyGoalRow input {
   height: 38px;
   font-weight: 850;
-}
-
-.generalGoalsPanel button {
-  min-width: 138px;
-  align-self: stretch;
-  border: 0;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--green), var(--brand));
-  color: #102136;
-  font-size: 15px;
-  font-weight: 950;
-  cursor: pointer;
-  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
 }
 
 .generalHeroGrid {
@@ -2586,7 +2551,7 @@ select {
 
 .rankModal {
   position: fixed;
-  z-index: 30;
+  z-index: 200;
   inset: 0;
   display: grid;
   place-items: center;
@@ -2649,6 +2614,64 @@ select {
 .rankModalBody .rankItem:hover {
   opacity: 1;
   transform: none;
+}
+
+.goalsModalPanel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(900px, 94vw);
+}
+
+.goalsModalPanel header span,
+.goalsModalPanel header small,
+.goalsModalControls span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.goalsModalPanel header small {
+  display: block;
+  margin-top: 4px;
+}
+
+.goalsModalControls {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid rgba(24, 185, 212, .10);
+}
+
+.goalsModalControls label {
+  display: grid;
+  gap: 6px;
+}
+
+.goalsModalControls button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--green), var(--brand));
+  color: #102136;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
+}
+
+.goalsModalPanel .monthlyGoalsList {
+  align-content: start;
+  padding: 18px 24px 24px;
+}
+
+.goalsModalPanel .monthlyGoalRow {
+  padding: 12px;
+  border: 1px solid rgba(204, 230, 242, .88);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .72);
 }
 
 .doctorCross {
@@ -3219,7 +3242,6 @@ select {
   }
 
   .generalExecutiveHeader,
-  .generalGoalsPanel,
   .generalDashboardGrid,
   .generalHeroMain,
   .generalHeroSide,
@@ -3236,6 +3258,7 @@ select {
   }
 
   .generalExecutive .generalControls,
+  .goalsModalControls,
   .generalRangeItem,
   .generalTopItem {
     grid-template-columns: 1fr;
