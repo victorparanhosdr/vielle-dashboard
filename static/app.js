@@ -529,11 +529,6 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalSalesCount").textContent = salesCount;
   document.getElementById("generalActiveDays").textContent = activeDays;
   document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
-  document.getElementById("generalAveragePerDay").textContent = brl.format(dailyAverage);
-  document.getElementById("generalBestRevenueDay").textContent = strongestDay ? formatShortDay(strongestDay.day) : "-";
-  document.getElementById("generalWorstRevenueDay").textContent = weakestDay ? formatShortDay(weakestDay.day) : "-";
-  document.getElementById("generalBestRevenueAmount").textContent = strongestDay ? brl.format(strongestDay.income || 0) : "Dia mais forte";
-  document.getElementById("generalWorstRevenueAmount").textContent = weakestDay ? brl.format(weakestDay.income || 0) : "Dia mais fraco";
   renderGeneralRevenueBarChart(dailyFinancial);
   renderGeneralAccumulatedChart(dailyFinancial);
   renderGeneralTopPatients(panel.top_patients || []);
@@ -637,6 +632,13 @@ function renderGeneralAccumulatedChart(items) {
       <line class="lineGrid" x1="${pad.left}" y1="${pad.top + chartH}" x2="${width - pad.right}" y2="${pad.top + chartH}"></line>
       <path class="generalAccumulatedArea" d="${area}"></path>
       <path class="generalAccumulatedLine" d="${path}"></path>
+      ${prepared.map((item, index) => `
+        <g class="generalAccumulatedPoint">
+          <circle cx="${xFor(index).toFixed(1)}" cy="${yFor(item.total).toFixed(1)}" r="5"></circle>
+          <rect x="${(xFor(index) - 10).toFixed(1)}" y="${pad.top}" width="20" height="${chartH}" rx="8"></rect>
+          <title>${formatDay(item.day)} · acumulado ${brl.format(item.total || 0)}</title>
+        </g>
+      `).join("")}
       ${prepared.map((item, index) => index % Math.ceil(prepared.length / 5) ? "" : `<text class="pointDate" x="${xFor(index)}" y="${height - 8}">${formatShortDay(item.day)}</text>`).join("")}
     </svg>
   `;

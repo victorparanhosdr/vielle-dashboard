@@ -1109,6 +1109,22 @@ button.danger {
   stroke-linejoin: round;
 }
 
+.generalAccumulatedPoint circle {
+  fill: #ffffff;
+  stroke: var(--brand-dark);
+  stroke-width: 2;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.generalAccumulatedPoint rect {
+  fill: transparent;
+}
+
+.generalAccumulatedPoint:hover circle {
+  opacity: 1;
+}
+
 .generalTopList {
   display: grid;
   gap: 8px;
@@ -1274,6 +1290,11 @@ button.danger {
   grid-column: span 2;
 }
 
+.generalMetric:nth-child(3),
+.generalMetric.compact {
+  grid-column: span 1;
+}
+
 .generalMetric {
   min-width: 0;
   min-height: 132px;
@@ -1328,6 +1349,13 @@ button.danger {
 
 .generalMetric.compact strong {
   font-size: clamp(23px, 1.9vw, 32px);
+}
+
+.generalHeroGrid .generalMetric:nth-child(1),
+.generalHeroGrid .generalMetric:nth-child(2),
+.generalHeroGrid .generalMetric:nth-child(4),
+.generalHeroGrid .generalMetric:nth-child(5) {
+  min-height: 142px;
 }
 
 .generalMetric::after {
