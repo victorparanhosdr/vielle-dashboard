@@ -8,7 +8,7 @@ const state = {
   selectedDoctor: "",
   selectedSeller: "",
   selectedBookingRegistryUser: "",
-  activeView: "commercialView",
+  activeView: "generalView",
   selectedMonth: "",
   dateFrom: "",
   dateTo: "",
@@ -79,8 +79,8 @@ function buildQuery() {
   }
   if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
   if (state.selectedSeller) params.set("seller", state.selectedSeller);
-  if (state.activeView === "generalView" && state.selectedMonth) {
-    const range = monthRange(state.selectedMonth);
+  if (state.activeView === "generalView") {
+    const range = monthRange(state.selectedMonth || currentMonthValue());
     params.set("date_from", range.from);
     params.set("date_to", range.to);
   } else {
@@ -226,6 +226,23 @@ function showClinicLanding() {
 function showDashboard() {
   document.getElementById("clinicLanding").classList.add("hidden");
   document.getElementById("dashboardShell").classList.remove("dashboardHidden");
+  applyActiveViewState();
+}
+
+function applyActiveViewState() {
+  document.querySelectorAll(".tabBtn").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.view === state.activeView);
+  });
+  document.querySelectorAll(".viewPanel").forEach(panel => {
+    panel.classList.toggle("active", panel.id === state.activeView);
+  });
+  const monthMode = state.activeView === "generalView";
+  document.body.classList.toggle("generalMode", monthMode);
+  const dateFrom = document.getElementById("dateFrom");
+  const dateTo = document.getElementById("dateTo");
+  if (dateFrom) dateFrom.disabled = monthMode;
+  if (dateTo) dateTo.disabled = monthMode;
+  if (monthMode) normalizeGeneralMonth();
 }
 
 function clinicAccessKey(clinicId) {
@@ -1439,16 +1456,8 @@ document.addEventListener("keydown", event => {
 document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view || "commercialView";
-    document.querySelectorAll(".tabBtn").forEach(tab => tab.classList.toggle("active", tab === button));
-    document.querySelectorAll(".viewPanel").forEach(panel => {
-      panel.classList.toggle("active", panel.id === state.activeView);
-    });
-    const monthMode = state.activeView === "generalView";
-    document.body.classList.toggle("generalMode", monthMode);
-    document.getElementById("dateFrom").disabled = monthMode;
-    document.getElementById("dateTo").disabled = monthMode;
-    if (monthMode) {
-      normalizeGeneralMonth();
+    applyActiveViewState();
+    if (state.activeView === "generalView") {
       loadReport();
     } else {
       render();
