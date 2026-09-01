@@ -503,12 +503,9 @@ function renderGeneralPanel(panel) {
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   if (monthInput) monthInput.value = state.selectedMonth;
   if (goalInput && document.activeElement !== goalInput) goalInput.value = goal ? Math.round(goal) : "";
-  document.getElementById("generalClinicName").textContent = clinic.name;
   document.getElementById("generalBoardTitle").textContent = `${clinic.name} · Resumo mensal`;
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = monthLabel(state.selectedMonth);
-  document.getElementById("generalSidebarMonth").textContent = monthLabel(state.selectedMonth).split(" de ")[0] || "Mês";
-  document.getElementById("generalSidebarYear").textContent = (state.selectedMonth || "").slice(0, 4) || "";
   document.getElementById("generalRevenue").textContent = brl.format(revenue);
   document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
   document.getElementById("generalGoalRateHint").textContent = goal
@@ -562,12 +559,12 @@ function renderGeneralRevenueBarChart(items) {
   }
   const max = Math.max(...days.map(item => Number(item.income || 0)), 1);
   el.innerHTML = `
-    <div class="generalBarPlot">
+    <div class="generalBarPlot" style="--bar-count:${Math.max(days.length, 1)}">
       ${days.map(item => {
         const value = Number(item.income || 0);
         const height = Math.max(value ? 7 : 1, (value / max) * 100);
         return `
-          <span class="generalBarDay" title="${formatDay(item.day)} · ${escapeHtml(brl.format(value))}">
+          <span class="generalBarDay" data-tip="${escapeHtml(formatDay(item.day))} · ${escapeHtml(brl.format(value))}">
             <i style="height:${height}%"></i>
             <b>${String(Number(item.day.slice(-2))).padStart(2, "0")}</b>
           </span>
@@ -696,22 +693,18 @@ function renderGeneralSalesTicketChart(items) {
     average_ticket: Number(item.average_ticket || 0),
     revenue: Number(item.revenue || 0),
   }));
-  renderDualAxisChart("generalSalesTicketChart", prepared, {
+  renderHorizontalComparisonChart("generalSalesTicketChart", prepared, {
     empty: "Sem vendas no mês selecionado.",
-    leftLabel: "Vendas",
-    rightLabel: "Ticket médio",
-    leftKey: "sales",
-    rightKey: "average_ticket",
-    leftColor: "#2e83f8",
-    rightColor: "#16c784",
-    leftFormatter: value => `${Math.round(value || 0)}`,
-    rightFormatter: value => brl.format(value || 0),
-    tooltip: item => `
-      <strong>${formatDay(item.day)}</strong>
-      <span><i style="background:#2e83f8"></i>Vendas: ${item.sales || 0}</span>
-      <span><i style="background:#16c784"></i>Ticket médio: ${brl.format(item.average_ticket || 0)}</span>
-      <span>Faturamento: ${brl.format(item.revenue || 0)}</span>
-    `,
+    firstKey: "revenue",
+    secondKey: "average_ticket",
+    firstLabel: "Faturamento",
+    secondLabel: "Ticket médio",
+    firstColor: "#7167e8",
+    secondColor: "#18b9d4",
+    independentScale: true,
+    firstFormatter: value => brl.format(value || 0),
+    secondFormatter: value => brl.format(value || 0),
+    detail: item => `${item.sales || 0} venda${item.sales === 1 ? "" : "s"}`,
   });
 }
 
@@ -723,22 +716,52 @@ function renderGeneralLeadBookingChart(leads, bookings) {
     leads: Number((leads.find(item => item.day === day) || {}).total || 0),
     bookings: bookingLookup[day] || 0,
   }));
-  renderDualAxisChart("generalLeadBookingChart", prepared, {
+  renderHorizontalComparisonChart("generalLeadBookingChart", prepared, {
     empty: "Sem leads ou agendamentos no mês selecionado.",
-    leftLabel: "Leads",
-    rightLabel: "Agendamentos",
-    leftKey: "leads",
-    rightKey: "bookings",
-    leftColor: "#8a45ff",
-    rightColor: "#20b9d4",
-    leftFormatter: value => `${Math.round(value || 0)}`,
-    rightFormatter: value => `${Math.round(value || 0)}`,
-    tooltip: item => `
-      <strong>${formatDay(item.day)}</strong>
-      <span><i style="background:#8a45ff"></i>Leads: ${item.leads || 0}</span>
-      <span><i style="background:#20b9d4"></i>Agendamentos: ${item.bookings || 0}</span>
-    `,
+    firstKey: "leads",
+    secondKey: "bookings",
+    firstLabel: "Leads",
+    secondLabel: "Agendamentos",
+    firstColor: "#7167e8",
+    secondColor: "#18b9d4",
+    firstFormatter: value => `${Math.round(value || 0)}`,
+    secondFormatter: value => `${Math.round(value || 0)}`,
   });
+}
+
+function renderHorizontalComparisonChart(id, items, config) {
+  const el = document.getElementById(id);
+  const active = items.filter(item => item.day);
+  const hasSignal = active.some(item => Number(item[config.firstKey] || 0) || Number(item[config.secondKey] || 0));
+  if (!active.length || !hasSignal) {
+    el.innerHTML = `<div class="empty">${config.empty}</div>`;
+    return;
+  }
+  const maxFirst = Math.max(...active.map(item => Number(item[config.firstKey] || 0)), 1);
+  const maxSecond = Math.max(...active.map(item => Number(item[config.secondKey] || 0)), 1);
+  const sharedMax = Math.max(maxFirst, maxSecond, 1);
+  el.innerHTML = `
+    <div class="generalHorizontalLegend">
+      <span><i style="background:${config.firstColor}"></i>${escapeHtml(config.firstLabel)}</span>
+      <span><i style="background:${config.secondColor}"></i>${escapeHtml(config.secondLabel)}</span>
+    </div>
+    <div class="generalHorizontalRows">
+      ${active.map(item => {
+        const first = Number(item[config.firstKey] || 0);
+        const second = Number(item[config.secondKey] || 0);
+        const tooltip = `${formatDay(item.day)} · ${config.firstLabel}: ${config.firstFormatter(first)} · ${config.secondLabel}: ${config.secondFormatter(second)}${config.detail ? ` · ${config.detail(item)}` : ""}`;
+        return `
+          <div class="generalHorizontalRow" data-tip="${escapeHtml(tooltip)}">
+            <b>${formatShortDay(item.day)}</b>
+            <div>
+              <span><i style="width:${Math.max(first ? 5 : 0, (first / (config.independentScale ? maxFirst : sharedMax)) * 100)}%;background:${config.firstColor}"></i><em>${config.firstFormatter(first)}</em></span>
+              <span><i style="width:${Math.max(second ? 5 : 0, (second / (config.independentScale ? maxSecond : sharedMax)) * 100)}%;background:${config.secondColor}"></i><em>${config.secondFormatter(second)}</em></span>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderDualAxisChart(id, items, config) {
