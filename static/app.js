@@ -8,6 +8,8 @@ const state = {
   selectedDoctor: "",
   selectedSeller: "",
   selectedBookingRegistryUser: "",
+  activeView: "commercialView",
+  selectedMonth: "",
   dateFrom: "",
   dateTo: "",
   rankings: {},
@@ -77,10 +79,52 @@ function buildQuery() {
   }
   if (state.selectedDoctor) params.set("doctor", state.selectedDoctor);
   if (state.selectedSeller) params.set("seller", state.selectedSeller);
-  if (state.dateFrom) params.set("date_from", state.dateFrom);
-  if (state.dateTo) params.set("date_to", state.dateTo);
+  if (state.activeView === "generalView" && state.selectedMonth) {
+    const range = monthRange(state.selectedMonth);
+    params.set("date_from", range.from);
+    params.set("date_to", range.to);
+  } else {
+    if (state.dateFrom) params.set("date_from", state.dateFrom);
+    if (state.dateTo) params.set("date_to", state.dateTo);
+  }
   const query = params.toString();
   return query ? `?${query}` : "";
+}
+
+function monthRange(monthValue) {
+  const month = monthValue || currentMonthValue();
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return {
+    from: `${year}-${String(monthNumber).padStart(2, "0")}-01`,
+    to: `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthFromDate(dateValue) {
+  return dateValue ? dateValue.slice(0, 7) : currentMonthValue();
+}
+
+function monthLabel(monthValue) {
+  if (!monthValue) return "-";
+  const [year, month] = monthValue.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+}
+
+function normalizeGeneralMonth() {
+  if (!state.selectedMonth) state.selectedMonth = monthFromDate(state.dateFrom);
+  const range = monthRange(state.selectedMonth);
+  state.dateFrom = range.from;
+  state.dateTo = range.to;
+  document.getElementById("dateFrom").value = range.from;
+  document.getElementById("dateTo").value = range.to;
+  const monthInput = document.getElementById("generalMonth");
+  if (monthInput) monthInput.value = state.selectedMonth;
 }
 
 function syncFilterState(report) {
@@ -107,6 +151,7 @@ function render() {
   const report = state.report || {};
   const totals = report.totals || {};
   syncFilterState(report);
+  if (state.activeView === "generalView") normalizeGeneralMonth();
 
   document.getElementById("totalLeads").textContent = totals.total_leads || 0;
   document.getElementById("interactedLeads").textContent = report.interacted_leads?.total || 0;
@@ -127,6 +172,7 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  renderGeneralPanel(report.general_panel || {});
   renderStatusColumnChart(report.all_current_status || []);
 
   applyClinicHeader();
@@ -314,6 +360,19 @@ function emptyReportForClinic(clinicId) {
         basis: "Aguardando integração da clínica.",
       },
     },
+    general_panel: {
+      month: monthFromDate(dateFrom),
+      goal: 0,
+      revenue: 0,
+      goal_rate: null,
+      projected_revenue: 0,
+      elapsed_days: 0,
+      month_days: 0,
+      average_ticket: 0,
+      sales_ticket_daily: [],
+      daily_leads: [],
+      daily_bookings: [],
+    },
     last_sync: null,
   };
 }
@@ -399,6 +458,170 @@ function renderFinancial(financial) {
   });
   renderFinanceRecent(financial.recent || []);
   renderSalesIntelligence(financial.sales_intelligence || {});
+}
+
+function renderGeneralPanel(panel) {
+  const month = panel.month || state.selectedMonth || monthFromDate(state.dateFrom);
+  state.selectedMonth = month || currentMonthValue();
+  const goal = Number(panel.goal || 0);
+  const revenue = Number(panel.revenue || 0);
+  const goalRate = panel.goal_rate;
+  const projected = Number(panel.projected_revenue || 0);
+  const elapsed = panel.elapsed_days || 0;
+  const monthDays = panel.month_days || 0;
+  const monthInput = document.getElementById("generalMonth");
+  const goalInput = document.getElementById("monthlyGoalInput");
+  if (monthInput) monthInput.value = state.selectedMonth;
+  if (goalInput && document.activeElement !== goalInput) goalInput.value = goal ? Math.round(goal) : "";
+  document.getElementById("generalGoal").textContent = brl.format(goal);
+  document.getElementById("generalGoalMonth").textContent = monthLabel(state.selectedMonth);
+  document.getElementById("generalRevenue").textContent = brl.format(revenue);
+  document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
+  document.getElementById("generalGoalRateHint").textContent = goal
+    ? `${brl.format(Math.max(0, goal - revenue))} faltando para a meta`
+    : "Cadastre uma meta mensal";
+  document.getElementById("generalProjection").textContent = brl.format(projected);
+  document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
+  document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
+  renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
+  renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+}
+
+function renderGeneralSalesTicketChart(items) {
+  const prepared = items.map(item => ({
+    day: item.day,
+    sales: Number(item.sales || 0),
+    average_ticket: Number(item.average_ticket || 0),
+    revenue: Number(item.revenue || 0),
+  }));
+  renderDualAxisChart("generalSalesTicketChart", prepared, {
+    empty: "Sem vendas no mês selecionado.",
+    leftLabel: "Vendas",
+    rightLabel: "Ticket médio",
+    leftKey: "sales",
+    rightKey: "average_ticket",
+    leftColor: "#2e83f8",
+    rightColor: "#16c784",
+    leftFormatter: value => `${Math.round(value || 0)}`,
+    rightFormatter: value => brl.format(value || 0),
+    tooltip: item => `
+      <strong>${formatDay(item.day)}</strong>
+      <span><i style="background:#2e83f8"></i>Vendas: ${item.sales || 0}</span>
+      <span><i style="background:#16c784"></i>Ticket médio: ${brl.format(item.average_ticket || 0)}</span>
+      <span>Faturamento: ${brl.format(item.revenue || 0)}</span>
+    `,
+  });
+}
+
+function renderGeneralLeadBookingChart(leads, bookings) {
+  const bookingLookup = Object.fromEntries(bookings.map(item => [item.day, Number(item.total || 0)]));
+  const days = [...new Set([...leads.map(item => item.day), ...bookings.map(item => item.day)])].filter(Boolean).sort();
+  const prepared = days.map(day => ({
+    day,
+    leads: Number((leads.find(item => item.day === day) || {}).total || 0),
+    bookings: bookingLookup[day] || 0,
+  }));
+  renderDualAxisChart("generalLeadBookingChart", prepared, {
+    empty: "Sem leads ou agendamentos no mês selecionado.",
+    leftLabel: "Leads",
+    rightLabel: "Agendamentos",
+    leftKey: "leads",
+    rightKey: "bookings",
+    leftColor: "#8a45ff",
+    rightColor: "#20b9d4",
+    leftFormatter: value => `${Math.round(value || 0)}`,
+    rightFormatter: value => `${Math.round(value || 0)}`,
+    tooltip: item => `
+      <strong>${formatDay(item.day)}</strong>
+      <span><i style="background:#8a45ff"></i>Leads: ${item.leads || 0}</span>
+      <span><i style="background:#20b9d4"></i>Agendamentos: ${item.bookings || 0}</span>
+    `,
+  });
+}
+
+function renderDualAxisChart(id, items, config) {
+  const el = document.getElementById(id);
+  const hasSignal = items.some(item => (item[config.leftKey] || 0) || (item[config.rightKey] || 0));
+  const active = items.filter(item => item.day);
+  if (!hasSignal || !active.length) {
+    el.innerHTML = `<div class="empty">${config.empty}</div>`;
+    return;
+  }
+  const width = Math.max(760, active.length * 42);
+  const height = 310;
+  const pad = { top: 28, right: 86, bottom: 54, left: 72 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const maxLeft = Math.max(...active.map(item => item[config.leftKey] || 0), 1);
+  const maxRight = Math.max(...active.map(item => item[config.rightKey] || 0), 1);
+  const xFor = index => pad.left + (active.length === 1 ? chartW / 2 : (index / (active.length - 1)) * chartW);
+  const yLeft = value => pad.top + chartH - ((value || 0) / maxLeft) * chartH;
+  const yRight = value => pad.top + chartH - ((value || 0) / maxRight) * chartH;
+  const linePath = (key, yFn) => active.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFn(item[key]).toFixed(1)}`).join(" ");
+  const ticks = [0, .25, .5, .75, 1].map(ratio => {
+    const leftValue = maxLeft * ratio;
+    const rightValue = maxRight * ratio;
+    const y = yLeft(leftValue);
+    return `
+      <line class="lineGrid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}"></line>
+      <text class="chartAxis" x="${pad.left - 12}" y="${y + 4}" text-anchor="end">${escapeHtml(config.leftFormatter(leftValue))}</text>
+      <text class="chartAxis" x="${width - pad.right + 12}" y="${y + 4}">${escapeHtml(config.rightFormatter(rightValue))}</text>
+    `;
+  }).join("");
+  const labels = active.map((item, index) => {
+    if (active.length > 16 && index % Math.ceil(active.length / 12)) return "";
+    return `<text class="pointDate tilted" x="${xFor(index)}" y="${height - 18}">${formatShortDay(item.day)}</text>`;
+  }).join("");
+  const points = active.map((item, index) => {
+    const x = xFor(index);
+    return `
+      <circle class="chartPoint" style="stroke:${config.leftColor};fill:#fff" cx="${x}" cy="${yLeft(item[config.leftKey])}" r="4.5"></circle>
+      <circle class="chartPoint" style="stroke:${config.rightColor};fill:#fff" cx="${x}" cy="${yRight(item[config.rightKey])}" r="4.5"></circle>
+    `;
+  }).join("");
+  const zones = active.map((item, index) => {
+    const x = xFor(index);
+    const previous = index ? xFor(index - 1) : pad.left;
+    const next = index < active.length - 1 ? xFor(index + 1) : width - pad.right;
+    const hitW = Math.max(24, (next - previous) / 2);
+    return `<rect class="chartHitZone" data-index="${index}" x="${x - hitW / 2}" y="${pad.top}" width="${hitW}" height="${chartH}"></rect>`;
+  }).join("");
+  el.innerHTML = `
+    <div class="generalChartLegend">
+      <span><i style="background:${config.leftColor}"></i>${escapeHtml(config.leftLabel)}</span>
+      <span><i style="background:${config.rightColor}"></i>${escapeHtml(config.rightLabel)}</span>
+    </div>
+    <div class="lineChartScroller">
+      <svg class="performanceSvg" viewBox="0 0 ${width} ${height}" role="img">
+        ${ticks}
+        <path class="performanceLine" style="stroke:${config.leftColor}" d="${linePath(config.leftKey, yLeft)}"></path>
+        <path class="performanceLine" style="stroke:${config.rightColor}" d="${linePath(config.rightKey, yRight)}"></path>
+        ${points}
+        ${zones}
+        ${labels}
+      </svg>
+      <div class="chartTooltip" hidden></div>
+    </div>
+  `;
+  const tooltip = el.querySelector(".chartTooltip");
+  el.querySelectorAll(".chartHitZone").forEach(zone => {
+    zone.addEventListener("mouseenter", event => showGeneralTooltip(event, active[Number(zone.dataset.index)], tooltip, el, config));
+    zone.addEventListener("mousemove", event => showGeneralTooltip(event, active[Number(zone.dataset.index)], tooltip, el, config));
+    zone.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
+  });
+}
+
+function showGeneralTooltip(event, item, tooltip, container, config) {
+  tooltip.innerHTML = config.tooltip(item);
+  const bounds = container.getBoundingClientRect();
+  tooltip.hidden = false;
+  const tooltipWidth = tooltip.offsetWidth || 250;
+  const left = Math.min(Math.max(12, event.clientX - bounds.left - tooltipWidth / 2), bounds.width - tooltipWidth - 12);
+  const top = Math.max(52, event.clientY - bounds.top - tooltip.offsetHeight - 18);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
 }
 
 function renderSalesIntelligence(data) {
@@ -1140,6 +1363,33 @@ async function syncClinicaNow() {
   }
 }
 
+async function saveMonthlyGoal() {
+  const month = state.selectedMonth || currentMonthValue();
+  const goal = document.getElementById("monthlyGoalInput").value || "0";
+  const btn = document.getElementById("saveMonthlyGoalBtn");
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Salvando...";
+  try {
+    const params = new URLSearchParams();
+    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    const res = await fetch(`/api/monthly-goal?${params.toString()}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({month, goal}),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar a meta.");
+    showNotice("Meta mensal salva.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível salvar a meta.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 function friendlyError(message) {
   const text = String(message || "");
   if (text.includes("502") || text.includes("503") || text.includes("504") || text.includes("Bad gateway")) {
@@ -1188,12 +1438,29 @@ document.addEventListener("keydown", event => {
 });
 document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
+    state.activeView = button.dataset.view || "commercialView";
     document.querySelectorAll(".tabBtn").forEach(tab => tab.classList.toggle("active", tab === button));
     document.querySelectorAll(".viewPanel").forEach(panel => {
-      panel.classList.toggle("active", panel.id === button.dataset.view);
+      panel.classList.toggle("active", panel.id === state.activeView);
     });
+    const monthMode = state.activeView === "generalView";
+    document.body.classList.toggle("generalMode", monthMode);
+    document.getElementById("dateFrom").disabled = monthMode;
+    document.getElementById("dateTo").disabled = monthMode;
+    if (monthMode) {
+      normalizeGeneralMonth();
+      loadReport();
+    } else {
+      render();
+    }
   });
 });
+document.getElementById("generalMonth").addEventListener("change", event => {
+  state.selectedMonth = event.target.value || currentMonthValue();
+  normalizeGeneralMonth();
+  loadReport();
+});
+document.getElementById("saveMonthlyGoalBtn").addEventListener("click", saveMonthlyGoal);
 document.getElementById("selectAllBtn").addEventListener("click", () => {
   state.selectedPipelines.clear();
   state.selectedDoctor = "";

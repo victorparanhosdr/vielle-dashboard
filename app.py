@@ -554,6 +554,60 @@ def settings_payload():
     return {"ok": True, "config": config}
 
 
+def month_key_from_range(date_from, date_to):
+    try:
+        start = datetime.strptime(date_from, "%Y-%m-%d")
+        end = datetime.strptime(date_to, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return ""
+    if start.day != 1:
+        return ""
+    next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    last_day = next_month - timedelta(days=1)
+    if end.date() != last_day.date():
+        return ""
+    return start.strftime("%Y-%m")
+
+
+def monthly_goal_key(month_key):
+    return f"MONTHLY_GOAL:{month_key}"
+
+
+def get_monthly_goal(month_key):
+    if not month_key:
+        return 0
+    with db() as conn:
+        row = conn.execute(
+            "select value from app_settings where key = ?",
+            (monthly_goal_key(month_key),),
+        ).fetchone()
+    try:
+        return float(row["value"]) if row else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def save_monthly_goal(month_key, value):
+    if not month_key:
+        raise ValueError("Mês inválido.")
+    try:
+        amount = max(0, float(str(value or "0").replace(".", "").replace(",", ".")))
+    except ValueError as exc:
+        raise ValueError("Meta mensal inválida.") from exc
+    with db() as conn:
+        conn.execute(
+            """
+            insert into app_settings (key, value, updated_at)
+            values (?, ?, ?)
+            on conflict(key) do update set
+                value=excluded.value,
+                updated_at=excluded.updated_at
+            """,
+            (monthly_goal_key(month_key), str(amount), int(time.time())),
+        )
+    return amount
+
+
 def init_db():
     with db() as conn:
         conn.executescript(
@@ -3320,6 +3374,37 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             }
             for item in sorted(performance_lookup.values(), key=lambda row: row["day"])
         ]
+        month_key = month_key_from_range(date_from, date_to)
+        month_goal = get_monthly_goal(month_key)
+        try:
+            start_date = datetime.strptime(date_from, "%Y-%m-%d")
+            end_date = datetime.strptime(date_to, "%Y-%m-%d")
+        except ValueError:
+            start_date = end_date = datetime.now()
+        today = datetime.now()
+        month_days = max(1, (end_date.date() - start_date.date()).days + 1)
+        if start_date.date() <= today.date() <= end_date.date():
+            elapsed_days = max(1, (today.date() - start_date.date()).days + 1)
+        elif end_date.date() < today.date():
+            elapsed_days = month_days
+        else:
+            elapsed_days = 1
+        projected_revenue = (financial_income_total / elapsed_days) * month_days if elapsed_days else financial_income_total
+        sales_ticket_daily = []
+        sales_performance_by_day = {item["day"]: item for item in sales_performance}
+        cursor_day = start_date
+        while cursor_day <= end_date:
+            day_key = cursor_day.strftime("%Y-%m-%d")
+            item = sales_performance_by_day.get(day_key, {"day": day_key, "revenue": 0, "sales": 0})
+            sales_count = item.get("sales") or 0
+            revenue = item.get("revenue") or 0
+            sales_ticket_daily.append({
+                "day": item.get("day"),
+                "sales": sales_count,
+                "average_ticket": (revenue / sales_count) if sales_count else 0,
+                "revenue": revenue,
+            })
+            cursor_day += timedelta(days=1)
         kommo_alias_lookup = clinic_kommo_doctor_alias_lookup()
         daily_doctors = {}
         for row in daily_lead_details:
@@ -3602,6 +3687,19 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 "performance_daily": sales_performance,
                 "basis": "Vendas ativas; orçado usa vendas inativas/orçamentos quando retornados pela API.",
             },
+        },
+        "general_panel": {
+            "month": month_key,
+            "goal": month_goal,
+            "revenue": financial_income_total,
+            "goal_rate": (financial_income_total / month_goal) if month_goal else None,
+            "projected_revenue": projected_revenue,
+            "elapsed_days": elapsed_days,
+            "month_days": month_days,
+            "average_ticket": (clinica_totals["sales_total"] / clinica_totals["sales"]) if clinica_totals["sales"] else 0,
+            "sales_ticket_daily": sales_ticket_daily,
+            "daily_leads": daily_new_leads,
+            "daily_bookings": daily_bookings,
         },
         "last_sync": dict(log) if log else None,
     }
@@ -4155,6 +4253,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             with clinic_context(self.request_clinic_id(parsed)):
                 return json_response(self, settings_payload())
+        if parsed.path == "/api/monthly-goal":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                params = urllib.parse.parse_qs(parsed.query)
+                month_key = params.get("month", [""])[0]
+                return json_response(self, {"ok": True, "month": month_key, "goal": get_monthly_goal(month_key)})
         if parsed.path == "/auth/start":
             with clinic_context(self.request_clinic_id(parsed)):
                 client_id = config_value("KOMMO_CLIENT_ID", "")
@@ -4260,6 +4365,19 @@ class Handler(SimpleHTTPRequestHandler):
                     with db() as conn:
                         conn.execute("delete from oauth_tokens")
                 return json_response(self, settings_payload())
+        if parsed.path == "/api/monthly-goal":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    month_key = str(payload.get("month", "")).strip()
+                    goal = save_monthly_goal(month_key, payload.get("goal", 0))
+                    return json_response(self, {"ok": True, "month": month_key, "goal": goal})
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível salvar a meta: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-all":
             if not self.require_master_auth():
                 return

@@ -96,6 +96,7 @@
       <nav class="viewTabs" aria-label="Áreas do dashboard">
         <button class="tabBtn active" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
+        <button class="tabBtn" type="button" data-view="generalView">Painel geral</button>
       </nav>
 
       <section class="filterPanel" aria-label="Filtros">
@@ -353,6 +354,72 @@
             </div>
             <div id="financeRecent" class="financeRecent"></div>
           </div>
+        </section>
+      </div>
+
+      <div id="generalView" class="viewPanel">
+        <section class="panel generalControlPanel">
+          <div class="panelHead">
+            <div>
+              <h2>Painel geral</h2>
+              <span class="metaText">Filtro por mês completo</span>
+            </div>
+            <div class="generalControls">
+              <label>
+                <span>Mês</span>
+                <input id="generalMonth" type="month">
+              </label>
+              <label>
+                <span>Meta mensal</span>
+                <input id="monthlyGoalInput" type="number" min="0" step="100" placeholder="R$ 0">
+              </label>
+              <button id="saveMonthlyGoalBtn" type="button">Salvar meta</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="generalHeroGrid">
+          <article class="panel generalMetric goal">
+            <span>Meta mensal</span>
+            <strong id="generalGoal">R$ 0</strong>
+            <small id="generalGoalMonth">-</small>
+          </article>
+          <article class="panel generalMetric revenue">
+            <span>Total faturado até o momento</span>
+            <strong id="generalRevenue">R$ 0</strong>
+            <small>Clínica Experts</small>
+          </article>
+          <article class="panel generalMetric percent">
+            <span>% realizado da meta</span>
+            <strong id="generalGoalRate">-</strong>
+            <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
+          </article>
+          <article class="panel generalMetric projection">
+            <span>Projeção de faturamento</span>
+            <strong id="generalProjection">R$ 0</strong>
+            <small id="generalProjectionHint">-</small>
+          </article>
+          <article class="panel generalMetric ticket">
+            <span>Ticket médio</span>
+            <strong id="generalAverageTicket">R$ 0</strong>
+            <small>Vendas no Clínica Experts</small>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Vendas e ticket médio por dia</h2>
+            <span class="metaText">Total de vendas + ticket médio</span>
+          </div>
+          <div id="generalSalesTicketChart" class="generalComboChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Leads x agendamentos por dia</h2>
+            <span class="metaText">Kommo + Clínica Experts</span>
+          </div>
+          <div id="generalLeadBookingChart" class="generalComboChart"></div>
         </section>
       </div>
 
