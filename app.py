@@ -2926,7 +2926,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         financial_income_extra_params = []
         financial_parcel_extra_clause = ""
         financial_parcel_extra_params = []
-        if current_clinic_id() == "victor" and effective_professional_uuids:
+        if effective_professional_uuids:
             professional_placeholders = ",".join("?" for _ in effective_professional_uuids)
             financial_income_extra_clause = f"""
               and exists (
@@ -2942,6 +2942,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               )
             """
             financial_income_extra_params = list(effective_professional_uuids)
+            victor_owner_text_clause = ""
+            victor_owner_bill_text_clause = ""
+            victor_parcel_text_clause = ""
             parcel_owner_text_expr = """
                 lower(
                   coalesce(json_extract(clinica_parcels.raw_json, '$.person.name'), '') || ' ' ||
@@ -2959,20 +2962,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                   coalesce(owner_bill.raw_json, '')
                 )
             """
-            financial_parcel_extra_clause = f"""
-              and (
-                json_extract(clinica_parcels.raw_json, '$.person.uuid') in ({professional_placeholders})
-                or json_extract(clinica_parcels.raw_json, '$.raw_bill.person.uuid') in ({professional_placeholders})
-                or ({parcel_owner_text_expr} like '%victor%' and {parcel_owner_text_expr} like '%paranhos%')
-                or exists (
-                  select 1
-                  from clinica_bills owner_bill
-                  where owner_bill.uuid = clinica_parcels.bill_uuid
-                    and (
-                      json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
-                      or ({owner_bill_text_expr} like '%victor%' and {owner_bill_text_expr} like '%paranhos%')
-                    )
-                )
+            if current_clinic_id() == "victor":
+                victor_owner_text_clause = f"or ({parcel_owner_text_expr} like '%victor%' and {parcel_owner_text_expr} like '%paranhos%')"
+                victor_owner_bill_text_clause = f"or ({owner_bill_text_expr} like '%victor%' and {owner_bill_text_expr} like '%paranhos%')"
+                victor_parcel_text_clause = """
                 or (
                   lower(
                     coalesce(clinica_parcels.description, '') || ' ' ||
@@ -2987,6 +2980,22 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                     coalesce(clinica_parcels.raw_json, '')
                   ) like '%paranhos%'
                 )
+                """
+            financial_parcel_extra_clause = f"""
+              and (
+                json_extract(clinica_parcels.raw_json, '$.person.uuid') in ({professional_placeholders})
+                or json_extract(clinica_parcels.raw_json, '$.raw_bill.person.uuid') in ({professional_placeholders})
+                {victor_owner_text_clause}
+                or exists (
+                  select 1
+                  from clinica_bills owner_bill
+                  where owner_bill.uuid = clinica_parcels.bill_uuid
+                    and (
+                      json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
+                      {victor_owner_bill_text_clause}
+                    )
+                )
+                {victor_parcel_text_clause}
               )
             """
             financial_parcel_extra_params = (
