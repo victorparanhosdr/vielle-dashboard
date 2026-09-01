@@ -514,12 +514,6 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalProjection").textContent = brl.format(projected);
   document.getElementById("generalProjectionHint").textContent = `${elapsed} de ${monthDays} dias calculados`;
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
-  document.getElementById("generalQuickRevenue").textContent = brl.format(revenue);
-  document.getElementById("generalQuickSales").textContent = salesCount;
-  document.getElementById("generalQuickTicket").textContent = brl.format(panel.average_ticket || 0);
-  document.getElementById("generalQuickActiveDays").textContent = `${activeDays} de ${monthDays}`;
-  document.getElementById("generalQuickLeads").textContent = totalLeads;
-  document.getElementById("generalQuickBookings").textContent = totalBookings;
   const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
   const dailyAverage = monthDays ? revenue / monthDays : 0;
   const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
@@ -541,7 +535,6 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalBestRevenueAmount").textContent = strongestDay ? brl.format(strongestDay.income || 0) : "Dia mais forte";
   document.getElementById("generalWorstRevenueAmount").textContent = weakestDay ? brl.format(weakestDay.income || 0) : "Dia mais fraco";
   renderGeneralRevenueBarChart(dailyFinancial);
-  renderGeneralPaymentDonut(panel.payment_methods || [], revenue);
   renderGeneralAccumulatedChart(dailyFinancial);
   renderGeneralTopPatients(panel.top_patients || []);
   renderGeneralValueRanges(panel.value_ranges || []);

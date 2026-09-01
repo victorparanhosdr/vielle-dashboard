@@ -1262,11 +1262,15 @@ button.danger {
 }
 
 .generalHeroGrid {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   align-items: stretch;
 }
 
 .generalMetric.featured {
+  grid-column: span 2;
+}
+
+.generalMetric.wideMetric {
   grid-column: span 2;
 }
 
@@ -1299,12 +1303,17 @@ button.danger {
   overflow: hidden;
   color: #12213a;
   font-family: var(--font);
-  font-size: clamp(27px, 2.65vw, 42px);
+  font-size: clamp(24px, 2.15vw, 36px);
   font-weight: 950;
   letter-spacing: 0;
   line-height: 1.02;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
+}
+
+.generalMetric.featured strong,
+.generalMetric.wideMetric strong {
+  font-size: clamp(24px, 2.35vw, 40px);
 }
 
 .generalMetric.revenue strong,
@@ -1318,7 +1327,7 @@ button.danger {
 }
 
 .generalMetric.compact strong {
-  font-size: clamp(25px, 2vw, 34px);
+  font-size: clamp(23px, 1.9vw, 32px);
 }
 
 .generalMetric::after {
@@ -1327,7 +1336,7 @@ button.danger {
 }
 
 .generalDashboardGrid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, .8fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .generalDashboardGrid .panel {
