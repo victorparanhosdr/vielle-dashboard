@@ -2599,6 +2599,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             ]
         else:
             effective_professional_uuids = forced_clinica_professional_uuids
+    effective_professional_names = [
+        name
+        for name, uuid in doctor_professionals.items()
+        if uuid in effective_professional_uuids
+    ]
     selected_kommo_aliases = clinic_kommo_doctor_aliases(selected_doctor) if selected_doctor else []
     if selected_doctor and clinic_has_kommo_doctor_aliases() and not selected_kommo_aliases:
         lead_doctor_clause, lead_doctor_params = "0 = 1", []
@@ -2930,6 +2935,23 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         financial_parcel_extra_params = []
         if effective_professional_uuids:
             professional_placeholders = ",".join("?" for _ in effective_professional_uuids)
+            professional_name_values = [name.lower() for name in effective_professional_names if name]
+            professional_name_placeholders = ",".join("?" for _ in professional_name_values)
+            parcel_name_clause = ""
+            owner_bill_name_clause = ""
+            if professional_name_values:
+                parcel_name_clause = f"""
+                or lower(coalesce(json_extract(clinica_parcels.raw_json, '$.person.name'), '')) in ({professional_name_placeholders})
+                or lower(coalesce(json_extract(clinica_parcels.raw_json, '$.person.full_name'), '')) in ({professional_name_placeholders})
+                or lower(coalesce(json_extract(clinica_parcels.raw_json, '$.raw_bill.person.name'), '')) in ({professional_name_placeholders})
+                or lower(coalesce(json_extract(clinica_parcels.raw_json, '$.raw_bill.person.full_name'), '')) in ({professional_name_placeholders})
+                """
+                owner_bill_name_clause = f"""
+                      or lower(coalesce(json_extract(owner_bill.raw_json, '$.person.name'), '')) in ({professional_name_placeholders})
+                      or lower(coalesce(json_extract(owner_bill.raw_json, '$.person.full_name'), '')) in ({professional_name_placeholders})
+                      or lower(coalesce(json_extract(owner_bill.raw_json, '$.raw_bill.person.name'), '')) in ({professional_name_placeholders})
+                      or lower(coalesce(json_extract(owner_bill.raw_json, '$.raw_bill.person.full_name'), '')) in ({professional_name_placeholders})
+                """
             financial_income_extra_clause = f"""
               and exists (
                 select 1
@@ -2987,6 +3009,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
               and (
                 json_extract(clinica_parcels.raw_json, '$.person.uuid') in ({professional_placeholders})
                 or json_extract(clinica_parcels.raw_json, '$.raw_bill.person.uuid') in ({professional_placeholders})
+                {parcel_name_clause}
                 {victor_owner_text_clause}
                 or exists (
                   select 1
@@ -2994,6 +3017,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                   where owner_bill.uuid = clinica_parcels.bill_uuid
                     and (
                       json_extract(owner_bill.raw_json, '$.person.uuid') in ({professional_placeholders})
+                      {owner_bill_name_clause}
                       {victor_owner_bill_text_clause}
                     )
                 )
@@ -3003,7 +3027,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             financial_parcel_extra_params = (
                 list(effective_professional_uuids)
                 + list(effective_professional_uuids)
+                + (professional_name_values * 4)
                 + list(effective_professional_uuids)
+                + (professional_name_values * 4)
             )
         financial_income_row = conn.execute(
             f"""
@@ -3800,6 +3826,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "goal": month_goal,
             "goal_entries": month_goal_entries,
             "revenue": financial_income_total,
+            "expenses_total": financial_expense_total,
+            "expenses_paid": financial_expense_settled,
+            "expenses_pending": financial_expense_open,
+            "balance": financial_income_total - financial_expense_total,
             "goal_rate": (financial_income_total / month_goal) if month_goal else None,
             "projected_revenue": projected_revenue,
             "elapsed_days": elapsed_days,
@@ -3809,7 +3839,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "active_revenue_days": len([item for item in financial_daily if item.get("income", 0) > 0]),
             "distinct_patients": len(top_patient_lookup),
             "financial_daily": financial_daily,
-            "payment_methods": financial_income_by_type,
+            "income_by_type": financial_income_by_type,
+            "expenses_by_category": [dict(row) for row in financial_expense_by_category],
+            "expenses_daily": financial_daily,
             "top_patients": top_patients,
             "value_ranges": sales_value_ranges,
             "sales_ticket_daily": sales_ticket_daily,

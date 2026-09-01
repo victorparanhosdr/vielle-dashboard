@@ -542,6 +542,10 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalSalesCount").textContent = salesCount;
   document.getElementById("generalActiveDays").textContent = activeDays;
   document.getElementById("generalActiveDaysHint").textContent = `${activeDays} de ${monthDays} dias`;
+  document.getElementById("generalExpensesTotal").textContent = brl.format(panel.expenses_total || 0);
+  document.getElementById("generalExpensesPaid").textContent = brl.format(panel.expenses_paid || 0);
+  document.getElementById("generalExpensesPending").textContent = brl.format(panel.expenses_pending || 0);
+  document.getElementById("generalBalance").textContent = brl.format(panel.balance || 0);
   renderMonthlyGoalRows(panel.goal_entries || []);
   renderGeneralRevenueBarChart(dailyFinancial);
   renderGeneralAccumulatedChart(dailyFinancial);
@@ -549,6 +553,12 @@ function renderGeneralPanel(panel) {
   renderGeneralValueRanges(panel.value_ranges || []);
   renderGeneralSalesTicketChart(panel.sales_ticket_daily || []);
   renderGeneralLeadBookingChart(panel.daily_leads || [], panel.daily_bookings || []);
+  renderFinanceList("generalExpenseCategories", panel.expenses_by_category || [], "amount", "category", {
+    showShare: true,
+    shareTotal: panel.expenses_total || 0,
+  });
+  renderFinanceList("generalIncomeTypes", panel.income_by_type || [], "amount");
+  renderGeneralExpenseDailyChart(panel.expenses_daily || []);
 }
 
 function renderMonthlyGoalRows(entries) {
@@ -772,6 +782,40 @@ function renderGeneralLeadBookingChart(leads, bookings) {
     firstFormatter: value => `${Math.round(value || 0)}`,
     secondFormatter: value => `${Math.round(value || 0)}`,
   });
+}
+
+function renderGeneralExpenseDailyChart(items) {
+  const prepared = items
+    .filter(item => item.day)
+    .map(item => ({
+      day: item.day,
+      expenses: Number(item.expenses || 0),
+      income: Number(item.income || 0),
+    }));
+  const active = prepared.filter(item => item.expenses > 0);
+  const el = document.getElementById("generalExpenseDailyChart");
+  if (!el) return;
+  if (!active.length) {
+    el.innerHTML = `<div class="empty">Sem saídas no mês selecionado.</div>`;
+    return;
+  }
+  const max = Math.max(...active.map(item => item.expenses), 1);
+  el.innerHTML = `
+    <div class="generalHorizontalLegend">
+      <span><i style="background:#ef6a73"></i>Saídas</span>
+      <span><i style="background:#19c58f"></i>Entrada do dia</span>
+    </div>
+    <div class="generalHorizontalRows">
+      ${active.map(item => `
+        <div class="generalHorizontalRow" data-tip="${escapeHtml(`${formatDay(item.day)} · Saídas: ${brl.format(item.expenses)} · Entradas: ${brl.format(item.income)}`)}">
+          <b>${formatShortDay(item.day)}</b>
+          <div>
+            <span><i style="width:${Math.max(5, (item.expenses / max) * 100)}%;background:#ef6a73"></i><em>${brl.format(item.expenses)}</em></span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderHorizontalComparisonChart(id, items, config) {
