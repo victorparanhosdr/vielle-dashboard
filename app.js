@@ -533,6 +533,8 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
   document.getElementById("generalRevenue").textContent = brl.format(revenue);
+  document.getElementById("generalFeaturedExpenses").textContent = brl.format(panel.expenses_total || 0);
+  document.getElementById("generalFeaturedBalance").textContent = brl.format(panel.balance || 0);
   document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
   document.getElementById("generalGoalRateHint").textContent = goal
     ? `${brl.format(Math.max(0, goal - revenue))} faltando para a meta`
