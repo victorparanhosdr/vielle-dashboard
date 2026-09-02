@@ -1430,19 +1430,116 @@ function renderTrafficDailyChart(items) {
     ...item,
     spend: Number(item.spend || 0),
     leads: Number(item.leads || 0),
+    clicks: Number(item.clicks || 0),
+    impressions: Number(item.impressions || 0),
   }));
-  renderHorizontalComparisonChart("trafficDailyChart", prepared, {
-    firstKey: "spend",
-    secondKey: "leads",
-    firstLabel: "Investimento",
-    secondLabel: "Leads",
-    firstColor: "#7c3aed",
-    secondColor: "#13b8cf",
-    firstFormatter: value => brl.format(value || 0),
-    secondFormatter: value => integerFormat(value || 0),
-    independentScale: true,
-    empty: "Ainda não há dados de tráfego pago para o período.",
-    detail: item => `Cliques: ${integerFormat(item.clicks || 0)} · CPL: ${formatNullableMoney(item.cpl)}`,
+  const el = document.getElementById("trafficDailyChart");
+  const active = prepared.filter(item => item.day);
+  const hasSignal = active.some(item => item.spend || item.leads || item.clicks || item.impressions);
+  if (!active.length || !hasSignal) {
+    el.innerHTML = `<div class="empty">Ainda não há dados de tráfego pago para o período.</div>`;
+    return;
+  }
+
+  const totalSpend = active.reduce((sum, item) => sum + item.spend, 0);
+  const totalLeads = active.reduce((sum, item) => sum + item.leads, 0);
+  const bestSpendDay = [...active].sort((a, b) => b.spend - a.spend)[0];
+  const bestLeadDay = [...active].sort((a, b) => b.leads - a.leads)[0];
+  const width = Math.max(860, active.length * 44);
+  const height = 330;
+  const pad = { top: 34, right: 78, bottom: 58, left: 72 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const maxSpend = Math.max(...active.map(item => item.spend), 1);
+  const maxLeads = Math.max(...active.map(item => item.leads), 1);
+  const step = active.length > 1 ? chartW / (active.length - 1) : chartW;
+  const barW = Math.min(22, Math.max(10, step * .46));
+  const xFor = index => pad.left + (active.length === 1 ? chartW / 2 : index * step);
+  const ySpend = value => pad.top + chartH - ((value || 0) / maxSpend) * chartH;
+  const yLeads = value => pad.top + chartH - ((value || 0) / maxLeads) * chartH;
+  const leadPath = active.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yLeads(item.leads).toFixed(1)}`).join(" ");
+  const spendArea = active.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${ySpend(item.spend).toFixed(1)}`).join(" ");
+  const ticks = [0, .25, .5, .75, 1].map(ratio => {
+    const y = pad.top + chartH - chartH * ratio;
+    return `
+      <line class="lineGrid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}"></line>
+      <text class="chartAxis" x="${pad.left - 12}" y="${y + 4}" text-anchor="end">${escapeHtml(moneyShort(maxSpend * ratio))}</text>
+      <text class="chartAxis" x="${width - pad.right + 12}" y="${y + 4}">${integerFormat(Math.round(maxLeads * ratio))}</text>
+    `;
+  }).join("");
+  const bars = active.map((item, index) => {
+    const x = xFor(index) - barW / 2;
+    const y = ySpend(item.spend);
+    const h = pad.top + chartH - y;
+    return `<rect class="trafficSpendBar" x="${x}" y="${y}" width="${barW}" height="${Math.max(2, h)}" rx="6"></rect>`;
+  }).join("");
+  const points = active.map((item, index) => `
+    <circle class="trafficLeadPoint" cx="${xFor(index)}" cy="${yLeads(item.leads)}" r="${item.leads ? 5.2 : 3.8}"></circle>
+  `).join("");
+  const labels = active.map((item, index) => {
+    if (active.length > 18 && index % Math.ceil(active.length / 12)) return "";
+    return `<text class="pointDate tilted" x="${xFor(index)}" y="${height - 20}">${formatShortDay(item.day)}</text>`;
+  }).join("");
+  const zones = active.map((item, index) => {
+    const x = xFor(index);
+    const previous = index ? xFor(index - 1) : pad.left;
+    const next = index < active.length - 1 ? xFor(index + 1) : width - pad.right;
+    const hitW = Math.max(28, (next - previous) / 2);
+    return `<rect class="chartHitZone" data-index="${index}" x="${x - hitW / 2}" y="${pad.top}" width="${hitW}" height="${chartH}"></rect>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="trafficDailySummary">
+      <span><b>${brl.format(totalSpend)}</b><small>Investimento no período</small></span>
+      <span><b>${integerFormat(totalLeads)}</b><small>Leads Meta</small></span>
+      <span><b>${formatShortDay(bestSpendDay.day)}</b><small>Maior investimento: ${brl.format(bestSpendDay.spend)}</small></span>
+      <span><b>${formatShortDay(bestLeadDay.day)}</b><small>Mais leads: ${integerFormat(bestLeadDay.leads)}</small></span>
+    </div>
+    <div class="generalChartLegend trafficLegend">
+      <span><i class="trafficSpendSwatch"></i>Investimento</span>
+      <span><i class="trafficLeadSwatch"></i>Leads</span>
+    </div>
+    <div class="trafficChartScroller">
+      <svg class="trafficDailySvg" viewBox="0 0 ${width} ${height}" role="img">
+        <defs>
+          <linearGradient id="trafficSpendGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#7c3aed"></stop>
+            <stop offset="100%" stop-color="#13b8cf"></stop>
+          </linearGradient>
+          <linearGradient id="trafficAreaGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#13b8cf" stop-opacity=".22"></stop>
+            <stop offset="100%" stop-color="#13b8cf" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        ${ticks}
+        <path class="trafficSpendArea" d="${spendArea} L ${xFor(active.length - 1).toFixed(1)} ${pad.top + chartH} L ${xFor(0).toFixed(1)} ${pad.top + chartH} Z"></path>
+        ${bars}
+        <path class="trafficLeadLine" d="${leadPath}"></path>
+        ${points}
+        ${zones}
+        ${labels}
+      </svg>
+      <div class="chartTooltip trafficTooltip" hidden></div>
+    </div>
+  `;
+  const tooltip = el.querySelector(".trafficTooltip");
+  el.querySelectorAll(".chartHitZone").forEach(zone => {
+    const item = active[Number(zone.dataset.index)];
+    const show = event => {
+      const tooltipHtml = `
+        <strong>${formatDay(item.day)}</strong>
+        <span><i style="background:#7c3aed"></i>Investimento: ${brl.format(item.spend || 0)}</span>
+        <span><i style="background:#13b8cf"></i>Leads: ${integerFormat(item.leads || 0)}</span>
+        <span><i style="background:#2e86ff"></i>Cliques: ${integerFormat(item.clicks || 0)}</span>
+        <span><i style="background:#20c997"></i>CPC: ${formatNullableMoney(item.cpc)} · CPL: ${formatNullableMoney(item.cpl)}</span>
+      `;
+      showGeneralTooltip(event, item, tooltip, el, { tooltip: () => tooltipHtml });
+    };
+    zone.addEventListener("mouseenter", show);
+    zone.addEventListener("mousemove", show);
+    zone.addEventListener("mouseleave", () => {
+      tooltip.hidden = true;
+    });
   });
 }
 

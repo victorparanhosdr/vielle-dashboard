@@ -1936,7 +1936,104 @@ button.danger {
 }
 
 .trafficDailyChart {
-  padding: 18px 20px 22px;
+  position: relative;
+  padding: 16px 20px 22px;
+}
+
+.trafficDailySummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.trafficDailySummary span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(204, 230, 242, .82);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .72);
+  box-shadow: 0 14px 34px rgba(17, 36, 54, .07);
+}
+
+.trafficDailySummary b {
+  overflow: hidden;
+  color: #10223b;
+  font-size: clamp(18px, 2vw, 25px);
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trafficDailySummary small {
+  overflow: hidden;
+  color: #65758e;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trafficLegend {
+  margin-bottom: 10px;
+}
+
+.trafficSpendSwatch {
+  background: linear-gradient(90deg, #7c3aed, #13b8cf);
+}
+
+.trafficLeadSwatch {
+  background: #13b8cf;
+}
+
+.trafficChartScroller {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(24, 185, 212, .14);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(241, 249, 252, .74)),
+    repeating-linear-gradient(90deg, rgba(24, 185, 212, .05) 0 1px, transparent 1px 58px);
+}
+
+.trafficDailySvg {
+  display: block;
+  min-width: 100%;
+  height: 330px;
+}
+
+.trafficSpendArea {
+  fill: url(#trafficAreaGradient);
+}
+
+.trafficSpendBar {
+  fill: url(#trafficSpendGradient);
+  filter: drop-shadow(0 8px 12px rgba(19, 184, 207, .16));
+}
+
+.trafficLeadLine {
+  fill: none;
+  stroke: #13b8cf;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 8px 12px rgba(19, 184, 207, .18));
+}
+
+.trafficLeadPoint {
+  fill: #fff;
+  stroke: #13b8cf;
+  stroke-width: 3.2;
+  filter: drop-shadow(0 4px 10px rgba(19, 184, 207, .25));
+}
+
+.trafficTooltip {
+  min-width: 280px;
 }
 
 .trafficCampaigns {
