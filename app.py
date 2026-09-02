@@ -1141,7 +1141,7 @@ def sync_paid_traffic(date_from=None, date_to=None):
                     day,
                     campaign_id,
                     str(row.get("campaign_name") or "Campanha sem nome"),
-                    money_value(row.get("spend")),
+                    meta_money_value(row.get("spend")),
                     int(float(row.get("impressions") or 0)),
                     int(float(row.get("reach") or 0)),
                     int(float(row.get("clicks") or 0)),
@@ -1319,6 +1319,13 @@ def money_value(value):
     except (TypeError, ValueError):
         return None
     return number / 100
+
+
+def meta_money_value(value):
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return 0
 
 
 def is_settled_financial_status(status):
