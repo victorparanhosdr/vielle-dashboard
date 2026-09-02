@@ -425,6 +425,13 @@ const brl = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
 
+const brlCents = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 const bookingStatusLabels = {
   done: "Concluído",
   canceled: "Cancelado",
@@ -1401,7 +1408,7 @@ function formatPercent(value) {
 
 function formatNullableMoney(value) {
   const number = Number(value || 0);
-  return number ? brl.format(number) : "-";
+  return number ? brlCents.format(number) : "-";
 }
 
 function renderPaidTraffic(traffic) {
