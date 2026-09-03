@@ -138,6 +138,8 @@ KOMMO_CONFIG_KEYS = {
 KOMMO_DISABLED_KEY = "KOMMO_DISABLED"
 KOMMO_RESET_MARKER_KEY = "KOMMO_RESET_VERSION"
 KOMMO_RESET_VERSION = "2026-08-31-reset-kommo-1"
+PATIENT_FOLLOWUP_CACHE_MARKER_KEY = "PATIENT_FOLLOWUP_CACHE_VERSION"
+PATIENT_FOLLOWUP_CACHE_VERSION = "2026-09-03-sale-type-inactive-followup"
 
 PIPELINE_DOCTOR_MAP = {
     "Tráfego Paranhos": "Victor Paranhos de Andrade",
@@ -4398,6 +4400,15 @@ def sale_status_group(status, sale_type=None):
     return text or "sem status"
 
 
+def sale_counts_for_patient_followup(sale, sale_type=None):
+    type_text = normalize_lookup_text(sale_type or first_value(sale, ["type"]) or "")
+    status_text = normalize_lookup_text(first_value(sale, ["status"]) or "")
+    canceled_statuses = {"canceled", "cancelled", "cancelado", "deleted", "excluido", "removed", "void"}
+    if type_text == "sale":
+        return status_text not in canceled_statuses
+    return sale_status_group(first_value(sale, ["status"]), sale_type) == "venda"
+
+
 def contact_log_key(patient_key, category):
     return f"{normalize_lookup_text(patient_key)}|{normalize_lookup_text(category)}"
 
@@ -4494,8 +4505,7 @@ def cache_patient_followup_sale(conn, sale_uuid, patient_uuid, sale_type, sale_d
     procedure_catalog = procedure_catalog or followup_procedure_catalog(conn)
     patient_lookup = patient_lookup or followup_patient_lookup(conn)
     sale_day = parse_iso_date(sale_date)
-    status_group = sale_status_group(first_value(sale, ["status"]), sale_type)
-    if status_group == "venda" and sale_day:
+    if sale_counts_for_patient_followup(sale, sale_type) and sale_day:
         patient_name, raw_patient_uuid = sale_patient_info(sale, patient_uuid or "")
         patient_uuid = raw_patient_uuid or patient_uuid or ""
         patient_data = patient_lookup.get(patient_uuid, {})
@@ -4546,6 +4556,20 @@ def cache_patient_followup_sale(conn, sale_uuid, patient_uuid, sale_type, sale_d
 
 
 def refresh_patient_followup_cache(conn, followup_start_date, reference_date):
+    marker = conn.execute(
+        "select value from app_settings where key = ?",
+        (PATIENT_FOLLOWUP_CACHE_MARKER_KEY,),
+    ).fetchone()
+    if not marker or str(marker["value"] or "") != PATIENT_FOLLOWUP_CACHE_VERSION:
+        conn.execute("delete from patient_followup_items")
+        conn.execute("delete from patient_followup_cached_sales")
+        conn.execute(
+            """
+            insert or replace into app_settings (key, value, updated_at)
+            values (?, ?, ?)
+            """,
+            (PATIENT_FOLLOWUP_CACHE_MARKER_KEY, PATIENT_FOLLOWUP_CACHE_VERSION, int(time.time())),
+        )
     procedure_catalog = followup_procedure_catalog(conn)
     patient_lookup = followup_patient_lookup(conn)
     rows = conn.execute(
