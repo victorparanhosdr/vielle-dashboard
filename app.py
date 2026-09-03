@@ -2279,6 +2279,8 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
         parcels = 0
         warnings = []
         periods = list(month_ranges(date_from, date_to)) if historical else [(date_from, date_to)]
+        if historical:
+            periods = list(reversed(periods))
         for period_from, period_to in periods:
             period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = sync_clinica_period(period_from, period_to)
             bookings += period_bookings
