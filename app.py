@@ -2990,7 +2990,7 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
     return ("where " + " and ".join(clauses)) if clauses else "", params
 
 
-def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None):
+def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None, include_followup=False):
     pipeline_ids = pipeline_ids or []
     clinic_id = current_clinic_id()
     pipeline_doctor_map = clinic_pipeline_doctor_map()
@@ -4209,7 +4209,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 }
             )
         paid_traffic = paid_traffic_report(conn, date_from, date_to)
-        patient_followup = build_patient_followup(conn, date_to, effective_professional_uuids)
+        patient_followup = build_patient_followup(conn, date_to, effective_professional_uuids) if include_followup else None
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
@@ -4629,6 +4629,7 @@ def query_report_args(params):
         "date_to": params.get("date_to", [""])[0],
         "doctor": params.get("doctor", [""])[0],
         "seller": params.get("seller", [""])[0],
+        "include_followup": params.get("include_followup", [""])[0] == "1",
     }
 
 

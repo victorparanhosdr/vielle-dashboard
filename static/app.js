@@ -13,6 +13,7 @@ const state = {
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
   patientFollowupItems: [],
+  followupVisibleCount: 24,
   activeView: "generalView",
   selectedMonth: "",
   dateFrom: "",
@@ -88,6 +89,7 @@ function buildQuery() {
     if (state.dateFrom) params.set("date_from", state.dateFrom);
     if (state.dateTo) params.set("date_to", state.dateTo);
   }
+  if (state.activeView === "patientFollowupView") params.set("include_followup", "1");
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -181,7 +183,9 @@ function render() {
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
-  renderPatientFollowup(report.patient_followup || {});
+  if (state.activeView === "patientFollowupView") {
+    renderPatientFollowup(report.patient_followup || {});
+  }
   renderStatusColumnChart(report.all_current_status || []);
 
   applyClinicHeader();
@@ -1432,6 +1436,11 @@ function statusLabel(status) {
 }
 
 function renderPatientFollowup(followup) {
+  if (!followup.items) {
+    const container = document.getElementById("patientFollowupList");
+    if (container) container.innerHTML = `<div class="empty">Carregando acompanhamento de pacientes...</div>`;
+    return;
+  }
   const totals = followup.totals || {};
   state.patientFollowupItems = followup.items || [];
   const followupStart = followup.start_date ? formatFullDay(followup.start_date) : "01/01/2025";
@@ -1470,7 +1479,8 @@ function renderPatientFollowupList() {
     container.innerHTML = `<div class="empty">Nenhum paciente encontrado para este filtro.</div>`;
     return;
   }
-  container.innerHTML = items.map((item, index) => {
+  const visibleItems = items.slice(0, state.followupVisibleCount);
+  const cardsHtml = visibleItems.map((item, index) => {
     const lastContact = item.last_contact;
     const contactText = lastContact
       ? `${formatDay(lastContact.contact_date)} · ${escapeHtml(lastContact.contacted_by || "Sem nome")}`
@@ -1518,6 +1528,11 @@ function renderPatientFollowupList() {
       </article>
     `;
   }).join("");
+  const remaining = items.length - visibleItems.length;
+  const moreHtml = remaining > 0
+    ? `<div class="followupMore"><button type="button" id="followupShowMore">Mostrar mais ${integerFormat(Math.min(24, remaining))} de ${integerFormat(remaining)} pacientes</button></div>`
+    : "";
+  container.innerHTML = `${cardsHtml}${moreHtml}`;
 }
 
 async function savePatientFollowupContact(event) {
@@ -2233,14 +2248,21 @@ document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTraffic
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.getElementById("followupCategoryFilter")?.addEventListener("change", event => {
   state.selectedFollowupCategory = event.target.value;
+  state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
 document.getElementById("followupStatusFilter")?.addEventListener("change", event => {
   state.selectedFollowupStatus = event.target.value;
+  state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
 document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
   if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
+});
+document.getElementById("patientFollowupList")?.addEventListener("click", event => {
+  if (!event.target.matches("#followupShowMore")) return;
+  state.followupVisibleCount += 24;
+  renderPatientFollowupList();
 });
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);
@@ -2260,7 +2282,7 @@ document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view || "commercialView";
     applyActiveViewState();
-    if (state.activeView === "generalView") {
+    if (state.activeView === "generalView" || state.activeView === "patientFollowupView") {
       loadReport();
     } else {
       render();
