@@ -938,6 +938,32 @@ def init_db():
                 created_at integer not null
             );
 
+            create table if not exists patient_followup_cached_sales (
+                sale_uuid text primary key,
+                synced_at integer not null
+            );
+
+            create table if not exists patient_followup_items (
+                sale_uuid text not null,
+                patient_key text not null,
+                patient_uuid text,
+                patient_name text,
+                patient_phone text,
+                patient_email text,
+                category text not null,
+                procedure_name text,
+                sale_date text not null,
+                sale_total real,
+                professional_name text,
+                professional_uuid text,
+                synced_at integer not null,
+                primary key (sale_uuid, patient_key, category, procedure_name)
+            );
+
+            create index if not exists idx_patient_followup_items_date on patient_followup_items(sale_date);
+            create index if not exists idx_patient_followup_items_professional on patient_followup_items(professional_uuid);
+            create index if not exists idx_patient_followup_items_patient_category on patient_followup_items(patient_key, category);
+
             create table if not exists clinica_sync_log (
                 id integer primary key autoincrement,
                 started_at integer not null,
@@ -1872,6 +1898,8 @@ def save_clinica_sale(conn, sale, synced_at):
     total = money_value(total)
     sale_type = first_value(sale, ["type"]) or ("sale_quote" if "quote_date" in sale else None)
     sale_date = first_value(sale, ["sale_date", "quote_date", "date", "created_at"])
+    sale_uuid = str(uuid)
+    patient_uuid = str(patient.get("uuid") or patient.get("id")) if isinstance(patient, dict) else str(patient) if patient else None
     conn.execute(
         """
         insert into clinica_sales
@@ -1886,8 +1914,8 @@ def save_clinica_sale(conn, sale, synced_at):
             synced_at=excluded.synced_at
         """,
         (
-            str(uuid),
-            str(patient.get("uuid") or patient.get("id")) if isinstance(patient, dict) else str(patient) if patient else None,
+            sale_uuid,
+            patient_uuid,
             sale_type,
             sale_date,
             total,
@@ -1895,6 +1923,7 @@ def save_clinica_sale(conn, sale, synced_at):
             synced_at,
         ),
     )
+    cache_patient_followup_sale(conn, sale_uuid, patient_uuid or "", sale_type, sale_date, total, sale, synced_at)
     return True
 
 
@@ -4436,6 +4465,121 @@ def sale_item_name_and_category(item, procedure_catalog):
     return name or "Procedimento sem nome", category or procedure_category_from_name(name)
 
 
+def followup_procedure_catalog(conn):
+    procedure_rows = conn.execute(
+        "select uuid, name, category_name from clinica_procedures"
+    ).fetchall()
+    procedure_catalog = {}
+    for row in procedure_rows:
+        item = {"name": row["name"], "category_name": row["category_name"]}
+        if row["uuid"]:
+            procedure_catalog[str(row["uuid"])] = item
+        procedure_catalog[normalize_lookup_text(row["name"])] = item
+    return procedure_catalog
+
+
+def followup_patient_lookup(conn):
+    patient_rows = conn.execute(
+        "select uuid, name, phone, email from clinica_patients"
+    ).fetchall()
+    return {
+        str(row["uuid"]): {"name": row["name"], "phone": row["phone"], "email": row["email"]}
+        for row in patient_rows
+        if row["uuid"]
+    }
+
+
+def cache_patient_followup_sale(conn, sale_uuid, patient_uuid, sale_type, sale_date, total, sale, synced_at, procedure_catalog=None, patient_lookup=None):
+    conn.execute("delete from patient_followup_items where sale_uuid = ?", (sale_uuid,))
+    procedure_catalog = procedure_catalog or followup_procedure_catalog(conn)
+    patient_lookup = patient_lookup or followup_patient_lookup(conn)
+    sale_day = parse_iso_date(sale_date)
+    status_group = sale_status_group(first_value(sale, ["status"]), sale_type)
+    if status_group == "venda" and sale_day:
+        patient_name, raw_patient_uuid = sale_patient_info(sale, patient_uuid or "")
+        patient_uuid = raw_patient_uuid or patient_uuid or ""
+        patient_data = patient_lookup.get(patient_uuid, {})
+        patient_name = patient_name or patient_data.get("name") or "Paciente sem nome"
+        patient_key = patient_uuid or normalize_lookup_text(patient_name)
+        professional_name, professional_uuid = sale_professional_info(sale)
+        inserted_keys = set()
+        for item in extract_sale_items(sale):
+            procedure_name, raw_category = sale_item_name_and_category(item, procedure_catalog)
+            category = followup_category(raw_category, procedure_name)
+            if not category:
+                continue
+            item_key = (patient_key, category, procedure_name)
+            if item_key in inserted_keys:
+                continue
+            inserted_keys.add(item_key)
+            conn.execute(
+                """
+                insert or replace into patient_followup_items
+                (sale_uuid, patient_key, patient_uuid, patient_name, patient_phone, patient_email,
+                 category, procedure_name, sale_date, sale_total, professional_name, professional_uuid, synced_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sale_uuid,
+                    patient_key,
+                    patient_uuid,
+                    patient_name,
+                    patient_data.get("phone") or "",
+                    patient_data.get("email") or "",
+                    category,
+                    procedure_name,
+                    sale_day.strftime("%Y-%m-%d"),
+                    total or 0,
+                    professional_name,
+                    professional_uuid,
+                    synced_at,
+                ),
+            )
+    conn.execute(
+        """
+        insert into patient_followup_cached_sales (sale_uuid, synced_at)
+        values (?, ?)
+        on conflict(sale_uuid) do update set synced_at=excluded.synced_at
+        """,
+        (sale_uuid, synced_at),
+    )
+
+
+def refresh_patient_followup_cache(conn, followup_start_date, reference_date):
+    procedure_catalog = followup_procedure_catalog(conn)
+    patient_lookup = followup_patient_lookup(conn)
+    rows = conn.execute(
+        """
+        select s.uuid, s.patient_uuid, s.type, s.sale_date, s.total, s.raw_json, s.synced_at
+        from clinica_sales s
+        left join patient_followup_cached_sales c on c.sale_uuid = s.uuid
+        where substr(s.sale_date, 1, 10) >= ?
+          and substr(s.sale_date, 1, 10) <= ?
+          and (c.sale_uuid is null or c.synced_at < s.synced_at)
+        order by substr(s.sale_date, 1, 10) desc
+        """,
+        (followup_start_date, reference_date.strftime("%Y-%m-%d")),
+    ).fetchall()
+    for row in rows:
+        try:
+            sale = json.loads(row["raw_json"] or "{}")
+        except json.JSONDecodeError:
+            sale = {}
+        cache_patient_followup_sale(
+            conn,
+            row["uuid"],
+            row["patient_uuid"] or "",
+            row["type"],
+            row["sale_date"],
+            row["total"],
+            sale,
+            row["synced_at"],
+            procedure_catalog=procedure_catalog,
+            patient_lookup=patient_lookup,
+        )
+    return len(rows)
+
+
 def followup_stage(category, sale_date, reference_date):
     months = completed_months_since(sale_date, reference_date)
     if category == "Toxina Botulínica":
@@ -4460,76 +4604,43 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
     followup_start_date = config_value("CLINICA_FOLLOWUP_START", CLINICA_FOLLOWUP_START_DEFAULT)
     if followup_start_date < CLINICA_FOLLOWUP_START_DEFAULT:
         followup_start_date = CLINICA_FOLLOWUP_START_DEFAULT
-    procedure_rows = conn.execute(
-        "select uuid, name, category_name from clinica_procedures"
-    ).fetchall()
-    procedure_catalog = {}
-    for row in procedure_rows:
-        item = {"name": row["name"], "category_name": row["category_name"]}
-        if row["uuid"]:
-            procedure_catalog[str(row["uuid"])] = item
-        procedure_catalog[normalize_lookup_text(row["name"])] = item
-    patient_rows = conn.execute(
-        "select uuid, name, phone, email from clinica_patients"
-    ).fetchall()
-    patient_lookup = {
-        str(row["uuid"]): {"name": row["name"], "phone": row["phone"], "email": row["email"]}
-        for row in patient_rows
-        if row["uuid"]
-    }
-    clauses = ["substr(sale_date, 1, 10) >= ?", "substr(sale_date, 1, 10) <= ?"]
+    refresh_patient_followup_cache(conn, followup_start_date, reference_date)
+    clauses = ["sale_date >= ?", "sale_date <= ?"]
     params = [followup_start_date, reference_date.strftime("%Y-%m-%d")]
     if effective_professional_uuids:
         placeholders = ",".join("?" for _ in effective_professional_uuids)
-        clauses.append(f"json_extract(raw_json, '$.seller.uuid') in ({placeholders})")
+        clauses.append(f"professional_uuid in ({placeholders})")
         params.extend(effective_professional_uuids)
-    sales = conn.execute(
+    rows = conn.execute(
         f"""
-        select uuid, patient_uuid, type, sale_date, total, raw_json
-        from clinica_sales
+        select *
+        from patient_followup_items
         where {" and ".join(clauses)}
-        order by substr(sale_date, 1, 10) desc
+        order by sale_date desc
         """,
         params,
     ).fetchall()
     latest = {}
-    for row in sales:
+    for row in rows:
         sale_date = parse_iso_date(row["sale_date"])
         if not sale_date:
             continue
-        try:
-            raw = json.loads(row["raw_json"] or "{}")
-        except json.JSONDecodeError:
+        key = (row["patient_key"], row["category"])
+        existing = latest.get(key)
+        if existing and existing["sale_date"] >= sale_date.strftime("%Y-%m-%d"):
             continue
-        status_group = sale_status_group(first_value(raw, ["status"]), row["type"])
-        if status_group != "venda":
-            continue
-        patient_name, patient_uuid = sale_patient_info(raw, row["patient_uuid"] or "")
-        patient_data = patient_lookup.get(patient_uuid, {})
-        patient_name = patient_name or patient_data.get("name") or "Paciente sem nome"
-        patient_key = patient_uuid or normalize_lookup_text(patient_name)
-        professional_name, professional_uuid = sale_professional_info(raw)
-        for item in extract_sale_items(raw):
-            procedure_name, raw_category = sale_item_name_and_category(item, procedure_catalog)
-            category = followup_category(raw_category, procedure_name)
-            if not category:
-                continue
-            key = (patient_key, category)
-            existing = latest.get(key)
-            if existing and existing["sale_date"] >= sale_date.strftime("%Y-%m-%d"):
-                continue
-            latest[key] = {
-                "patient_key": patient_key,
-                "patient_name": patient_name,
-                "patient_phone": patient_data.get("phone") or "",
-                "patient_email": patient_data.get("email") or "",
-                "category": category,
-                "procedure_name": procedure_name,
-                "sale_date": sale_date.strftime("%Y-%m-%d"),
-                "sale_total": row["total"] or 0,
-                "professional_name": professional_name,
-                "professional_uuid": professional_uuid,
-            }
+        latest[key] = {
+            "patient_key": row["patient_key"],
+            "patient_name": row["patient_name"] or "Paciente sem nome",
+            "patient_phone": row["patient_phone"] or "",
+            "patient_email": row["patient_email"] or "",
+            "category": row["category"],
+            "procedure_name": row["procedure_name"] or "Procedimento sem nome",
+            "sale_date": sale_date.strftime("%Y-%m-%d"),
+            "sale_total": row["sale_total"] or 0,
+            "professional_name": row["professional_name"] or "",
+            "professional_uuid": row["professional_uuid"] or "",
+        }
     contact_rows = conn.execute(
         """
         select *
