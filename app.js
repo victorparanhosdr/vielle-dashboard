@@ -2106,8 +2106,10 @@ async function syncClinicaNow() {
   btn.disabled = true;
   btn.textContent = "Buscando historico...";
   try {
-    const separator = buildQuery() ? "&" : "?";
-    const res = await fetch(`/api/sync-clinica${buildQuery()}${separator}historical=1`);
+    const params = new URLSearchParams();
+    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    params.set("historical", "1");
+    const res = await fetch(`/api/sync-clinica?${params.toString()}`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar Clínica Experts.");
     await loadReport();

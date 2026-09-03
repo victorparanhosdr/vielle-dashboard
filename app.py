@@ -2260,10 +2260,8 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
     try:
         if historical:
             configured_start = config_value("CLINICA_HISTORY_START", CLINICA_HISTORY_START_DEFAULT)
-            date_from = date_from or configured_start
-            if date_from < CLINICA_HISTORY_START_DEFAULT:
-                date_from = CLINICA_HISTORY_START_DEFAULT
-            date_to = date_to or datetime.now().strftime("%Y-%m-%d")
+            date_from = max(configured_start, CLINICA_HISTORY_START_DEFAULT)
+            date_to = datetime.now().strftime("%Y-%m-%d")
         elif not date_from or not date_to:
             date_from, date_to = default_period()
 
