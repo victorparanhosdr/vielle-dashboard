@@ -12,6 +12,7 @@ const state = {
   selectedBookingRegistryUser: "",
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
+  selectedFollowupLost: "active",
   patientFollowupItems: [],
   followupVisibleCount: 24,
   activeView: "generalView",
@@ -1449,6 +1450,8 @@ function renderPatientFollowup(followup) {
   document.getElementById("followupRed").textContent = integerFormat(totals.red || 0);
   document.getElementById("followupDue").textContent = integerFormat((totals.due || 0) + (totals.warn || 0));
   document.getElementById("followupContacted").textContent = integerFormat(totals.contacted || 0);
+  const lostSelect = document.getElementById("followupLostFilter");
+  if (lostSelect) lostSelect.value = state.selectedFollowupLost;
 
   const categorySelect = document.getElementById("followupCategoryFilter");
   const categories = followup.categories || [];
@@ -1465,6 +1468,8 @@ function renderPatientFollowup(followup) {
 
 function filteredPatientFollowupItems() {
   return (state.patientFollowupItems || []).filter(item => {
+    if (state.selectedFollowupLost === "active" && item.lost) return false;
+    if (state.selectedFollowupLost === "lost" && !item.lost) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
     if (!state.selectedFollowupStatus && item.status === "monitor") return false;
@@ -1487,6 +1492,15 @@ function renderPatientFollowupList() {
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
+    const lostInfo = item.lost_info || {};
+    const lostText = item.lost
+      ? `<div class="followupLostNote">
+          <b>Perdido</b>
+          <span>${formatDay(lostInfo.lost_date)} · ${escapeHtml(lostInfo.marked_by || "Sem responsável")}</span>
+          <em>${escapeHtml(lostInfo.reason || "Sem motivo informado")}</em>
+          <button class="followupRestoreBtn" type="button" data-followup-index="${index}">Reativar paciente</button>
+        </div>`
+      : "";
     const history = (item.contacts || []).map(contact => `
       <li>
         <b>${formatDay(contact.contact_date)}</b>
@@ -1495,10 +1509,10 @@ function renderPatientFollowupList() {
       </li>
     `).join("");
     return `
-      <article class="followupCard ${escapeHtml(item.status)}">
+      <article class="followupCard ${escapeHtml(item.status)} ${item.lost ? "lost" : ""}">
         <div class="followupCardTop">
           <div>
-            <span class="followupBadge">${escapeHtml(statusLabel(item.status))}</span>
+            <span class="followupBadge">${escapeHtml(item.lost ? "Perdido" : statusLabel(item.status))}</span>
             <h3>${escapeHtml(item.patient_name)}</h3>
             <p>${escapeHtml(item.category)} · ${escapeHtml(item.procedure_name)}</p>
           </div>
@@ -1506,7 +1520,6 @@ function renderPatientFollowupList() {
         </div>
         <div class="followupFacts">
           <span><b>Último procedimento</b>${formatDay(item.sale_date)}</span>
-          <span><b>Próximo marco</b>${formatDay(item.next_contact_date)}</span>
           <span><b>Doutor(a)</b>${escapeHtml(item.professional_name || "-")}</span>
           <span><b>Contatos</b>${integerFormat(item.contact_count || 0)}</span>
         </div>
@@ -1515,6 +1528,7 @@ function renderPatientFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
         </div>
+        ${lostText}
         <details class="followupDetails">
           <summary>Registrar novo contato</summary>
           <form class="followupForm" data-followup-index="${index}">
@@ -1525,6 +1539,17 @@ function renderPatientFollowupList() {
           </form>
           <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
         </details>
+        ${item.lost ? "" : `
+          <details class="followupDetails followupLostDetails">
+            <summary>Dar como perdido</summary>
+            <form class="followupLostForm" data-followup-index="${index}">
+              <input type="date" name="lost_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              <input name="marked_by" placeholder="Quem marcou" autocomplete="name">
+              <textarea name="reason" placeholder="Motivo: não respondeu, sem interesse, fechou fora..."></textarea>
+              <button type="submit">Marcar perdido</button>
+            </form>
+          </details>
+        `}
       </article>
     `;
   }).join("");
@@ -1568,6 +1593,73 @@ async function savePatientFollowupContact(event) {
     await loadReport();
   } catch (error) {
     showNotice(error.message || "Não foi possível salvar o contato.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function setPatientFollowupLost(item, lost, formData = null) {
+  if (!item) return;
+  const params = new URLSearchParams();
+  if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  const body = {
+    patient_key: item.patient_key,
+    patient_name: item.patient_name,
+    category: item.category,
+    procedure_name: item.procedure_name,
+    sale_date: item.sale_date,
+    lost,
+  };
+  if (formData) {
+    body.lost_date = formData.get("lost_date");
+    body.marked_by = formData.get("marked_by");
+    body.reason = formData.get("reason");
+  }
+  const res = await fetch(`/api/patient-followup-lost?${params.toString()}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json();
+  if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível atualizar o paciente.");
+}
+
+async function savePatientFollowupLost(event) {
+  event.preventDefault();
+  const form = event.target;
+  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  if (!item) return;
+  const button = form.querySelector("button");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Salvando...";
+  try {
+    await setPatientFollowupLost(item, true, new FormData(form));
+    showNotice("Paciente marcado como perdido.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível marcar como perdido.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function restorePatientFollowup(event) {
+  const button = event.target.closest(".followupRestoreBtn");
+  if (!button) return;
+  const item = filteredPatientFollowupItems()[Number(button.dataset.followupIndex)];
+  if (!item) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Reativando...";
+  try {
+    await setPatientFollowupLost(item, false);
+    showNotice("Paciente reativado na carteira.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível reativar o paciente.");
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -2246,6 +2338,11 @@ document.getElementById("syncBtn").addEventListener("click", syncNow);
 document.getElementById("syncClinicaBtn").addEventListener("click", syncClinicaNow);
 document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTrafficNow);
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
+document.getElementById("followupLostFilter")?.addEventListener("change", event => {
+  state.selectedFollowupLost = event.target.value || "active";
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
 document.getElementById("followupCategoryFilter")?.addEventListener("change", event => {
   state.selectedFollowupCategory = event.target.value;
   state.followupVisibleCount = 24;
@@ -2258,11 +2355,15 @@ document.getElementById("followupStatusFilter")?.addEventListener("change", even
 });
 document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
   if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
+  if (event.target.matches(".followupLostForm")) savePatientFollowupLost(event);
 });
 document.getElementById("patientFollowupList")?.addEventListener("click", event => {
-  if (!event.target.matches("#followupShowMore")) return;
-  state.followupVisibleCount += 24;
-  renderPatientFollowupList();
+  if (event.target.matches("#followupShowMore")) {
+    state.followupVisibleCount += 24;
+    renderPatientFollowupList();
+    return;
+  }
+  restorePatientFollowup(event);
 });
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);

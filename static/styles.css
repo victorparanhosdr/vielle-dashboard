@@ -3999,7 +3999,9 @@ select {
 
 .followupControls select,
 .followupForm input,
-.followupForm textarea {
+.followupForm textarea,
+.followupLostForm input,
+.followupLostForm textarea {
   min-height: 42px;
   border: 1px solid rgba(183, 225, 239, .95);
   border-radius: 8px;
@@ -4038,6 +4040,15 @@ select {
 
 .followupCard.red::before {
   background: #df5263;
+}
+
+.followupCard.lost {
+  opacity: .78;
+  border-color: rgba(223, 82, 99, .38);
+}
+
+.followupCard.lost::before {
+  background: #9c3f4d;
 }
 
 .followupCard.due::before,
@@ -4100,6 +4111,11 @@ select {
 .followupCard.red .followupBadge {
   background: rgba(223, 82, 99, .13);
   color: #b93649;
+}
+
+.followupCard.lost .followupBadge {
+  background: rgba(156, 63, 77, .13);
+  color: #8d3140;
 }
 
 .followupCard.due .followupBadge,
@@ -4166,6 +4182,35 @@ select {
   padding-top: 12px;
 }
 
+.followupLostNote {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+  border-radius: 8px;
+  background: rgba(223, 82, 99, .08);
+  color: #7b2a37;
+  padding: 10px;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.followupLostNote b,
+.followupLostNote em {
+  font-style: normal;
+}
+
+.followupLostNote button {
+  justify-self: start;
+  min-height: 30px;
+  border: 1px solid rgba(156, 63, 77, .25);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .75);
+  color: #8d3140;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 0 12px;
+}
+
 .followupDetails summary {
   cursor: pointer;
   color: #087997;
@@ -4182,13 +4227,22 @@ select {
   margin: 12px 0;
 }
 
-.followupForm textarea {
+.followupLostForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.followupForm textarea,
+.followupLostForm textarea {
   grid-column: 1 / -1;
   min-height: 58px;
   resize: vertical;
 }
 
-.followupForm button {
+.followupForm button,
+.followupLostForm button {
   grid-column: 1 / -1;
   min-height: 38px;
   align-self: start;
@@ -4198,6 +4252,11 @@ select {
   color: #072438;
   font-weight: 950;
   padding: 0 16px;
+}
+
+.followupLostForm button {
+  background: linear-gradient(135deg, #df5263, #f3b23f);
+  color: #fff;
 }
 
 .followupHistory {
