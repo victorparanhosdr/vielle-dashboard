@@ -4012,18 +4012,19 @@ select {
 
 .patientFollowupList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 16px;
-  padding: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  padding: 18px;
 }
 
 .followupCard {
   position: relative;
   border: 1px solid rgba(183, 225, 239, .95);
   border-radius: 10px;
-  padding: 18px;
+  padding: 14px;
   background: rgba(255, 255, 255, .82);
   box-shadow: 0 14px 30px rgba(12, 72, 96, .08);
+  overflow: hidden;
 }
 
 .followupCard::before {
@@ -4048,14 +4049,20 @@ select {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .followupCardTop h3 {
-  margin: 8px 0 4px;
+  margin: 7px 0 4px;
   color: var(--ink);
-  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  font-size: clamp(1.05rem, 1.45vw, 1.28rem);
   line-height: 1.1;
+}
+
+.followupCardTop p {
+  margin: 0;
+  font-size: .88rem;
+  line-height: 1.22;
 }
 
 .followupCardTop p,
@@ -4067,19 +4074,20 @@ select {
 
 .followupCardTop strong {
   color: var(--ink);
-  font-size: 1.8rem;
+  font-size: 1.25rem;
+  line-height: 1;
   white-space: nowrap;
 }
 
 .followupBadge {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 999px;
-  padding: 5px 10px;
+  padding: 4px 9px;
   background: rgba(22, 185, 209, .14);
   color: #087997;
-  font-size: .72rem;
+  font-size: .64rem;
   font-weight: 900;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -4099,27 +4107,39 @@ select {
 .followupFacts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 18px 0 14px;
+  gap: 8px;
+  margin: 14px 0 12px;
 }
 
 .followupFacts span {
-  min-height: 68px;
+  min-height: 54px;
   display: grid;
   align-content: center;
-  gap: 4px;
+  gap: 3px;
   border-radius: 8px;
   background: rgba(244, 251, 254, .92);
-  padding: 10px;
+  padding: 8px;
   color: var(--ink);
+  font-size: .92rem;
   font-weight: 900;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.followupFacts b {
+  color: var(--muted);
+  font-size: .64rem;
+  letter-spacing: .07em;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
 .followupContactLine {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: .82rem;
 }
 
 .followupContactLine span,
@@ -4127,8 +4147,12 @@ select {
   border-radius: 999px;
   background: rgba(230, 243, 249, .92);
   color: var(--muted);
-  padding: 6px 10px;
+  max-width: 100%;
+  padding: 5px 9px;
+  overflow: hidden;
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .followupDetails {
@@ -4139,6 +4163,7 @@ select {
 .followupDetails summary {
   cursor: pointer;
   color: #087997;
+  font-size: .82rem;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -4146,18 +4171,20 @@ select {
 
 .followupForm {
   display: grid;
-  grid-template-columns: 150px minmax(160px, .7fr) minmax(220px, 1.4fr) auto;
-  gap: 10px;
-  margin: 14px 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
 }
 
 .followupForm textarea {
-  min-height: 42px;
+  grid-column: 1 / -1;
+  min-height: 58px;
   resize: vertical;
 }
 
 .followupForm button {
-  min-height: 42px;
+  grid-column: 1 / -1;
+  min-height: 38px;
   align-self: start;
   border: 0;
   border-radius: 8px;
@@ -4177,11 +4204,12 @@ select {
 
 .followupHistory li {
   display: grid;
-  grid-template-columns: 74px minmax(110px, .5fr) minmax(180px, 1fr);
+  grid-template-columns: 62px minmax(90px, .45fr) minmax(140px, 1fr);
   gap: 8px;
   border-radius: 8px;
   background: rgba(255, 255, 255, .74);
-  padding: 9px 10px;
+  padding: 8px 9px;
+  font-size: .82rem;
 }
 
 .followupHistory em {
