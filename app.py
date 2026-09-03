@@ -26,6 +26,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = BASE_DIR / "kommo_report.sqlite3"
+CLINICA_HISTORY_START_DEFAULT = "2025-01-01"
+CLINICA_FOLLOWUP_START_DEFAULT = "2025-01-01"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
 SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
 CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
@@ -68,7 +70,7 @@ KOMMO_CLIENT_SECRET = "PBpQjFiiGTcLjxrINkkxsCAr3wtlCEifei690ID7d14SBdDVv1QWJZHRI
 KOMMO_LONG_LIVED_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImp0aSI6IjMzNjNlY2RjNWI5N2U2MzNmZWUwZGQ5ZjczZDQxNDIyYmVjNzk5MDcyOGIyODMyYTBhMjZjZDMzZTY3NjVkNGI4MzIzYjQ4MDBlNzc3N2U2In0.eyJhdWQiOiIzMDU0OGJlNS1lMGY3LTRjNzMtYjcxYi0wYWI1NGQwZjc4NmIiLCJqdGkiOiIzMzYzZWNkYzViOTdlNjMzZmVlMGRkOWY3M2Q0MTQyMmJlYzc5OTA3MjhiMjgzMmEwYTI2Y2QzM2U2NzY1ZDRiODMyM2I0ODAwZTc3NzdlNiIsImlhdCI6MTc4ODIyMDQ3NSwibmJmIjoxNzg4MjIwNDc1LCJleHAiOjE4NDQ4MTI4MDAsInN1YiI6IjExOTYyNzg3IiwiZ3JhbnRfdHlwZSI6IiIsImFjY291bnRfaWQiOjMzNTAwNTE1LCJiYXNlX2RvbWFpbiI6ImtvbW1vLmNvbSIsInZlcnNpb24iOjIsInNjb3BlcyI6WyJjcm0iLCJmaWxlcyIsImZpbGVzX2RlbGV0ZSIsImxpc3RfZXh0ZXJuYWxfbWVzc2FnZXMiLCJub3RpZmljYXRpb25zIiwicHVzaF9ub3RpZmljYXRpb25zIiwic2VuZF9leHRlcm5hbF9tZXNzYWdlcyIsInVzZXJzX2FjdGl2YXRlIiwidXNlcnNfYWRkIiwidXNlcnNfZGVhY3RpdmF0ZSJdLCJoYXNoX3V1aWQiOiIzMTExYzIyYS01NTQ1LTRlZTgtYjkxOC1lNzdjZjMzOGY3ZjEiLCJhcGlfZG9tYWluIjoiYXBpLWcua29tbW8uY29tIn0.NC7FbFU7l-Kg2LrY0p8OwIZtKXoFWiS_y9ofVzYv3kYieYktcFi10c-gI_nFebQ5oWFwm2QrGkvNIxG1e6mwk8_eB_FTaIdKZZ2TXJQEpHREAAr0cFae1NbJwKqmDHY-nhBYLPO2l-T-2clagUSmZkc1pqkkYjSCRnUzdxBcFv8tbBwLNuhc-cYXqZMrAum-PP9KfBd6t7nzAXUG50rF-tRaEDGAW_zM5KxbPclBq9S7EEbhtqGV0p2ystxK3_34hHNjHM_AeGRmPEHx9n7q4KOw8O5TwZNX1c1EFcQMPCeBJBmrTC8rx3bBONZkEDai28hw8-xQttYUrxck7IFmlw"
 KOMMO_REDIRECT_URI = "https://vielle-dashboard-production.up.railway.app/auth/callback"
 CLINICA_EXPERTS_TOKEN = os.getenv("CLINICA_EXPERTS_TOKEN", "s9GCe9SqWy0tE8j0rilZMGXUoCEWuBWRM0AoluBp059c069c")
-CLINICA_HISTORY_START = os.getenv("CLINICA_HISTORY_START", "2020-01-01")
+CLINICA_HISTORY_START = os.getenv("CLINICA_HISTORY_START", CLINICA_HISTORY_START_DEFAULT)
 CLINICA_RATE_LIMIT_DELAY = int(os.getenv("CLINICA_RATE_LIMIT_DELAY", "20"))
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "30"))
 APP_SECRET = os.getenv("APP_SECRET", "dev-secret-change-me")
@@ -2257,7 +2259,10 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
         log_id = cur.lastrowid
     try:
         if historical:
-            date_from = date_from or config_value("CLINICA_HISTORY_START", "2020-01-01")
+            configured_start = config_value("CLINICA_HISTORY_START", CLINICA_HISTORY_START_DEFAULT)
+            date_from = date_from or configured_start
+            if date_from < CLINICA_HISTORY_START_DEFAULT:
+                date_from = CLINICA_HISTORY_START_DEFAULT
             date_to = date_to or datetime.now().strftime("%Y-%m-%d")
         elif not date_from or not date_to:
             date_from, date_to = default_period()
@@ -4413,6 +4418,9 @@ def followup_stage(category, sale_date, reference_date):
 
 def build_patient_followup(conn, date_to, effective_professional_uuids):
     reference_date = parse_iso_date(date_to) or datetime.now().date()
+    followup_start_date = config_value("CLINICA_FOLLOWUP_START", CLINICA_FOLLOWUP_START_DEFAULT)
+    if followup_start_date < CLINICA_FOLLOWUP_START_DEFAULT:
+        followup_start_date = CLINICA_FOLLOWUP_START_DEFAULT
     procedure_rows = conn.execute(
         "select uuid, name, category_name from clinica_procedures"
     ).fetchall()
@@ -4430,8 +4438,8 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         for row in patient_rows
         if row["uuid"]
     }
-    clauses = ["substr(sale_date, 1, 10) <= ?"]
-    params = [reference_date.strftime("%Y-%m-%d")]
+    clauses = ["substr(sale_date, 1, 10) >= ?", "substr(sale_date, 1, 10) <= ?"]
+    params = [followup_start_date, reference_date.strftime("%Y-%m-%d")]
     if effective_professional_uuids:
         placeholders = ",".join("?" for _ in effective_professional_uuids)
         clauses.append(f"json_extract(raw_json, '$.seller.uuid') in ({placeholders})")
@@ -4513,6 +4521,7 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         row["patient_name"],
     ))
     return {
+        "start_date": followup_start_date,
         "reference_date": reference_date.strftime("%Y-%m-%d"),
         "items": items,
         "totals": {

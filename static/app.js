@@ -1429,7 +1429,8 @@ function statusLabel(status) {
 function renderPatientFollowup(followup) {
   const totals = followup.totals || {};
   state.patientFollowupItems = followup.items || [];
-  document.getElementById("followupReferenceDate").textContent = `Base: ${formatDay(followup.reference_date)}`;
+  const followupStart = followup.start_date ? formatFullDay(followup.start_date) : "01/01/2025";
+  document.getElementById("followupReferenceDate").textContent = `Base: ${followupStart} a ${formatFullDay(followup.reference_date)}`;
   document.getElementById("followupTotal").textContent = integerFormat(totals.total || 0);
   document.getElementById("followupRed").textContent = integerFormat(totals.red || 0);
   document.getElementById("followupDue").textContent = integerFormat((totals.due || 0) + (totals.warn || 0));
@@ -2054,6 +2055,12 @@ function formatDay(day) {
   if (!day) return "-";
   const [year, month, date] = day.split("-");
   return `${date}/${month}`;
+}
+
+function formatFullDay(day) {
+  if (!day) return "-";
+  const [year, month, date] = day.split("-");
+  return `${date}/${month}/${year}`;
 }
 
 async function loadReport() {
