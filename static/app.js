@@ -1488,6 +1488,10 @@ function filteredPatientFollowupItems() {
 function renderPatientFollowupList() {
   const container = document.getElementById("patientFollowupList");
   const items = filteredPatientFollowupItems();
+  const countEl = document.getElementById("followupFilteredCount");
+  if (countEl) {
+    countEl.textContent = `${integerFormat(items.length)} ${items.length === 1 ? "paciente" : "pacientes"} no filtro`;
+  }
   if (!items.length) {
     container.innerHTML = `<div class="empty">Nenhum paciente encontrado para este filtro.</div>`;
     return;
