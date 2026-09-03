@@ -1332,6 +1332,8 @@ button.danger {
 }
 
 .generalMetric.featured {
+  display: flex;
+  flex-direction: column;
   grid-row: span 2;
   min-height: 264px;
   background:
@@ -1362,6 +1364,44 @@ button.danger {
 .generalMetric.featured strong {
   color: #fff;
   font-size: clamp(34px, 3.4vw, 54px);
+}
+
+.featuredFinanceSplit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.featuredFinanceSplit > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .10);
+  backdrop-filter: blur(8px);
+}
+
+.featuredFinanceSplit span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, .76);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.featuredFinanceSplit b {
+  display: block;
+  overflow: hidden;
+  color: #fff;
+  font-size: clamp(16px, 1.4vw, 22px);
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .generalMetric.mediumMetric {
@@ -3852,6 +3892,289 @@ select {
   text-anchor: middle;
 }
 
+.patientFollowupHero .panelHead,
+.patientFollowupHead {
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.followupMetricGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+  padding: 24px;
+}
+
+.followupMetric {
+  min-height: 150px;
+  border: 1px solid rgba(183, 225, 239, .85);
+  border-radius: 8px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(39, 191, 202, .22), transparent 30%),
+    rgba(255, 255, 255, .78);
+  box-shadow: 0 16px 34px rgba(14, 76, 101, .09);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.followupMetric span,
+.followupControls span,
+.followupFacts b {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.followupMetric strong {
+  color: var(--ink);
+  font-size: clamp(2.3rem, 5vw, 4.2rem);
+  line-height: .95;
+}
+
+.followupMetric small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.followupMetric.total {
+  background: linear-gradient(135deg, rgba(6, 55, 96, .98), rgba(6, 142, 163, .92));
+}
+
+.followupMetric.total span,
+.followupMetric.total strong,
+.followupMetric.total small,
+.followupMetric.attention span,
+.followupMetric.attention strong,
+.followupMetric.attention small {
+  color: #fff;
+}
+
+.followupMetric.danger {
+  background:
+    radial-gradient(circle at 86% 18%, rgba(255, 113, 113, .22), transparent 32%),
+    rgba(255, 255, 255, .88);
+}
+
+.followupMetric.danger strong {
+  color: #c84756;
+}
+
+.followupMetric.attention {
+  background: linear-gradient(135deg, #16b9d1, #18c88d);
+}
+
+.followupMetric.done strong {
+  color: #07805b;
+}
+
+.followupControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.followupControls label {
+  min-width: 180px;
+  display: grid;
+  gap: 6px;
+}
+
+.followupControls select,
+.followupForm input,
+.followupForm textarea {
+  min-height: 42px;
+  border: 1px solid rgba(183, 225, 239, .95);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .82);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.patientFollowupList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+  padding: 24px;
+}
+
+.followupCard {
+  position: relative;
+  border: 1px solid rgba(183, 225, 239, .95);
+  border-radius: 10px;
+  padding: 18px;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 14px 30px rgba(12, 72, 96, .08);
+}
+
+.followupCard::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  border-radius: 10px 0 0 10px;
+  background: #18b8d5;
+}
+
+.followupCard.red::before {
+  background: #df5263;
+}
+
+.followupCard.due::before,
+.followupCard.warn::before {
+  background: #f3b23f;
+}
+
+.followupCardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.followupCardTop h3 {
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  line-height: 1.1;
+}
+
+.followupCardTop p,
+.followupContactLine,
+.followupHistory {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.followupCardTop strong {
+  color: var(--ink);
+  font-size: 1.8rem;
+  white-space: nowrap;
+}
+
+.followupBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: rgba(22, 185, 209, .14);
+  color: #087997;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.followupCard.red .followupBadge {
+  background: rgba(223, 82, 99, .13);
+  color: #b93649;
+}
+
+.followupCard.due .followupBadge,
+.followupCard.warn .followupBadge {
+  background: rgba(243, 178, 63, .16);
+  color: #a46a12;
+}
+
+.followupFacts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 14px;
+}
+
+.followupFacts span {
+  min-height: 68px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border-radius: 8px;
+  background: rgba(244, 251, 254, .92);
+  padding: 10px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.followupContactLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.followupContactLine span,
+.followupContactLine a {
+  border-radius: 999px;
+  background: rgba(230, 243, 249, .92);
+  color: var(--muted);
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
+.followupDetails {
+  border-top: 1px solid rgba(199, 222, 231, .75);
+  padding-top: 12px;
+}
+
+.followupDetails summary {
+  cursor: pointer;
+  color: #087997;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.followupForm {
+  display: grid;
+  grid-template-columns: 150px minmax(160px, .7fr) minmax(220px, 1.4fr) auto;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.followupForm textarea {
+  min-height: 42px;
+  resize: vertical;
+}
+
+.followupForm button {
+  min-height: 42px;
+  align-self: start;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #16b9d1, #18c88d);
+  color: #072438;
+  font-weight: 950;
+  padding: 0 16px;
+}
+
+.followupHistory {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.followupHistory li {
+  display: grid;
+  grid-template-columns: 74px minmax(110px, .5fr) minmax(180px, 1fr);
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .74);
+  padding: 9px 10px;
+}
+
+.followupHistory em {
+  font-style: normal;
+}
+
 .empty {
   color: var(--muted);
   padding: 18px 16px;
@@ -3930,7 +4253,8 @@ select {
   }
 
   .metrics, .split, .kommoPanel, .sourceBody, .settingsGrid, .compactSettings, .insightGrid,
-  .generalHeroGrid, .generalControls, .trafficMetricGrid {
+  .generalHeroGrid, .generalControls, .trafficMetricGrid, .followupMetricGrid,
+  .patientFollowupList, .followupFacts, .followupForm, .followupHistory li {
     grid-template-columns: 1fr;
   }
 
