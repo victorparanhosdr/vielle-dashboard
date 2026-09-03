@@ -24,7 +24,10 @@
             </div>
             <h2>Vielle Clinic</h2>
             <p>Relatório atual com Kommo, Clínica Experts, comercial e financeiro.</p>
-            <button type="button" data-clinic-select="vielle">Acessar dashboard</button>
+            <div class="clinicActionRow">
+              <button type="button" data-clinic-select="vielle" data-access-mode="dashboard">Acessar dashboard</button>
+              <button class="secondary" type="button" data-clinic-select="vielle" data-access-mode="team">Modo equipe</button>
+            </div>
           </article>
 
           <article class="clinicAccessCard inspire">
@@ -585,6 +588,7 @@
             <div>
               <h2>Carteira de recorrência</h2>
               <span class="metaText">Toxina Botulínica: 3º mês e RED no 5º · Preenchimento: 8, 10 e 12 meses</span>
+              <strong id="followupFilteredCount" class="followupFilteredCount">0 pacientes no filtro</strong>
             </div>
             <div class="followupControls">
               <label>
@@ -610,6 +614,14 @@
                   <option value="warn">Reforço</option>
                   <option value="monitor">Monitorar</option>
                 </select>
+              </label>
+              <label>
+                <span>Último procedimento de</span>
+                <input id="followupLastFrom" type="date">
+              </label>
+              <label>
+                <span>Até</span>
+                <input id="followupLastTo" type="date">
               </label>
             </div>
           </div>

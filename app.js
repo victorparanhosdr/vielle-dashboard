@@ -13,6 +13,8 @@ const state = {
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
   selectedFollowupLost: "active",
+  selectedFollowupLastFrom: "",
+  selectedFollowupLastTo: "",
   patientFollowupItems: [],
   followupVisibleCount: 24,
   activeView: "generalView",
@@ -21,6 +23,7 @@ const state = {
   dateTo: "",
   rankings: {},
   selectedClinic: "",
+  followupOnlyMode: false,
 };
 
 let pendingAutoPrint = false;
@@ -76,6 +79,10 @@ function escapeHtml(value) {
 function buildQuery() {
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  if (state.followupOnlyMode) {
+    params.set("view", "patientFollowupView");
+    params.set("modo", "equipe");
+  }
   if (state.activeView === "generalView") {
     if (state.selectedGeneralDoctor) params.set("doctor", state.selectedGeneralDoctor);
     const range = monthRange(state.selectedMonth || currentMonthValue());
@@ -249,6 +256,7 @@ function showDashboard() {
 }
 
 function applyActiveViewState() {
+  if (state.followupOnlyMode) state.activeView = "patientFollowupView";
   document.querySelectorAll(".tabBtn").forEach(tab => {
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
@@ -257,6 +265,7 @@ function applyActiveViewState() {
   });
   const monthMode = state.activeView === "generalView";
   document.body.classList.toggle("generalMode", monthMode);
+  document.body.classList.toggle("followupOnlyMode", state.followupOnlyMode);
   const dateFrom = document.getElementById("dateFrom");
   const dateTo = document.getElementById("dateTo");
   if (dateFrom) dateFrom.disabled = monthMode;
@@ -264,16 +273,23 @@ function applyActiveViewState() {
   if (monthMode) normalizeGeneralMonth();
 }
 
-function clinicAccessKey(clinicId) {
-  return `clinicAccess:${clinicId}`;
+function accessModeKey() {
+  return state.followupOnlyMode ? "team" : "dashboard";
 }
 
-function openClinicAccessModal(clinicId) {
+function clinicAccessKey(clinicId, mode = accessModeKey()) {
+  return `clinicAccess:${clinicId}:${mode}`;
+}
+
+function openClinicAccessModal(clinicId, mode = accessModeKey()) {
   const clinic = clinics[clinicId] || clinics.vielle;
   const modal = document.getElementById("clinicAccessModal");
   modal.dataset.clinicId = clinic.id;
-  document.getElementById("clinicAccessTitle").textContent = clinic.name;
-  document.getElementById("clinicAccessSubtitle").textContent = `Digite o código de acesso da ${clinic.name} para continuar.`;
+  modal.dataset.accessMode = mode;
+  document.getElementById("clinicAccessTitle").textContent = mode === "team" ? `${clinic.name} · Modo equipe` : clinic.name;
+  document.getElementById("clinicAccessSubtitle").textContent = mode === "team"
+    ? "Digite o código da equipe para abrir apenas o acompanhamento de pacientes."
+    : `Digite o código de acesso da ${clinic.name} para continuar.`;
   document.getElementById("clinicAccessError").textContent = "";
   document.getElementById("clinicAccessCode").value = "";
   modal.classList.remove("hidden");
@@ -286,11 +302,16 @@ function closeClinicAccessModal() {
   modal.classList.add("hidden");
   modal.setAttribute("aria-hidden", "true");
   modal.dataset.clinicId = "";
+  modal.dataset.accessMode = "";
 }
 
-function requestClinicAccess(clinicId, updateUrl = true) {
+function requestClinicAccess(clinicId, updateUrl = true, mode = accessModeKey()) {
   const validClinicId = clinics[clinicId] ? clinicId : "vielle";
-  if (sessionStorage.getItem(clinicAccessKey(validClinicId)) === "ok") {
+  state.followupOnlyMode = mode === "team";
+  if (state.followupOnlyMode) state.activeView = "patientFollowupView";
+  const hasCurrentModeAccess = sessionStorage.getItem(clinicAccessKey(validClinicId, mode)) === "ok";
+  const hasDashboardAccess = mode === "team" && sessionStorage.getItem(clinicAccessKey(validClinicId, "dashboard")) === "ok";
+  if (hasCurrentModeAccess || hasDashboardAccess) {
     selectClinic(validClinicId, updateUrl);
     return;
   }
@@ -311,7 +332,7 @@ function requestClinicAccess(clinicId, updateUrl = true) {
   localStorage.setItem("selectedClinic", state.selectedClinic);
   showDashboard();
   render();
-  openClinicAccessModal(validClinicId);
+  openClinicAccessModal(validClinicId, mode);
 }
 
 function selectClinic(clinicId, updateUrl = true) {
@@ -335,6 +356,10 @@ function selectClinic(clinicId, updateUrl = true) {
   if (updateUrl) {
     const params = new URLSearchParams(window.location.search);
     params.set("clinic", state.selectedClinic);
+    if (state.followupOnlyMode) {
+      params.set("view", "patientFollowupView");
+      params.set("modo", "equipe");
+    }
     history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
   }
   loadReport();
@@ -1463,6 +1488,10 @@ function renderPatientFollowup(followup) {
     categorySelect.value = "";
   }
   document.getElementById("followupStatusFilter").value = state.selectedFollowupStatus;
+  const lastFromInput = document.getElementById("followupLastFrom");
+  const lastToInput = document.getElementById("followupLastTo");
+  if (lastFromInput) lastFromInput.value = state.selectedFollowupLastFrom;
+  if (lastToInput) lastToInput.value = state.selectedFollowupLastTo;
   renderPatientFollowupList();
 }
 
@@ -1472,6 +1501,8 @@ function filteredPatientFollowupItems() {
     if (state.selectedFollowupLost === "lost" && !item.lost) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
+    if (state.selectedFollowupLastFrom && item.sale_date < state.selectedFollowupLastFrom) return false;
+    if (state.selectedFollowupLastTo && item.sale_date > state.selectedFollowupLastTo) return false;
     if (!state.selectedFollowupStatus && item.status === "monitor") return false;
     return true;
   });
@@ -1480,6 +1511,10 @@ function filteredPatientFollowupItems() {
 function renderPatientFollowupList() {
   const container = document.getElementById("patientFollowupList");
   const items = filteredPatientFollowupItems();
+  const countEl = document.getElementById("followupFilteredCount");
+  if (countEl) {
+    countEl.textContent = `${integerFormat(items.length)} ${items.length === 1 ? "paciente" : "pacientes"} no filtro`;
+  }
   if (!items.length) {
     container.innerHTML = `<div class="empty">Nenhum paciente encontrado para este filtro.</div>`;
     return;
@@ -1519,7 +1554,7 @@ function renderPatientFollowupList() {
           <strong>${integerFormat(item.months_since || 0)} meses</strong>
         </div>
         <div class="followupFacts">
-          <span><b>Último procedimento</b>${formatDay(item.sale_date)}</span>
+          <span><b>Último procedimento</b>${formatFullDay(item.sale_date)}</span>
           <span><b>Doutor(a)</b>${escapeHtml(item.professional_name || "-")}</span>
           <span><b>Contatos</b>${integerFormat(item.contact_count || 0)}</span>
         </div>
@@ -1636,6 +1671,7 @@ async function savePatientFollowupLost(event) {
   button.textContent = "Salvando...";
   try {
     await setPatientFollowupLost(item, true, new FormData(form));
+    state.selectedFollowupLost = "lost";
     showNotice("Paciente marcado como perdido.");
     await loadReport();
   } catch (error) {
@@ -2181,18 +2217,30 @@ async function loadReport() {
     showClinicLanding();
     return;
   }
-  const res = await fetch(`/api/report${buildQuery()}`);
-  const payload = await res.json();
-  if (res.status === 401) {
-    sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
-    showDashboard();
-    openClinicAccessModal(state.selectedClinic);
-    showNotice(payload.error || "Digite o código de acesso para continuar.");
-    return;
+  try {
+    const res = await fetch(`/api/report${buildQuery()}`);
+    const payload = await res.json();
+    if (res.status === 401) {
+      sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
+      showDashboard();
+      openClinicAccessModal(state.selectedClinic);
+      showNotice(payload.error || "Digite o código de acesso para continuar.");
+      return;
+    }
+    if (!res.ok || payload.ok === false) {
+      throw new Error(payload.error || "Não foi possível carregar o relatório.");
+    }
+    state.report = payload;
+    render();
+    scheduleAutoPrint();
+  } catch (error) {
+    const localFile = window.location.protocol === "file:";
+    showNotice(
+      localFile
+        ? "Abra pelo link online do Railway. A versão em arquivo local não consegue buscar os dados da API."
+        : friendlyError(error.message || "Não foi possível conectar à API do relatório. Tente atualizar a página.")
+    );
   }
-  state.report = payload;
-  render();
-  scheduleAutoPrint();
 }
 
 async function syncNow() {
@@ -2353,6 +2401,16 @@ document.getElementById("followupStatusFilter")?.addEventListener("change", even
   state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
+document.getElementById("followupLastFrom")?.addEventListener("change", event => {
+  state.selectedFollowupLastFrom = event.target.value;
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
+document.getElementById("followupLastTo")?.addEventListener("change", event => {
+  state.selectedFollowupLastTo = event.target.value;
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
 document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
   if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
   if (event.target.matches(".followupLostForm")) savePatientFollowupLost(event);
@@ -2446,28 +2504,32 @@ if (params.get("connected")) showNotice("Kommo conectado. A primeira sincronizac
 
 document.querySelectorAll("[data-clinic-select]").forEach(button => {
   button.addEventListener("click", () => {
-    requestClinicAccess(button.dataset.clinicSelect);
+    requestClinicAccess(button.dataset.clinicSelect, true, button.dataset.accessMode || "dashboard");
   });
 });
 document.getElementById("clinicAccessForm").addEventListener("submit", async event => {
   event.preventDefault();
   const modal = document.getElementById("clinicAccessModal");
   const clinicId = modal.dataset.clinicId;
+  const accessMode = modal.dataset.accessMode || accessModeKey();
   const clinic = clinics[clinicId] || clinics.vielle;
   const value = document.getElementById("clinicAccessCode").value.trim();
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   try {
+    if (window.location.protocol === "file:") {
+      throw new Error("Abra pelo link online do Railway para validar o código e carregar os dados.");
+    }
     const response = await fetch("/api/clinic-access", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({clinic_id: clinic.id, access_code: value}),
+      body: JSON.stringify({clinic_id: clinic.id, access_code: value, access_mode: accessMode}),
     });
     const result = await response.json();
     if (!response.ok || !result.ok) {
       throw new Error(result.error || "Código incorreto.");
     }
-    sessionStorage.setItem(clinicAccessKey(clinic.id), "ok");
+    sessionStorage.setItem(clinicAccessKey(clinic.id, accessMode), "ok");
     closeClinicAccessModal();
     selectClinic(clinic.id);
   } catch (error) {
@@ -2480,15 +2542,21 @@ document.getElementById("clinicAccessClose").addEventListener("click", closeClin
 document.getElementById("changeClinicBtn").addEventListener("click", () => {
   state.selectedClinic = "";
   state.report = null;
+  state.followupOnlyMode = false;
+  state.activeView = "generalView";
   localStorage.removeItem("selectedClinic");
   history.pushState(null, "", window.location.pathname);
   showClinicLanding();
 });
 
+state.followupOnlyMode = params.get("modo") === "equipe" || params.get("mode") === "team" || params.get("staff") === "1";
+if (state.followupOnlyMode) state.activeView = "patientFollowupView";
 const initialClinic = params.get("clinic");
 if (initialClinic && clinics[initialClinic]) {
-  requestClinicAccess(initialClinic, false);
+  requestClinicAccess(initialClinic, false, accessModeKey());
 } else {
   showClinicLanding();
 }
-setInterval(loadReport, 60_000);
+setInterval(() => {
+  if (state.selectedClinic) loadReport();
+}, 60_000);

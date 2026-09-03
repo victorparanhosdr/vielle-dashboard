@@ -273,6 +273,21 @@ body {
   width: fit-content;
 }
 
+.clinicActionRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.clinicActionRow button.secondary {
+  border-color: rgba(24, 185, 212, .28);
+  background: rgba(255, 255, 255, .72);
+  color: var(--brand-dark);
+  box-shadow: none;
+}
+
 .clinicAccessCard.casaVitalle button {
   background: linear-gradient(135deg, #ded5c7, #bba98a);
   color: #263b32;
@@ -550,6 +565,29 @@ button.danger {
 
 .viewPanel.active {
   display: block;
+}
+
+.followupOnlyMode .topbar .actions,
+.followupOnlyMode .viewTabs {
+  display: none;
+}
+
+.followupOnlyMode .filterGrid {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, .8fr) minmax(160px, .8fr);
+}
+
+.followupOnlyMode .filterGrid > label:nth-of-type(2),
+.followupOnlyMode .pipelineSelect {
+  display: none;
+}
+
+.followupOnlyMode .filterPanel {
+  margin-bottom: 14px;
+}
+
+.followupOnlyMode .filterHead h2::after {
+  content: " · Acompanhamento de Paciente";
+  color: var(--brand-dark);
 }
 
 .generalMode #dateFrom, .generalMode #dateTo {
@@ -3984,6 +4022,21 @@ select {
   color: #07805b;
 }
 
+.followupFilteredCount {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(21, 181, 206, .28);
+  border-radius: 999px;
+  background: rgba(227, 246, 252, .75);
+  color: var(--accent);
+  font-size: .82rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .followupControls {
   display: flex;
   flex-wrap: wrap;
@@ -3998,6 +4051,7 @@ select {
 }
 
 .followupControls select,
+.followupControls input,
 .followupForm input,
 .followupForm textarea,
 .followupLostForm input,

@@ -1064,34 +1064,53 @@ CLINIC_ACCESS_ENV = {
     "carla": "CARLA_ACCESS_CODE",
 }
 
+CLINIC_TEAM_ACCESS_ENV = {
+    "vielle": "VIELLE_TEAM_ACCESS_CODE",
+    "inspire": "INSPIRE_TEAM_ACCESS_CODE",
+    "carla": "CARLA_TEAM_ACCESS_CODE",
+}
+
 
 def normalize_clinic_id(value):
     clinic_id = (value or "vielle").strip().lower()
     return clinic_id if clinic_id in CLINIC_ACCESS_ENV else "vielle"
 
 
-def clinic_access_code(clinic_id):
+def normalize_access_mode(value):
+    return "team" if str(value or "").strip().lower() in {"team", "equipe"} else "dashboard"
+
+
+def clinic_access_code(clinic_id, access_mode="dashboard"):
     normalized = normalize_clinic_id(clinic_id)
+    mode = normalize_access_mode(access_mode)
+    if mode == "team":
+        env_key = CLINIC_TEAM_ACCESS_ENV.get(normalized, "VIELLE_TEAM_ACCESS_CODE")
+        return os.getenv(env_key, "").strip()
     env_key = CLINIC_ACCESS_ENV.get(normalized, "VIELLE_ACCESS_CODE")
     return os.getenv(env_key, "").strip()
 
 
-def clinic_access_cookie_name(clinic_id):
-    return f"clinic_access_{normalize_clinic_id(clinic_id)}"
+def clinic_access_cookie_name(clinic_id, access_mode="dashboard"):
+    normalized = normalize_clinic_id(clinic_id)
+    mode = normalize_access_mode(access_mode)
+    return f"clinic_access_{normalized}_team" if mode == "team" else f"clinic_access_{normalized}"
 
 
-def clinic_access_signature(clinic_id):
+def clinic_access_signature(clinic_id, access_mode="dashboard"):
     clinic_id = normalize_clinic_id(clinic_id)
+    mode = normalize_access_mode(access_mode)
     secret = config_value("APP_SECRET", "dev-secret-change-me")
-    code = clinic_access_code(clinic_id)
-    message = f"{clinic_id}:{code}".encode("utf-8")
+    code = clinic_access_code(clinic_id, mode)
+    message_text = f"{clinic_id}:team:{code}" if mode == "team" else f"{clinic_id}:{code}"
+    message = message_text.encode("utf-8")
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
-def clinic_access_cookie(clinic_id):
+def clinic_access_cookie(clinic_id, access_mode="dashboard"):
     clinic_id = normalize_clinic_id(clinic_id)
+    mode = normalize_access_mode(access_mode)
     return (
-        f"{clinic_access_cookie_name(clinic_id)}={clinic_access_signature(clinic_id)}; "
+        f"{clinic_access_cookie_name(clinic_id, mode)}={clinic_access_signature(clinic_id, mode)}; "
         "Path=/; Max-Age=43200; HttpOnly; SameSite=Lax"
     )
 
@@ -5232,17 +5251,25 @@ class Handler(SimpleHTTPRequestHandler):
         params = urllib.parse.parse_qs(parsed.query)
         return normalize_clinic_id(params.get("clinic", ["vielle"])[0])
 
-    def has_clinic_access(self, clinic_id):
-        expected_code = clinic_access_code(clinic_id)
+    def request_access_mode(self, parsed):
+        params = urllib.parse.parse_qs(parsed.query)
+        return normalize_access_mode(params.get("modo", params.get("mode", ["dashboard"]))[0])
+
+    def has_clinic_access(self, clinic_id, access_mode="dashboard"):
+        mode = normalize_access_mode(access_mode)
+        if mode == "team" and self.has_clinic_access(clinic_id, "dashboard"):
+            return True
+        expected_code = clinic_access_code(clinic_id, mode)
         if not expected_code:
             return False
         cookie = SimpleCookie(self.headers.get("Cookie", ""))
-        morsel = cookie.get(clinic_access_cookie_name(clinic_id))
-        return bool(morsel) and hmac.compare_digest(morsel.value, clinic_access_signature(clinic_id))
+        morsel = cookie.get(clinic_access_cookie_name(clinic_id, mode))
+        return bool(morsel) and hmac.compare_digest(morsel.value, clinic_access_signature(clinic_id, mode))
 
     def require_clinic_access(self, parsed):
         clinic_id = self.request_clinic_id(parsed)
-        if self.has_clinic_access(clinic_id):
+        access_mode = self.request_access_mode(parsed)
+        if self.has_clinic_access(clinic_id, access_mode):
             return True
         return json_response(
             self,
@@ -5285,6 +5312,8 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.query:
                 self.path += "?" + parsed.query
             return super().do_GET()
+        if parsed.path == "/acompanhamento":
+            return redirect(self, "/?clinic=vielle&view=patientFollowupView&modo=equipe")
         if parsed.path == "/kommo-widget":
             params = urllib.parse.parse_qs(parsed.query)
             clinic_id = self.request_clinic_id(parsed)
@@ -5461,7 +5490,8 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
             clinic_id = normalize_clinic_id(payload.get("clinic_id", "vielle"))
-            expected_code = clinic_access_code(clinic_id)
+            access_mode = normalize_access_mode(payload.get("access_mode", "dashboard"))
+            expected_code = clinic_access_code(clinic_id, access_mode)
             received_code = str(payload.get("access_code", "")).strip()
             if not expected_code:
                 return json_response(
@@ -5473,8 +5503,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, {"ok": False, "error": "Código incorreto. Confira e tente novamente."}, HTTPStatus.UNAUTHORIZED)
             return json_response(
                 self,
-                {"ok": True, "clinic_id": clinic_id},
-                headers={"Set-Cookie": clinic_access_cookie(clinic_id)},
+                {"ok": True, "clinic_id": clinic_id, "access_mode": access_mode},
+                headers={"Set-Cookie": clinic_access_cookie(clinic_id, access_mode)},
             )
         if parsed.path == "/api/settings":
             if not self.require_master_auth():
