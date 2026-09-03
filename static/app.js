@@ -2181,18 +2181,30 @@ async function loadReport() {
     showClinicLanding();
     return;
   }
-  const res = await fetch(`/api/report${buildQuery()}`);
-  const payload = await res.json();
-  if (res.status === 401) {
-    sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
-    showDashboard();
-    openClinicAccessModal(state.selectedClinic);
-    showNotice(payload.error || "Digite o código de acesso para continuar.");
-    return;
+  try {
+    const res = await fetch(`/api/report${buildQuery()}`);
+    const payload = await res.json();
+    if (res.status === 401) {
+      sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
+      showDashboard();
+      openClinicAccessModal(state.selectedClinic);
+      showNotice(payload.error || "Digite o código de acesso para continuar.");
+      return;
+    }
+    if (!res.ok || payload.ok === false) {
+      throw new Error(payload.error || "Não foi possível carregar o relatório.");
+    }
+    state.report = payload;
+    render();
+    scheduleAutoPrint();
+  } catch (error) {
+    const localFile = window.location.protocol === "file:";
+    showNotice(
+      localFile
+        ? "Abra pelo link online do Railway. A versão em arquivo local não consegue buscar os dados da API."
+        : friendlyError(error.message || "Não foi possível conectar à API do relatório. Tente atualizar a página.")
+    );
   }
-  state.report = payload;
-  render();
-  scheduleAutoPrint();
 }
 
 async function syncNow() {
@@ -2458,6 +2470,9 @@ document.getElementById("clinicAccessForm").addEventListener("submit", async eve
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   try {
+    if (window.location.protocol === "file:") {
+      throw new Error("Abra pelo link online do Railway para validar o código e carregar os dados.");
+    }
     const response = await fetch("/api/clinic-access", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -2491,4 +2506,6 @@ if (initialClinic && clinics[initialClinic]) {
 } else {
   showClinicLanding();
 }
-setInterval(loadReport, 60_000);
+setInterval(() => {
+  if (state.selectedClinic) loadReport();
+}, 60_000);
