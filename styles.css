@@ -4012,7 +4012,7 @@ select {
 
 .patientFollowupList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
   padding: 18px;
 }
@@ -4052,10 +4052,14 @@ select {
   gap: 10px;
 }
 
+.followupCardTop > div {
+  min-width: 0;
+}
+
 .followupCardTop h3 {
   margin: 7px 0 4px;
   color: var(--ink);
-  font-size: clamp(1.05rem, 1.45vw, 1.28rem);
+  font-size: clamp(1rem, 1.35vw, 1.22rem);
   line-height: 1.1;
 }
 
@@ -4106,30 +4110,32 @@ select {
 
 .followupFacts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 6px;
   margin: 14px 0 12px;
 }
 
 .followupFacts span {
-  min-height: 54px;
-  display: grid;
-  align-content: center;
-  gap: 3px;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border-radius: 8px;
   background: rgba(244, 251, 254, .92);
-  padding: 8px;
+  padding: 8px 10px;
   color: var(--ink);
-  font-size: .92rem;
+  font-size: .88rem;
   font-weight: 900;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
 
 .followupFacts b {
+  flex: 0 0 auto;
   color: var(--muted);
-  font-size: .64rem;
-  letter-spacing: .07em;
+  font-size: .66rem;
+  letter-spacing: .06em;
   line-height: 1.1;
   text-transform: uppercase;
 }
