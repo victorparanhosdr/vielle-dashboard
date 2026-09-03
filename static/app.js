@@ -13,6 +13,8 @@ const state = {
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
   selectedFollowupLost: "active",
+  selectedFollowupLastFrom: "",
+  selectedFollowupLastTo: "",
   patientFollowupItems: [],
   followupVisibleCount: 24,
   activeView: "generalView",
@@ -1463,6 +1465,10 @@ function renderPatientFollowup(followup) {
     categorySelect.value = "";
   }
   document.getElementById("followupStatusFilter").value = state.selectedFollowupStatus;
+  const lastFromInput = document.getElementById("followupLastFrom");
+  const lastToInput = document.getElementById("followupLastTo");
+  if (lastFromInput) lastFromInput.value = state.selectedFollowupLastFrom;
+  if (lastToInput) lastToInput.value = state.selectedFollowupLastTo;
   renderPatientFollowupList();
 }
 
@@ -1472,6 +1478,8 @@ function filteredPatientFollowupItems() {
     if (state.selectedFollowupLost === "lost" && !item.lost) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
+    if (state.selectedFollowupLastFrom && item.sale_date < state.selectedFollowupLastFrom) return false;
+    if (state.selectedFollowupLastTo && item.sale_date > state.selectedFollowupLastTo) return false;
     if (!state.selectedFollowupStatus && item.status === "monitor") return false;
     return true;
   });
@@ -1519,7 +1527,7 @@ function renderPatientFollowupList() {
           <strong>${integerFormat(item.months_since || 0)} meses</strong>
         </div>
         <div class="followupFacts">
-          <span><b>Último procedimento</b>${formatDay(item.sale_date)}</span>
+          <span><b>Último procedimento</b>${formatFullDay(item.sale_date)}</span>
           <span><b>Doutor(a)</b>${escapeHtml(item.professional_name || "-")}</span>
           <span><b>Contatos</b>${integerFormat(item.contact_count || 0)}</span>
         </div>
@@ -2362,6 +2370,16 @@ document.getElementById("followupCategoryFilter")?.addEventListener("change", ev
 });
 document.getElementById("followupStatusFilter")?.addEventListener("change", event => {
   state.selectedFollowupStatus = event.target.value;
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
+document.getElementById("followupLastFrom")?.addEventListener("change", event => {
+  state.selectedFollowupLastFrom = event.target.value;
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
+document.getElementById("followupLastTo")?.addEventListener("change", event => {
+  state.selectedFollowupLastTo = event.target.value;
   state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
