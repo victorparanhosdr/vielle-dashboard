@@ -1436,7 +1436,7 @@ function renderPatientFollowup(followup) {
   state.patientFollowupItems = followup.items || [];
   const followupStart = followup.start_date ? formatFullDay(followup.start_date) : "01/01/2025";
   document.getElementById("followupReferenceDate").textContent = `Base: ${followupStart} a ${formatFullDay(followup.reference_date)}`;
-  document.getElementById("followupTotal").textContent = integerFormat(totals.total || 0);
+  document.getElementById("followupTotal").textContent = integerFormat(totals.actionable ?? ((totals.red || 0) + (totals.due || 0) + (totals.warn || 0)));
   document.getElementById("followupRed").textContent = integerFormat(totals.red || 0);
   document.getElementById("followupDue").textContent = integerFormat((totals.due || 0) + (totals.warn || 0));
   document.getElementById("followupContacted").textContent = integerFormat(totals.contacted || 0);
@@ -1458,6 +1458,7 @@ function filteredPatientFollowupItems() {
   return (state.patientFollowupItems || []).filter(item => {
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
+    if (!state.selectedFollowupStatus && item.status === "monitor") return false;
     return true;
   });
 }

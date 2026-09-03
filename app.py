@@ -4557,12 +4557,14 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         row["next_contact_date"],
         row["patient_name"],
     ))
+    actionable_items = [item for item in items if item["status"] in ("red", "due", "warn")]
     return {
         "start_date": followup_start_date,
         "reference_date": reference_date.strftime("%Y-%m-%d"),
         "items": items,
         "totals": {
             "total": len(items),
+            "actionable": len(actionable_items),
             "red": len([item for item in items if item["status"] == "red"]),
             "due": len([item for item in items if item["status"] == "due"]),
             "warn": len([item for item in items if item["status"] == "warn"]),
