@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import calendar
 import base64
 import contextlib
 import contextvars
@@ -16,7 +17,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -225,6 +226,45 @@ def procedure_category_from_name(name):
         if any(term in text for term in terms):
             return category
     return "Sem categoria"
+
+
+def followup_category(category_name, procedure_name):
+    text = normalize_lookup_text(f"{category_name or ''} {procedure_name or ''}")
+    if any(term in text for term in ("toxina", "botox", "botulinica", "botulinica")):
+        return "Toxina Botulínica"
+    if any(term in text for term in ("preench", "hialuronico", "hialuronico", "gluteos", "labial", "malar", "mandibula")):
+        return "Preenchimento"
+    return None
+
+
+def parse_iso_date(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text[:len(fmt)], fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def add_months(base_date, months):
+    month_index = base_date.month - 1 + months
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(base_date.day, last_day))
+
+
+def completed_months_since(start_date, reference_date):
+    months = (reference_date.year - start_date.year) * 12 + reference_date.month - start_date.month
+    if reference_date.day < start_date.day:
+        months -= 1
+    return max(0, months)
 
 
 def normalize_lookup_text(value):
@@ -879,6 +919,19 @@ def init_db():
                 amount real,
                 raw_json text not null,
                 synced_at integer not null
+            );
+
+            create table if not exists patient_followup_contacts (
+                id integer primary key autoincrement,
+                patient_key text not null,
+                patient_name text,
+                category text not null,
+                procedure_name text,
+                sale_date text,
+                contact_date text not null,
+                contacted_by text,
+                description text,
+                created_at integer not null
             );
 
             create table if not exists clinica_sync_log (
@@ -4115,6 +4168,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 }
             )
         paid_traffic = paid_traffic_report(conn, date_from, date_to)
+        patient_followup = build_patient_followup(conn, date_to, effective_professional_uuids)
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
@@ -4199,6 +4253,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             },
         },
         "paid_traffic": paid_traffic,
+        "patient_followup": patient_followup,
         "general_panel": {
             "month": month_key,
             "goal": month_goal,
@@ -4259,15 +4314,245 @@ def percent(value):
 
 
 def sale_status_group(status, sale_type=None):
-    type_text = (sale_type or "").lower()
+    type_text = str(sale_type or "").lower()
     if type_text in ("sale_quote", "quote", "budget", "proposal"):
         return "orcamento"
-    text = (status or "").lower()
+    text = str(status or "").lower()
     if text in ("active", "paid", "received", "done", "completed"):
         return "venda"
     if text in ("inactive", "budget", "quote", "proposal", "quoted", "open", "opened", "aberto"):
         return "orcamento"
     return text or "sem status"
+
+
+def contact_log_key(patient_key, category):
+    return f"{normalize_lookup_text(patient_key)}|{normalize_lookup_text(category)}"
+
+
+def extract_named_entity(value):
+    if isinstance(value, dict):
+        name = first_value(value, ["name", "full_name", "title", "description"])
+        uuid = first_value(value, ["uuid", "id"])
+        return str(name or "").strip(), str(uuid or "").strip()
+    if isinstance(value, str):
+        return value.strip(), ""
+    return "", ""
+
+
+def sale_patient_info(sale, fallback_uuid=""):
+    for key in ("patient", "buyer", "buyer_person", "person", "client", "customer"):
+        name, uuid = extract_named_entity(sale.get(key) if isinstance(sale, dict) else None)
+        if name or uuid:
+            return name, uuid or fallback_uuid
+    return "", fallback_uuid
+
+
+def sale_professional_info(sale):
+    for key in ("seller", "professional", "responsible", "user"):
+        name, uuid = extract_named_entity(sale.get(key) if isinstance(sale, dict) else None)
+        if name or uuid:
+            return name, uuid
+    return "", ""
+
+
+def extract_sale_items(sale):
+    if not isinstance(sale, dict):
+        return []
+    for key in ("procedures", "procedure", "items", "products", "services", "sale_items", "procedures_products"):
+        value = sale.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = first_value(value, ["data", "items", "procedures", "products"])
+            if isinstance(nested, list):
+                return [item for item in nested if isinstance(item, dict)]
+            return [value]
+    return []
+
+
+def sale_item_name_and_category(item, procedure_catalog):
+    procedure = first_value(item, ["procedure", "product", "service", "item"])
+    name, uuid = extract_named_entity(procedure)
+    item_name = first_value(item, ["name", "title", "description"])
+    if not name and item_name:
+        name = str(item_name)
+    raw_uuid = first_value(item, ["procedure_uuid", "product_uuid", "service_uuid", "uuid", "id"])
+    uuid = uuid or (str(raw_uuid) if raw_uuid else "")
+    category = ""
+    if isinstance(procedure, dict):
+        category_value = first_value(procedure, ["category", "procedure_category", "category_name"])
+        category, _ = extract_named_entity(category_value)
+    category_value = first_value(item, ["category", "procedure_category", "category_name"])
+    item_category, _ = extract_named_entity(category_value)
+    category = category or item_category
+    catalog_item = procedure_catalog.get(uuid) or procedure_catalog.get(normalize_lookup_text(name))
+    if catalog_item:
+        name = name or catalog_item.get("name", "")
+        category = category or catalog_item.get("category_name", "")
+    return name or "Procedimento sem nome", category or procedure_category_from_name(name)
+
+
+def followup_stage(category, sale_date, reference_date):
+    months = completed_months_since(sale_date, reference_date)
+    if category == "Toxina Botulínica":
+        if months >= 5:
+            return "red", "RED flag", add_months(sale_date, 5), months
+        if months >= 3:
+            return "due", "Chamar para retorno do 4º mês", add_months(sale_date, 4), months
+        return "monitor", "Monitorar até 3 meses", add_months(sale_date, 3), months
+    if category == "Preenchimento":
+        if months >= 12:
+            return "red", "RED flag 12 meses", add_months(sale_date, 12), months
+        if months >= 10:
+            return "warn", "Reforço de 10 meses", add_months(sale_date, 10), months
+        if months >= 8:
+            return "due", "Chamar no marco de 8 meses", add_months(sale_date, 8), months
+        return "monitor", "Monitorar até 8 meses", add_months(sale_date, 8), months
+    return "monitor", "Monitorar", sale_date, months
+
+
+def build_patient_followup(conn, date_to, effective_professional_uuids):
+    reference_date = parse_iso_date(date_to) or datetime.now().date()
+    procedure_rows = conn.execute(
+        "select uuid, name, category_name from clinica_procedures"
+    ).fetchall()
+    procedure_catalog = {}
+    for row in procedure_rows:
+        item = {"name": row["name"], "category_name": row["category_name"]}
+        if row["uuid"]:
+            procedure_catalog[str(row["uuid"])] = item
+        procedure_catalog[normalize_lookup_text(row["name"])] = item
+    patient_rows = conn.execute(
+        "select uuid, name, phone, email from clinica_patients"
+    ).fetchall()
+    patient_lookup = {
+        str(row["uuid"]): {"name": row["name"], "phone": row["phone"], "email": row["email"]}
+        for row in patient_rows
+        if row["uuid"]
+    }
+    clauses = ["substr(sale_date, 1, 10) <= ?"]
+    params = [reference_date.strftime("%Y-%m-%d")]
+    if effective_professional_uuids:
+        placeholders = ",".join("?" for _ in effective_professional_uuids)
+        clauses.append(f"json_extract(raw_json, '$.seller.uuid') in ({placeholders})")
+        params.extend(effective_professional_uuids)
+    sales = conn.execute(
+        f"""
+        select uuid, patient_uuid, type, sale_date, total, raw_json
+        from clinica_sales
+        where {" and ".join(clauses)}
+        order by substr(sale_date, 1, 10) desc
+        """,
+        params,
+    ).fetchall()
+    latest = {}
+    for row in sales:
+        sale_date = parse_iso_date(row["sale_date"])
+        if not sale_date:
+            continue
+        try:
+            raw = json.loads(row["raw_json"] or "{}")
+        except json.JSONDecodeError:
+            continue
+        status_group = sale_status_group(first_value(raw, ["status"]), row["type"])
+        if status_group != "venda":
+            continue
+        patient_name, patient_uuid = sale_patient_info(raw, row["patient_uuid"] or "")
+        patient_data = patient_lookup.get(patient_uuid, {})
+        patient_name = patient_name or patient_data.get("name") or "Paciente sem nome"
+        patient_key = patient_uuid or normalize_lookup_text(patient_name)
+        professional_name, professional_uuid = sale_professional_info(raw)
+        for item in extract_sale_items(raw):
+            procedure_name, raw_category = sale_item_name_and_category(item, procedure_catalog)
+            category = followup_category(raw_category, procedure_name)
+            if not category:
+                continue
+            key = (patient_key, category)
+            existing = latest.get(key)
+            if existing and existing["sale_date"] >= sale_date.strftime("%Y-%m-%d"):
+                continue
+            latest[key] = {
+                "patient_key": patient_key,
+                "patient_name": patient_name,
+                "patient_phone": patient_data.get("phone") or "",
+                "patient_email": patient_data.get("email") or "",
+                "category": category,
+                "procedure_name": procedure_name,
+                "sale_date": sale_date.strftime("%Y-%m-%d"),
+                "sale_total": row["total"] or 0,
+                "professional_name": professional_name,
+                "professional_uuid": professional_uuid,
+            }
+    contact_rows = conn.execute(
+        """
+        select *
+        from patient_followup_contacts
+        order by contact_date desc, id desc
+        """
+    ).fetchall()
+    contact_lookup = {}
+    for row in contact_rows:
+        key = contact_log_key(row["patient_key"], row["category"])
+        contact_lookup.setdefault(key, []).append(dict(row))
+    items = []
+    for item in latest.values():
+        sale_date = parse_iso_date(item["sale_date"])
+        status, status_label, next_contact, months = followup_stage(item["category"], sale_date, reference_date)
+        contacts = contact_lookup.get(contact_log_key(item["patient_key"], item["category"]), [])
+        item["status"] = status
+        item["status_label"] = status_label
+        item["next_contact_date"] = next_contact.strftime("%Y-%m-%d")
+        item["months_since"] = months
+        item["contact_count"] = len(contacts)
+        item["last_contact"] = contacts[0] if contacts else None
+        item["contacts"] = contacts[:5]
+        items.append(item)
+    items.sort(key=lambda row: (
+        {"red": 0, "due": 1, "warn": 2, "monitor": 3}.get(row["status"], 9),
+        row["next_contact_date"],
+        row["patient_name"],
+    ))
+    return {
+        "reference_date": reference_date.strftime("%Y-%m-%d"),
+        "items": items,
+        "totals": {
+            "total": len(items),
+            "red": len([item for item in items if item["status"] == "red"]),
+            "due": len([item for item in items if item["status"] == "due"]),
+            "warn": len([item for item in items if item["status"] == "warn"]),
+            "monitor": len([item for item in items if item["status"] == "monitor"]),
+            "contacted": len([item for item in items if item["contact_count"]]),
+        },
+        "categories": sorted(set(item["category"] for item in items)),
+    }
+
+
+def save_patient_followup_contact(payload):
+    patient_key = str(payload.get("patient_key") or "").strip()
+    category = str(payload.get("category") or "").strip()
+    contact_date = str(payload.get("contact_date") or "").strip()
+    if not patient_key or not category or not parse_iso_date(contact_date):
+        raise ValueError("Paciente, categoria e data do contato são obrigatórios.")
+    with db() as conn:
+        cursor = conn.execute(
+            """
+            insert into patient_followup_contacts
+            (patient_key, patient_name, category, procedure_name, sale_date, contact_date, contacted_by, description, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                patient_key,
+                str(payload.get("patient_name") or "").strip(),
+                category,
+                str(payload.get("procedure_name") or "").strip(),
+                str(payload.get("sale_date") or "").strip(),
+                parse_iso_date(contact_date).strftime("%Y-%m-%d"),
+                str(payload.get("contacted_by") or "").strip(),
+                str(payload.get("description") or "").strip(),
+                int(time.time()),
+            ),
+        )
+    return {"ok": True, "id": cursor.lastrowid}
 
 
 def day_label(value):
@@ -4935,6 +5220,18 @@ class Handler(SimpleHTTPRequestHandler):
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 except Exception as exc:
                     return json_response(self, {"ok": False, "error": f"Não foi possível salvar a meta: {exc}"}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/patient-followup-contact":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    result = save_patient_followup_contact(payload)
+                    return json_response(self, result)
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível salvar o contato: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-all":
             if not self.require_master_auth():
                 return

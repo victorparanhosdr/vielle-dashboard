@@ -87,6 +87,7 @@
         <button class="tabBtn active" type="button" data-view="generalView">Painel geral</button>
         <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
+        <button class="tabBtn" type="button" data-view="patientFollowupView">Acompanhamento de Paciente</button>
         <button class="tabBtn" type="button" data-view="trafficView">Tráfego pago</button>
       </nav>
 
@@ -543,6 +544,68 @@
               </section>
             </section>
           </div>
+        </section>
+      </div>
+
+      <div id="patientFollowupView" class="viewPanel">
+        <section class="patientFollowupHero panel">
+          <div class="panelHead">
+            <div>
+              <h2>Acompanhamento de Paciente</h2>
+              <span class="metaText">Recorrência por categoria de procedimento</span>
+            </div>
+            <span id="followupReferenceDate" class="metaText">Base: -</span>
+          </div>
+          <div class="followupMetricGrid">
+            <article class="followupMetric total">
+              <span>Pacientes monitorados</span>
+              <strong id="followupTotal">0</strong>
+              <small>Último procedimento por categoria</small>
+            </article>
+            <article class="followupMetric danger">
+              <span>RED flag</span>
+              <strong id="followupRed">0</strong>
+              <small>Passou do ponto ideal</small>
+            </article>
+            <article class="followupMetric attention">
+              <span>Contato agora</span>
+              <strong id="followupDue">0</strong>
+              <small>Dentro da janela comercial</small>
+            </article>
+            <article class="followupMetric done">
+              <span>Já contatados</span>
+              <strong id="followupContacted">0</strong>
+              <small>Com histórico registrado</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead patientFollowupHead">
+            <div>
+              <h2>Carteira de recorrência</h2>
+              <span class="metaText">Toxina Botulínica: 3º mês e RED no 5º · Preenchimento: 8, 10 e 12 meses</span>
+            </div>
+            <div class="followupControls">
+              <label>
+                <span>Categoria</span>
+                <select id="followupCategoryFilter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="followupStatusFilter">
+                  <option value="">Todos</option>
+                  <option value="red">RED flag</option>
+                  <option value="due">Contato agora</option>
+                  <option value="warn">Reforço</option>
+                  <option value="monitor">Monitorar</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="patientFollowupList" class="patientFollowupList"></div>
         </section>
       </div>
 

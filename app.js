@@ -10,6 +10,9 @@ const state = {
   selectedGeneralDoctor: "",
   selectedSeller: "",
   selectedBookingRegistryUser: "",
+  selectedFollowupCategory: "",
+  selectedFollowupStatus: "",
+  patientFollowupItems: [],
   activeView: "generalView",
   selectedMonth: "",
   dateFrom: "",
@@ -178,6 +181,7 @@ function render() {
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
+  renderPatientFollowup(report.patient_followup || {});
   renderStatusColumnChart(report.all_current_status || []);
 
   applyClinicHeader();
@@ -1413,6 +1417,141 @@ function formatNullableMoney(value) {
   return number ? brlCents.format(number) : "-";
 }
 
+function statusLabel(status) {
+  return {
+    red: "RED flag",
+    due: "Contato agora",
+    warn: "Reforço",
+    monitor: "Monitorar",
+  }[status] || "Monitorar";
+}
+
+function renderPatientFollowup(followup) {
+  const totals = followup.totals || {};
+  state.patientFollowupItems = followup.items || [];
+  document.getElementById("followupReferenceDate").textContent = `Base: ${formatDay(followup.reference_date)}`;
+  document.getElementById("followupTotal").textContent = integerFormat(totals.total || 0);
+  document.getElementById("followupRed").textContent = integerFormat(totals.red || 0);
+  document.getElementById("followupDue").textContent = integerFormat((totals.due || 0) + (totals.warn || 0));
+  document.getElementById("followupContacted").textContent = integerFormat(totals.contacted || 0);
+
+  const categorySelect = document.getElementById("followupCategoryFilter");
+  const categories = followup.categories || [];
+  categorySelect.innerHTML = `<option value="">Todas</option>` + categories.map(category => (
+    `<option value="${escapeHtml(category)}" ${state.selectedFollowupCategory === category ? "selected" : ""}>${escapeHtml(category)}</option>`
+  )).join("");
+  if (state.selectedFollowupCategory && !categories.includes(state.selectedFollowupCategory)) {
+    state.selectedFollowupCategory = "";
+    categorySelect.value = "";
+  }
+  document.getElementById("followupStatusFilter").value = state.selectedFollowupStatus;
+  renderPatientFollowupList();
+}
+
+function filteredPatientFollowupItems() {
+  return (state.patientFollowupItems || []).filter(item => {
+    if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
+    if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
+    return true;
+  });
+}
+
+function renderPatientFollowupList() {
+  const container = document.getElementById("patientFollowupList");
+  const items = filteredPatientFollowupItems();
+  if (!items.length) {
+    container.innerHTML = `<div class="empty">Nenhum paciente encontrado para este filtro.</div>`;
+    return;
+  }
+  container.innerHTML = items.map((item, index) => {
+    const lastContact = item.last_contact;
+    const contactText = lastContact
+      ? `${formatDay(lastContact.contact_date)} · ${escapeHtml(lastContact.contacted_by || "Sem nome")}`
+      : "Ainda sem contato registrado";
+    const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
+    const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
+    const history = (item.contacts || []).map(contact => `
+      <li>
+        <b>${formatDay(contact.contact_date)}</b>
+        <span>${escapeHtml(contact.contacted_by || "Sem nome")}</span>
+        <em>${escapeHtml(contact.description || "Sem descrição")}</em>
+      </li>
+    `).join("");
+    return `
+      <article class="followupCard ${escapeHtml(item.status)}">
+        <div class="followupCardTop">
+          <div>
+            <span class="followupBadge">${escapeHtml(statusLabel(item.status))}</span>
+            <h3>${escapeHtml(item.patient_name)}</h3>
+            <p>${escapeHtml(item.category)} · ${escapeHtml(item.procedure_name)}</p>
+          </div>
+          <strong>${integerFormat(item.months_since || 0)} meses</strong>
+        </div>
+        <div class="followupFacts">
+          <span><b>Último procedimento</b>${formatDay(item.sale_date)}</span>
+          <span><b>Próximo marco</b>${formatDay(item.next_contact_date)}</span>
+          <span><b>Doutor(a)</b>${escapeHtml(item.professional_name || "-")}</span>
+          <span><b>Contatos</b>${integerFormat(item.contact_count || 0)}</span>
+        </div>
+        <div class="followupContactLine">
+          <span>${phone}</span>
+          <span>${email}</span>
+          <span>${contactText}</span>
+        </div>
+        <details class="followupDetails">
+          <summary>Registrar novo contato</summary>
+          <form class="followupForm" data-followup-index="${index}">
+            <input type="date" name="contact_date" value="${new Date().toISOString().slice(0, 10)}" required>
+            <input name="contacted_by" placeholder="Quem chamou" autocomplete="name">
+            <textarea name="description" placeholder="Descrição do contato, retorno ou combinado"></textarea>
+            <button type="submit">Salvar contato</button>
+          </form>
+          <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
+        </details>
+      </article>
+    `;
+  }).join("");
+}
+
+async function savePatientFollowupContact(event) {
+  event.preventDefault();
+  const form = event.target;
+  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  if (!item) return;
+  const button = form.querySelector("button");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Salvando...";
+  try {
+    const params = new URLSearchParams();
+    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    const data = new FormData(form);
+    const res = await fetch(`/api/patient-followup-contact?${params.toString()}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        patient_key: item.patient_key,
+        patient_name: item.patient_name,
+        category: item.category,
+        procedure_name: item.procedure_name,
+        sale_date: item.sale_date,
+        contact_date: data.get("contact_date"),
+        contacted_by: data.get("contacted_by"),
+        description: data.get("description"),
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar o contato.");
+    showNotice("Contato registrado.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível salvar o contato.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 function renderPaidTraffic(traffic) {
   const totals = traffic.totals || {};
   document.getElementById("trafficBasis").textContent = traffic.basis || "Meta Ads";
@@ -2075,6 +2214,17 @@ document.getElementById("syncBtn").addEventListener("click", syncNow);
 document.getElementById("syncClinicaBtn").addEventListener("click", syncClinicaNow);
 document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTrafficNow);
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
+document.getElementById("followupCategoryFilter")?.addEventListener("change", event => {
+  state.selectedFollowupCategory = event.target.value;
+  renderPatientFollowupList();
+});
+document.getElementById("followupStatusFilter")?.addEventListener("change", event => {
+  state.selectedFollowupStatus = event.target.value;
+  renderPatientFollowupList();
+});
+document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
+  if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
+});
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);
 });
