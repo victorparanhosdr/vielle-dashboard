@@ -1309,15 +1309,15 @@ button.danger {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   grid-auto-flow: dense;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
 
 .generalMetric {
   grid-column: span 3;
   min-width: 0;
-  min-height: 126px;
-  padding: 18px;
+  min-height: 100px;
+  padding: 14px;
   border: 1px solid rgba(204, 230, 242, .90);
   border-radius: 10px;
   background:
@@ -1335,7 +1335,7 @@ button.danger {
   display: flex;
   flex-direction: column;
   grid-row: span 2;
-  min-height: 264px;
+  min-height: 216px;
   background:
     radial-gradient(circle at 92% 14%, rgba(50, 205, 215, .32), transparent 30%),
     linear-gradient(135deg, #132456, #0b7894 90%);
@@ -1353,7 +1353,8 @@ button.danger {
   overflow: hidden;
   color: #12213a;
   font-family: var(--font);
-  font-size: clamp(24px, 2vw, 34px);
+  margin: 8px 0 6px;
+  font-size: clamp(20px, 1.35vw, 27px);
   font-weight: 950;
   letter-spacing: 0;
   line-height: 1.02;
@@ -1363,7 +1364,7 @@ button.danger {
 
 .generalMetric.featured strong {
   color: #fff;
-  font-size: clamp(34px, 3.4vw, 54px);
+  font-size: clamp(29px, 2.25vw, 40px);
 }
 
 .featuredFinanceSplit {
@@ -1409,7 +1410,7 @@ button.danger {
 }
 
 .generalMetric.mediumMetric strong {
-  font-size: clamp(24px, 2vw, 34px);
+  font-size: clamp(20px, 1.35vw, 27px);
 }
 
 .generalMetric.emphasisMargin {
@@ -1455,12 +1456,24 @@ button.danger {
 }
 
 .generalMetric.compact {
-  min-height: 118px;
-  padding: 14px;
+  min-height: 88px;
+  padding: 12px;
 }
 
 .generalMetric.compact strong {
-  font-size: clamp(26px, 2vw, 34px);
+  font-size: clamp(20px, 1.45vw, 27px);
+}
+
+.generalMetric span {
+  min-height: 28px;
+  font-size: 11px;
+  letter-spacing: .05em;
+  line-height: 1.18;
+}
+
+.generalMetric small {
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 .generalMetric::after {
