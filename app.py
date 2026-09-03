@@ -5262,6 +5262,11 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/static/"):
+            self.path = "/" + parsed.path.removeprefix("/static/")
+            if parsed.query:
+                self.path += "?" + parsed.query
+            return super().do_GET()
         if parsed.path == "/kommo-widget":
             params = urllib.parse.parse_qs(parsed.query)
             clinic_id = self.request_clinic_id(parsed)
