@@ -30,6 +30,8 @@ CLINICA_HISTORY_START_DEFAULT = "2025-01-01"
 CLINICA_FOLLOWUP_START_DEFAULT = "2025-01-01"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
 SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
+CLINICA_BACKGROUND_SYNC_LOCK = threading.Lock()
+CLINICA_BACKGROUND_SYNC_STATE = {}
 CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
@@ -2418,6 +2420,40 @@ def sync_all(historical=True, reset_data=False, reset_oauth=False):
     return result
 
 
+def start_clinica_background_sync(clinic_id):
+    with CLINICA_BACKGROUND_SYNC_LOCK:
+        current = CLINICA_BACKGROUND_SYNC_STATE.get(clinic_id, {})
+        if current.get("running"):
+            return {"ok": True, "started": False, "running": True, "message": "Sincronização histórica já está em andamento."}
+        CLINICA_BACKGROUND_SYNC_STATE[clinic_id] = {
+            "running": True,
+            "started_at": int(time.time()),
+            "finished_at": None,
+            "ok": None,
+            "message": "Sincronização histórica iniciada.",
+        }
+
+    def runner():
+        try:
+            with clinic_context(clinic_id):
+                result = sync_clinica_experts(historical=True)
+            message = result.get("message") or (
+                f"Histórico sincronizado de {result.get('date_from')} a {result.get('date_to')}."
+            )
+            with CLINICA_BACKGROUND_SYNC_LOCK:
+                CLINICA_BACKGROUND_SYNC_STATE[clinic_id].update(
+                    {"running": False, "finished_at": int(time.time()), "ok": True, "message": message}
+                )
+        except Exception as exc:
+            with CLINICA_BACKGROUND_SYNC_LOCK:
+                CLINICA_BACKGROUND_SYNC_STATE[clinic_id].update(
+                    {"running": False, "finished_at": int(time.time()), "ok": False, "message": str(exc)}
+                )
+
+    threading.Thread(target=runner, daemon=True).start()
+    return {"ok": True, "started": True, "running": True, "message": "Sincronização histórica iniciada em segundo plano."}
+
+
 def midas_api_base_url():
     configured_base = config_value("MIDAS_API_BASE_URL", "").strip().rstrip("/")
     if "leadconnectorhq.com" in configured_base:
@@ -4182,6 +4218,8 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             )
         else:
             connected = configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens() is not None
+    with CLINICA_BACKGROUND_SYNC_LOCK:
+        clinica_background_sync = dict(CLINICA_BACKGROUND_SYNC_STATE.get(current_clinic_id(), {}))
     return {
         "connected": connected,
         "filters": {
@@ -4225,6 +4263,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "booking_registry_users": sorted(booking_registry_users),
             "doctor_cross": doctor_rows,
             "last_sync": dict(clinica_log) if clinica_log else None,
+            "background_sync": clinica_background_sync,
         },
         "financial": {
             "basis": "Clínica Experts: vendas e contas financeiras",
@@ -5056,13 +5095,16 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_clinic_access(parsed):
                     return
                 params = urllib.parse.parse_qs(parsed.query)
+                historical = params.get("historical", [""])[0] in ("1", "true", "yes")
                 try:
+                    if historical:
+                        return json_response(self, start_clinica_background_sync(current_clinic_id()))
                     return json_response(
                         self,
                         sync_clinica_experts(
                             date_from=params.get("date_from", [""])[0],
                             date_to=params.get("date_to", [""])[0],
-                            historical=params.get("historical", [""])[0] in ("1", "true", "yes"),
+                            historical=False,
                         ),
                     )
                 except Exception as exc:

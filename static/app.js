@@ -187,12 +187,17 @@ function render() {
   applyClinicHeader();
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   const lastSync = report.last_sync;
+  const clinicaBackgroundSync = report.clinica_experts?.background_sync || {};
   if (state.selectedClinic && !clinic.connected) {
     showNotice(`${clinic.name} criada. Agora precisamos configurar as integrações dela para começar a puxar dados.`);
   } else if (!report.connected) {
     showNotice(clinic.commercialSource === "midas"
       ? "Configure a API Midas para iniciar a primeira sincronizacao comercial."
       : "Conecte sua conta Kommo para iniciar a primeira sincronizacao.");
+  } else if (clinicaBackgroundSync.running) {
+    showNotice("Clínica Experts: sincronização histórica em andamento desde 01/01/2025. Os dados aparecem aos poucos.");
+  } else if (clinicaBackgroundSync.ok === false) {
+    showNotice(clinicaBackgroundSync.message || "A sincronização histórica do Clínica Experts não foi concluída.");
   } else if (lastSync && !lastSync.ok) {
     showNotice(lastSync.message || "A ultima sincronizacao nao foi concluida.");
   } else {
@@ -2112,7 +2117,9 @@ async function syncClinicaNow() {
     const res = await fetch(`/api/sync-clinica?${params.toString()}`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar Clínica Experts.");
+    showNotice(payload.message || "Sincronização histórica iniciada.");
     await loadReport();
+    setTimeout(loadReport, 15000);
   } catch (error) {
     showNotice(friendlyError(error.message));
     await loadReport();
