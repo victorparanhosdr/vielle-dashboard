@@ -10,6 +10,7 @@ import io
 import json
 import os
 import secrets
+import shutil
 import sqlite3
 import threading
 import time
@@ -25,7 +26,13 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-DB_PATH = BASE_DIR / "kommo_report.sqlite3"
+DATA_DIR = Path(os.getenv("DATA_DIR") or str(BASE_DIR)).expanduser()
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    DATA_DIR = BASE_DIR
+LEGACY_DB_PATH = BASE_DIR / "kommo_report.sqlite3"
+DB_PATH = DATA_DIR / "kommo_report.sqlite3"
 CLINICA_HISTORY_START_DEFAULT = "2025-01-01"
 CLINICA_FOLLOWUP_START_DEFAULT = "2025-01-01"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
@@ -475,9 +482,14 @@ def clinic_display_name(clinic_id=None):
 
 def clinic_db_path(clinic_id=None):
     clinic_id = clinic_id or current_clinic_id()
-    if clinic_id == "vielle":
-        return DB_PATH
-    return BASE_DIR / f"kommo_report_{clinic_id}.sqlite3"
+    target = DB_PATH if clinic_id == "vielle" else DATA_DIR / f"kommo_report_{clinic_id}.sqlite3"
+    legacy = LEGACY_DB_PATH if clinic_id == "vielle" else BASE_DIR / f"kommo_report_{clinic_id}.sqlite3"
+    if DATA_DIR != BASE_DIR and not target.exists() and legacy.exists():
+        try:
+            shutil.copy2(legacy, target)
+        except OSError:
+            pass
+    return target
 
 
 @contextlib.contextmanager
