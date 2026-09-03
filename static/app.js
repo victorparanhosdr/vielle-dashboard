@@ -1648,6 +1648,7 @@ async function savePatientFollowupLost(event) {
   button.textContent = "Salvando...";
   try {
     await setPatientFollowupLost(item, true, new FormData(form));
+    state.selectedFollowupLost = "lost";
     showNotice("Paciente marcado como perdido.");
     await loadReport();
   } catch (error) {

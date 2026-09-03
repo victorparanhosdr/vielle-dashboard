@@ -4438,6 +4438,22 @@ def contact_log_key(patient_key, category):
     return f"{normalize_lookup_text(patient_key)}|{normalize_lookup_text(category)}"
 
 
+def patient_followup_identity_keys(patient_key, patient_name, category):
+    keys = set()
+    for value in (patient_key, patient_name):
+        normalized = normalize_lookup_text(value)
+        if normalized:
+            keys.add(contact_log_key(normalized, category))
+    return keys
+
+
+def first_patient_followup_match(lookup, item):
+    for key in patient_followup_identity_keys(item.get("patient_key"), item.get("patient_name"), item.get("category")):
+        if key in lookup:
+            return lookup[key]
+    return None
+
+
 def extract_named_entity(value):
     if isinstance(value, dict):
         name = first_value(value, ["name", "full_name", "title", "description"])
@@ -4699,24 +4715,26 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
     ).fetchall()
     contact_lookup = {}
     for row in contact_rows:
-        key = contact_log_key(row["patient_key"], row["category"])
-        contact_lookup.setdefault(key, []).append(dict(row))
+        row_data = dict(row)
+        for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
+            contact_lookup.setdefault(key, []).append(row_data)
     lost_rows = conn.execute(
         """
         select *
         from patient_followup_lost
         """
     ).fetchall()
-    lost_lookup = {
-        contact_log_key(row["patient_key"], row["category"]): dict(row)
-        for row in lost_rows
-    }
+    lost_lookup = {}
+    for row in lost_rows:
+        row_data = dict(row)
+        for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
+            lost_lookup[key] = row_data
     items = []
     for item in latest.values():
         sale_date = parse_iso_date(item["sale_date"])
         status, status_label, next_contact, months = followup_stage(item["category"], sale_date, reference_date)
-        contacts = contact_lookup.get(contact_log_key(item["patient_key"], item["category"]), [])
-        lost_info = lost_lookup.get(contact_log_key(item["patient_key"], item["category"]))
+        contacts = first_patient_followup_match(contact_lookup, item) or []
+        lost_info = first_patient_followup_match(lost_lookup, item)
         item["status"] = status
         item["status_label"] = status_label
         item["next_contact_date"] = next_contact.strftime("%Y-%m-%d")
