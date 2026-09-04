@@ -26,7 +26,11 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-DATA_DIR = Path(os.getenv("DATA_DIR") or str(BASE_DIR)).expanduser()
+DATA_DIR = Path(
+    os.getenv("DATA_DIR")
+    or os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    or str(BASE_DIR)
+).expanduser()
 try:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 except OSError:
