@@ -13,6 +13,7 @@ const state = {
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
   selectedFollowupLost: "active",
+  selectedFollowupContact: "",
   selectedFollowupLastFrom: "",
   selectedFollowupLastTo: "",
   patientFollowupItems: [],
@@ -1477,6 +1478,8 @@ function renderPatientFollowup(followup) {
   document.getElementById("followupContacted").textContent = integerFormat(totals.contacted || 0);
   const lostSelect = document.getElementById("followupLostFilter");
   if (lostSelect) lostSelect.value = state.selectedFollowupLost;
+  const contactSelect = document.getElementById("followupContactFilter");
+  if (contactSelect) contactSelect.value = state.selectedFollowupContact;
 
   const categorySelect = document.getElementById("followupCategoryFilter");
   const categories = followup.categories || [];
@@ -1501,6 +1504,8 @@ function filteredPatientFollowupItems() {
     if (state.selectedFollowupLost === "active" && walletStatus !== "active") return false;
     if (state.selectedFollowupLost === "lost" && !item.lost) return false;
     if (state.selectedFollowupLost === "won" && !item.won) return false;
+    if (state.selectedFollowupContact === "contacted" && !item.contact_count) return false;
+    if (state.selectedFollowupContact === "not_contacted" && item.contact_count) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
     if (state.selectedFollowupLastFrom && item.sale_date < state.selectedFollowupLastFrom) return false;
@@ -2414,6 +2419,11 @@ document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTraffic
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.getElementById("followupLostFilter")?.addEventListener("change", event => {
   state.selectedFollowupLost = event.target.value || "active";
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
+document.getElementById("followupContactFilter")?.addEventListener("change", event => {
+  state.selectedFollowupContact = event.target.value;
   state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
