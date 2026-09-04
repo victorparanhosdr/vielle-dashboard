@@ -1497,8 +1497,10 @@ function renderPatientFollowup(followup) {
 
 function filteredPatientFollowupItems() {
   return (state.patientFollowupItems || []).filter(item => {
-    if (state.selectedFollowupLost === "active" && item.lost) return false;
+    const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
+    if (state.selectedFollowupLost === "active" && walletStatus !== "active") return false;
     if (state.selectedFollowupLost === "lost" && !item.lost) return false;
+    if (state.selectedFollowupLost === "won" && !item.won) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
     if (state.selectedFollowupLastFrom && item.sale_date < state.selectedFollowupLastFrom) return false;
@@ -1506,6 +1508,14 @@ function filteredPatientFollowupItems() {
     if (!state.selectedFollowupStatus && item.status === "monitor") return false;
     return true;
   });
+}
+
+function followupItemKey(item) {
+  return [item?.patient_key || "", item?.category || ""].map(value => encodeURIComponent(value)).join("::");
+}
+
+function followupItemByKey(key) {
+  return filteredPatientFollowupItems().find(item => followupItemKey(item) === key);
 }
 
 function renderPatientFollowupList() {
@@ -1520,20 +1530,24 @@ function renderPatientFollowupList() {
     return;
   }
   const visibleItems = items.slice(0, state.followupVisibleCount);
-  const cardsHtml = visibleItems.map((item, index) => {
+  const cardsHtml = visibleItems.map((item) => {
+    const itemKey = followupItemKey(item);
     const lastContact = item.last_contact;
     const contactText = lastContact
       ? `${formatDay(lastContact.contact_date)} · ${escapeHtml(lastContact.contacted_by || "Sem nome")}`
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
-    const lostInfo = item.lost_info || {};
-    const lostText = item.lost
-      ? `<div class="followupLostNote">
-          <b>Perdido</b>
-          <span>${formatDay(lostInfo.lost_date)} · ${escapeHtml(lostInfo.marked_by || "Sem responsável")}</span>
-          <em>${escapeHtml(lostInfo.reason || "Sem motivo informado")}</em>
-          <button class="followupRestoreBtn" type="button" data-followup-index="${index}">Reativar paciente</button>
+    const statusInfo = item.status_info || item.lost_info || {};
+    const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
+    const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : statusLabel(item.status));
+    const statusDate = statusInfo.status_date || statusInfo.lost_date;
+    const statusNote = walletStatus !== "active"
+      ? `<div class="followupStatusNote ${escapeHtml(walletStatus)}">
+          <b>${escapeHtml(item.won ? "Ganho" : "Perdido")}</b>
+          <span>${formatDay(statusDate)} · ${escapeHtml(statusInfo.marked_by || "Sem responsável")}</span>
+          <em>${escapeHtml(statusInfo.note || statusInfo.reason || "Sem observação")}</em>
+          <button class="followupRestoreBtn" type="button" data-followup-key="${escapeHtml(itemKey)}">Reativar paciente</button>
         </div>`
       : "";
     const history = (item.contacts || []).map(contact => `
@@ -1544,10 +1558,10 @@ function renderPatientFollowupList() {
       </li>
     `).join("");
     return `
-      <article class="followupCard ${escapeHtml(item.status)} ${item.lost ? "lost" : ""}">
+      <article class="followupCard ${escapeHtml(item.status)} ${item.lost ? "lost" : ""} ${item.won ? "won" : ""}">
         <div class="followupCardTop">
           <div>
-            <span class="followupBadge">${escapeHtml(item.lost ? "Perdido" : statusLabel(item.status))}</span>
+            <span class="followupBadge">${escapeHtml(walletText)}</span>
             <h3>${escapeHtml(item.patient_name)}</h3>
             <p>${escapeHtml(item.category)} · ${escapeHtml(item.procedure_name)}</p>
           </div>
@@ -1563,10 +1577,10 @@ function renderPatientFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
         </div>
-        ${lostText}
+        ${statusNote}
         <details class="followupDetails">
           <summary>Registrar novo contato</summary>
-          <form class="followupForm" data-followup-index="${index}">
+          <form class="followupForm" data-followup-key="${escapeHtml(itemKey)}">
             <input type="date" name="contact_date" value="${new Date().toISOString().slice(0, 10)}" required>
             <input name="contacted_by" placeholder="Quem chamou" autocomplete="name">
             <textarea name="description" placeholder="Descrição do contato, retorno ou combinado"></textarea>
@@ -1574,17 +1588,26 @@ function renderPatientFollowupList() {
           </form>
           <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
         </details>
-        ${item.lost ? "" : `
+        ${walletStatus === "active" ? `
+          <details class="followupDetails followupWonDetails">
+            <summary>Dar como ganho</summary>
+            <form class="followupStatusForm" data-followup-key="${escapeHtml(itemKey)}" data-followup-status="won">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              <input name="marked_by" placeholder="Quem marcou" autocomplete="name">
+              <textarea name="note" placeholder="Observação: fechou retorno, comprou novo plano..."></textarea>
+              <button type="submit">Marcar ganho</button>
+            </form>
+          </details>
           <details class="followupDetails followupLostDetails">
             <summary>Dar como perdido</summary>
-            <form class="followupLostForm" data-followup-index="${index}">
-              <input type="date" name="lost_date" value="${new Date().toISOString().slice(0, 10)}" required>
+            <form class="followupStatusForm followupLostForm" data-followup-key="${escapeHtml(itemKey)}" data-followup-status="lost">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
               <input name="marked_by" placeholder="Quem marcou" autocomplete="name">
-              <textarea name="reason" placeholder="Motivo: não respondeu, sem interesse, fechou fora..."></textarea>
+              <textarea name="note" placeholder="Motivo: não respondeu, sem interesse, fechou fora..."></textarea>
               <button type="submit">Marcar perdido</button>
             </form>
           </details>
-        `}
+        ` : ""}
       </article>
     `;
   }).join("");
@@ -1598,7 +1621,7 @@ function renderPatientFollowupList() {
 async function savePatientFollowupContact(event) {
   event.preventDefault();
   const form = event.target;
-  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  const item = followupItemByKey(form.dataset.followupKey);
   if (!item) return;
   const button = form.querySelector("button");
   const original = button.textContent;
@@ -1607,6 +1630,7 @@ async function savePatientFollowupContact(event) {
   try {
     const params = new URLSearchParams();
     if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    if (state.followupOnlyMode) params.set("modo", "equipe");
     const data = new FormData(form);
     const res = await fetch(`/api/patient-followup-contact?${params.toString()}`, {
       method: "POST",
@@ -1634,24 +1658,25 @@ async function savePatientFollowupContact(event) {
   }
 }
 
-async function setPatientFollowupLost(item, lost, formData = null) {
+async function setPatientFollowupStatus(item, status, formData = null) {
   if (!item) return;
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  if (state.followupOnlyMode) params.set("modo", "equipe");
   const body = {
     patient_key: item.patient_key,
     patient_name: item.patient_name,
     category: item.category,
     procedure_name: item.procedure_name,
     sale_date: item.sale_date,
-    lost,
+    status,
   };
   if (formData) {
-    body.lost_date = formData.get("lost_date");
+    body.status_date = formData.get("status_date");
     body.marked_by = formData.get("marked_by");
-    body.reason = formData.get("reason");
+    body.note = formData.get("note");
   }
-  const res = await fetch(`/api/patient-followup-lost?${params.toString()}`, {
+  const res = await fetch(`/api/patient-followup-status?${params.toString()}`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(body),
@@ -1660,22 +1685,23 @@ async function setPatientFollowupLost(item, lost, formData = null) {
   if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível atualizar o paciente.");
 }
 
-async function savePatientFollowupLost(event) {
+async function savePatientFollowupStatus(event) {
   event.preventDefault();
   const form = event.target;
-  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  const item = followupItemByKey(form.dataset.followupKey);
   if (!item) return;
   const button = form.querySelector("button");
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "Salvando...";
   try {
-    await setPatientFollowupLost(item, true, new FormData(form));
-    state.selectedFollowupLost = "lost";
-    showNotice("Paciente marcado como perdido.");
+    const status = form.dataset.followupStatus || "lost";
+    await setPatientFollowupStatus(item, status, new FormData(form));
+    state.selectedFollowupLost = status;
+    showNotice(status === "won" ? "Paciente marcado como ganho." : "Paciente marcado como perdido.");
     await loadReport();
   } catch (error) {
-    showNotice(error.message || "Não foi possível marcar como perdido.");
+    showNotice(error.message || "Não foi possível atualizar o paciente.");
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -1685,13 +1711,13 @@ async function savePatientFollowupLost(event) {
 async function restorePatientFollowup(event) {
   const button = event.target.closest(".followupRestoreBtn");
   if (!button) return;
-  const item = filteredPatientFollowupItems()[Number(button.dataset.followupIndex)];
+  const item = followupItemByKey(button.dataset.followupKey);
   if (!item) return;
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "Reativando...";
   try {
-    await setPatientFollowupLost(item, false);
+    await setPatientFollowupStatus(item, "active");
     showNotice("Paciente reativado na carteira.");
     await loadReport();
   } catch (error) {
@@ -2413,7 +2439,7 @@ document.getElementById("followupLastTo")?.addEventListener("change", event => {
 });
 document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
   if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
-  if (event.target.matches(".followupLostForm")) savePatientFollowupLost(event);
+  if (event.target.matches(".followupStatusForm")) savePatientFollowupStatus(event);
 });
 document.getElementById("patientFollowupList")?.addEventListener("click", event => {
   if (event.target.matches("#followupShowMore")) {

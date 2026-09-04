@@ -965,6 +965,20 @@ def init_db():
                 primary key (patient_key, category)
             );
 
+            create table if not exists patient_followup_status (
+                patient_key text not null,
+                category text not null,
+                status text not null,
+                patient_name text,
+                procedure_name text,
+                sale_date text,
+                status_date text not null,
+                marked_by text,
+                note text,
+                created_at integer not null,
+                primary key (patient_key, category)
+            );
+
             create table if not exists patient_followup_cached_sales (
                 sale_uuid text primary key,
                 synced_at integer not null
@@ -990,6 +1004,10 @@ def init_db():
             create index if not exists idx_patient_followup_items_date on patient_followup_items(sale_date);
             create index if not exists idx_patient_followup_items_professional on patient_followup_items(professional_uuid);
             create index if not exists idx_patient_followup_items_patient_category on patient_followup_items(patient_key, category);
+            insert or ignore into patient_followup_status
+                (patient_key, category, status, patient_name, procedure_name, sale_date, status_date, marked_by, note, created_at)
+            select patient_key, category, 'lost', patient_name, procedure_name, sale_date, lost_date, marked_by, reason, created_at
+            from patient_followup_lost;
 
             create table if not exists clinica_sync_log (
                 id integer primary key autoincrement,
@@ -4737,23 +4755,28 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         row_data = dict(row)
         for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
             contact_lookup.setdefault(key, []).append(row_data)
-    lost_rows = conn.execute(
+    status_rows = conn.execute(
         """
         select *
-        from patient_followup_lost
+        from patient_followup_status
         """
     ).fetchall()
-    lost_lookup = {}
-    for row in lost_rows:
+    status_lookup = {}
+    for row in status_rows:
         row_data = dict(row)
         for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
-            lost_lookup[key] = row_data
+            status_lookup[key] = row_data
     items = []
     for item in latest.values():
         sale_date = parse_iso_date(item["sale_date"])
         status, status_label, next_contact, months = followup_stage(item["category"], sale_date, reference_date)
         contacts = first_patient_followup_match(contact_lookup, item) or []
-        lost_info = first_patient_followup_match(lost_lookup, item)
+        status_info = first_patient_followup_match(status_lookup, item)
+        if status_info:
+            status_sale_date = parse_iso_date(status_info.get("sale_date"))
+            if status_sale_date and sale_date and sale_date > status_sale_date:
+                status_info = None
+        wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
         item["status"] = status
         item["status_label"] = status_label
         item["next_contact_date"] = next_contact.strftime("%Y-%m-%d")
@@ -4761,8 +4784,11 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         item["contact_count"] = len(contacts)
         item["last_contact"] = contacts[0] if contacts else None
         item["contacts"] = contacts[:5]
-        item["lost"] = bool(lost_info)
-        item["lost_info"] = lost_info
+        item["wallet_status"] = wallet_status
+        item["lost"] = wallet_status == "lost"
+        item["won"] = wallet_status == "won"
+        item["status_info"] = status_info
+        item["lost_info"] = status_info if wallet_status == "lost" else None
         items.append(item)
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "warn": 2, "monitor": 3}.get(row["status"], 9),
@@ -4770,7 +4796,7 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         row["patient_name"],
     ))
     actionable_items = [item for item in items if item["status"] in ("red", "due", "warn")]
-    active_items = [item for item in items if not item["lost"]]
+    active_items = [item for item in items if item["wallet_status"] == "active"]
     active_actionable_items = [item for item in active_items if item["status"] in ("red", "due", "warn")]
     return {
         "start_date": followup_start_date,
@@ -4784,7 +4810,8 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
             "warn": len([item for item in active_items if item["status"] == "warn"]),
             "monitor": len([item for item in active_items if item["status"] == "monitor"]),
             "contacted": len([item for item in active_items if item["contact_count"]]),
-            "lost": len([item for item in items if item["lost"]]),
+            "lost": len([item for item in items if item["wallet_status"] == "lost"]),
+            "won": len([item for item in items if item["wallet_status"] == "won"]),
         },
         "categories": sorted(set(item["category"] for item in items)),
     }
@@ -4818,47 +4845,64 @@ def save_patient_followup_contact(payload):
     return {"ok": True, "id": cursor.lastrowid}
 
 
-def set_patient_followup_lost(payload):
+def set_patient_followup_status(payload):
     patient_key = str(payload.get("patient_key") or "").strip()
     category = str(payload.get("category") or "").strip()
     if not patient_key or not category:
         raise ValueError("Paciente e categoria são obrigatórios.")
-    lost = bool(payload.get("lost", True))
+    status = str(payload.get("status") or "").strip().lower()
     with db() as conn:
-        if not lost:
+        if status in ("", "active", "ativo"):
+            conn.execute(
+                "delete from patient_followup_status where patient_key = ? and category = ?",
+                (patient_key, category),
+            )
             conn.execute(
                 "delete from patient_followup_lost where patient_key = ? and category = ?",
                 (patient_key, category),
             )
-            return {"ok": True, "lost": False}
-        lost_date = parse_iso_date(str(payload.get("lost_date") or "")) or datetime.now().date()
+            return {"ok": True, "status": "active", "lost": False, "won": False}
+        if status not in ("lost", "won"):
+            raise ValueError("Status inválido.")
+        status_date = parse_iso_date(str(payload.get("status_date") or payload.get("lost_date") or "")) or datetime.now().date()
         conn.execute(
             """
-            insert into patient_followup_lost
-            (patient_key, category, patient_name, procedure_name, sale_date, lost_date, marked_by, reason, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into patient_followup_status
+            (patient_key, category, status, patient_name, procedure_name, sale_date, status_date, marked_by, note, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(patient_key, category) do update set
+                status=excluded.status,
                 patient_name=excluded.patient_name,
                 procedure_name=excluded.procedure_name,
                 sale_date=excluded.sale_date,
-                lost_date=excluded.lost_date,
+                status_date=excluded.status_date,
                 marked_by=excluded.marked_by,
-                reason=excluded.reason,
+                note=excluded.note,
                 created_at=excluded.created_at
             """,
             (
                 patient_key,
                 category,
+                status,
                 str(payload.get("patient_name") or "").strip(),
                 str(payload.get("procedure_name") or "").strip(),
                 str(payload.get("sale_date") or "").strip(),
-                lost_date.strftime("%Y-%m-%d"),
-                str(payload.get("marked_by") or "").strip(),
-                str(payload.get("reason") or "").strip(),
+                status_date.strftime("%Y-%m-%d"),
+                str(payload.get("marked_by") or payload.get("won_by") or "").strip(),
+                str(payload.get("note") or payload.get("reason") or "").strip(),
                 int(time.time()),
             ),
         )
-    return {"ok": True, "lost": True}
+    return {"ok": True, "status": status, "lost": status == "lost", "won": status == "won"}
+
+
+def set_patient_followup_lost(payload):
+    payload = dict(payload)
+    lost = bool(payload.get("lost", True))
+    payload["status"] = "lost" if lost else "active"
+    payload["status_date"] = payload.get("lost_date")
+    payload["note"] = payload.get("reason")
+    return set_patient_followup_status(payload)
 
 
 def day_label(value):
@@ -5565,6 +5609,18 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     payload = self.read_json_body()
                     result = set_patient_followup_lost(payload)
+                    return json_response(self, result)
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível atualizar o paciente: {exc}"}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/patient-followup-status":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    result = set_patient_followup_status(payload)
                     return json_response(self, result)
                 except ValueError as exc:
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
