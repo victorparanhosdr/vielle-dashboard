@@ -1616,11 +1616,6 @@ function renderPatientFollowupList() {
     const kommoLink = kommoHref
       ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
       : "";
-    const clinicaHref = clinicaPatientUrl(item);
-    const clinicaLabel = item.clinica_patient_url || item.clinica_patient_web_id ? "Abrir ficha no Clínica Experts" : "Buscar ficha no Clínica Experts";
-    const clinicaLink = clinicaHref
-      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="${escapeHtml(clinicaLabel)}" aria-label="${escapeHtml(clinicaLabel)}"><img src="clinica-icon.png" alt=""></a>`
-      : "";
     const statusInfo = item.status_info || item.lost_info || {};
     const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : statusLabel(item.status));
@@ -1660,7 +1655,6 @@ function renderPatientFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
           ${kommoLink}
-          ${clinicaLink}
         </div>
         ${statusNote}
         <details class="followupDetails">
@@ -1884,11 +1878,6 @@ function renderQuoteFollowupList() {
     const kommoLink = kommoHref
       ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
       : "";
-    const clinicaHref = clinicaPatientUrl(item);
-    const clinicaLabel = item.clinica_patient_url || item.clinica_patient_web_id ? "Abrir ficha no Clínica Experts" : "Buscar ficha no Clínica Experts";
-    const clinicaLink = clinicaHref
-      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="${escapeHtml(clinicaLabel)}" aria-label="${escapeHtml(clinicaLabel)}"><img src="clinica-icon.png" alt=""></a>`
-      : "";
     const statusInfo = item.status_info || {};
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));
     const statusNote = walletStatus !== "active"
@@ -1927,7 +1916,6 @@ function renderQuoteFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
           ${kommoLink}
-          ${clinicaLink}
         </div>
         ${statusNote}
         <details class="followupDetails">
