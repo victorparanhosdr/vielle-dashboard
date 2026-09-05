@@ -4592,6 +4592,8 @@ select {
 
   .mobileTabsToggle {
     display: flex;
+    position: relative;
+    z-index: 180;
     width: 100%;
     min-height: 50px;
     align-items: center;
@@ -4605,7 +4607,7 @@ select {
   .viewTabs {
     display: none;
     position: absolute;
-    z-index: 40;
+    z-index: 180;
     left: 16px;
     right: 16px;
     margin-top: -4px;
