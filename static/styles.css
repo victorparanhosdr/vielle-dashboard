@@ -517,6 +517,7 @@ h2 {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
 }
 
 button {
@@ -582,6 +583,21 @@ button.secondary:hover {
   background: rgba(255, 255, 255, .10);
   color: #FFFFFF;
   box-shadow: none;
+}
+
+.clinicHeaderName {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  margin: 0;
+  padding: 0 14px;
+  border-left: 1px solid rgba(232, 227, 217, .28);
+  color: rgba(245, 241, 233, .92);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 button.danger {
@@ -4545,6 +4561,14 @@ select {
   .actions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .clinicHeaderName {
+    justify-content: center;
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid rgba(232, 227, 217, .22);
+    padding-top: 10px;
   }
 
   button {
