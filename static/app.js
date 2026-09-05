@@ -103,6 +103,11 @@ function kommoFollowupUrl(item) {
 }
 
 function clinicaPatientUrl(item) {
+  if (item?.clinica_patient_url) return item.clinica_patient_url;
+  if (item?.clinica_patient_web_id) {
+    const webId = String(item.clinica_patient_web_id || "").replace(/\D+/g, "");
+    if (webId) return `https://app.clinicaexperts.com.br/clinica/contatos/listagem/paciente/${webId}/informacoes`;
+  }
   const rawPhone = String(item?.patient_phone || "").replace(/\D+/g, "");
   const phoneTerm = rawPhone.length >= 10
     ? (rawPhone.startsWith("55") && rawPhone.length > 11 ? rawPhone.slice(2) : rawPhone).slice(-11)
@@ -1612,8 +1617,9 @@ function renderPatientFollowupList() {
       ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
       : "";
     const clinicaHref = clinicaPatientUrl(item);
+    const clinicaLabel = item.clinica_patient_url || item.clinica_patient_web_id ? "Abrir ficha no Clínica Experts" : "Buscar ficha no Clínica Experts";
     const clinicaLink = clinicaHref
-      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="Buscar ficha no Clínica Experts" aria-label="Buscar ficha no Clínica Experts"><img src="clinica-icon.png" alt=""></a>`
+      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="${escapeHtml(clinicaLabel)}" aria-label="${escapeHtml(clinicaLabel)}"><img src="clinica-icon.png" alt=""></a>`
       : "";
     const statusInfo = item.status_info || item.lost_info || {};
     const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
@@ -1879,8 +1885,9 @@ function renderQuoteFollowupList() {
       ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
       : "";
     const clinicaHref = clinicaPatientUrl(item);
+    const clinicaLabel = item.clinica_patient_url || item.clinica_patient_web_id ? "Abrir ficha no Clínica Experts" : "Buscar ficha no Clínica Experts";
     const clinicaLink = clinicaHref
-      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="Buscar ficha no Clínica Experts" aria-label="Buscar ficha no Clínica Experts"><img src="clinica-icon.png" alt=""></a>`
+      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="${escapeHtml(clinicaLabel)}" aria-label="${escapeHtml(clinicaLabel)}"><img src="clinica-icon.png" alt=""></a>`
       : "";
     const statusInfo = item.status_info || {};
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));

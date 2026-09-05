@@ -219,7 +219,6 @@ CLINIC_DISPLAY_NAMES = {
     "carla": "Dr. Carla Ferreira",
 }
 
-
 PROCEDURE_CATEGORY_RULES = [
     ("Bioestimulador", ("bioestimulador", "stiim", "sculptra", "radiesse", "ellanse", "colágeno", "colageno", "neauvia")),
     ("Toxina Botulínica", ("toxina", "botox", "bruxismo")),
@@ -363,6 +362,72 @@ def kommo_search_url(*values):
         return f"https://{account_domain()}/leads/list/?{urllib.parse.urlencode({'term': query})}"
     except Exception:
         return ""
+
+
+def clinica_patient_web_url(web_id):
+    web_id = re.sub(r"\D+", "", str(web_id or ""))
+    if not web_id:
+        return ""
+    return f"https://app.clinicaexperts.com.br/clinica/contatos/listagem/paciente/{web_id}/informacoes"
+
+
+def patient_web_id_from_raw(raw_data):
+    candidates = (
+        "web_id",
+        "webId",
+        "patient_web_id",
+        "patientWebId",
+        "contact_id",
+        "contactId",
+        "code",
+        "number",
+    )
+    for key in candidates:
+        value = first_value(raw_data or {}, [key])
+        if value:
+            text = re.sub(r"\D+", "", str(value))
+            if text:
+                return text
+    return ""
+
+
+def clinica_patient_link_lookup(conn):
+    lookup = {"uuid": {}, "phone": {}, "name": {}}
+    try:
+        rows = conn.execute(
+            "select clinic, patient_uuid, patient_name, patient_phone, web_id from clinica_patient_links"
+        ).fetchall()
+    except sqlite3.Error:
+        return lookup
+    clinic_id = current_clinic_id()
+    for row in rows:
+        if row["clinic"] and row["clinic"] != clinic_id:
+            continue
+        web_id = re.sub(r"\D+", "", str(row["web_id"] or ""))
+        if not web_id:
+            continue
+        entry = {"web_id": web_id, "url": clinica_patient_web_url(web_id)}
+        if row["patient_uuid"]:
+            lookup["uuid"][str(row["patient_uuid"])] = entry
+        for phone_key in phone_lookup_keys(row["patient_phone"]):
+            lookup["phone"][phone_key] = entry
+        name_key = normalize_lookup_text(row["patient_name"])
+        if name_key:
+            lookup["name"][name_key] = entry
+    return lookup
+
+
+def find_clinica_patient_link(lookup, patient_uuid="", phone="", name=""):
+    patient_uuid = str(patient_uuid or "").strip()
+    if patient_uuid and patient_uuid in lookup["uuid"]:
+        return lookup["uuid"][patient_uuid]
+    for phone_key in phone_lookup_keys(phone):
+        if phone_key in lookup["phone"]:
+            return lookup["phone"][phone_key]
+    name_key = normalize_lookup_text(name)
+    if name_key:
+        return lookup["name"].get(name_key)
+    return None
 
 
 def build_kommo_lead_lookup(conn):
@@ -997,6 +1062,18 @@ def init_db():
                 synced_at integer not null
             );
 
+            create table if not exists clinica_patient_links (
+                clinic text not null,
+                patient_uuid text not null,
+                patient_name text,
+                patient_phone text,
+                web_id text not null,
+                updated_at integer not null,
+                primary key (clinic, patient_uuid)
+            );
+
+            create index if not exists idx_clinica_patient_links_phone on clinica_patient_links(clinic, patient_phone);
+
             create table if not exists clinica_bookings (
                 uuid text primary key,
                 patient_uuid text,
@@ -1189,7 +1266,6 @@ def init_db():
                 conn.execute(statement)
             except sqlite3.OperationalError:
                 pass
-
 
 def json_response(handler, payload, status=HTTPStatus.OK, headers=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -1937,6 +2013,9 @@ def save_clinica_patient(conn, patient, synced_at):
     uuid = first_value(patient, ["uuid", "id", "patient_uuid"])
     if not uuid:
         return False
+    name = first_value(patient, ["name", "full_name"])
+    phone = first_value(patient, ["phone", "cellphone", "mobile", "telephone"])
+    web_id = patient_web_id_from_raw(patient)
     conn.execute(
         """
         insert into clinica_patients
@@ -1953,8 +2032,8 @@ def save_clinica_patient(conn, patient, synced_at):
         """,
         (
             str(uuid),
-            first_value(patient, ["name", "full_name"]),
-            first_value(patient, ["phone", "cellphone", "mobile", "telephone"]),
+            name,
+            phone,
             first_value(patient, ["email"]),
             first_value(patient, ["origin", "source"]),
             1 if first_value(patient, ["active"]) is True else 0 if first_value(patient, ["active"]) is False else None,
@@ -1962,6 +2041,20 @@ def save_clinica_patient(conn, patient, synced_at):
             synced_at,
         ),
     )
+    if web_id:
+        conn.execute(
+            """
+            insert into clinica_patient_links
+                (clinic, patient_uuid, patient_name, patient_phone, web_id, updated_at)
+            values (?, ?, ?, ?, ?, ?)
+            on conflict(clinic, patient_uuid) do update set
+                patient_name=excluded.patient_name,
+                patient_phone=excluded.patient_phone,
+                web_id=excluded.web_id,
+                updated_at=excluded.updated_at
+            """,
+            (current_clinic_id(), str(uuid), name or "", phone or "", web_id, synced_at),
+        )
     return True
 
 
@@ -4887,6 +4980,7 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
             continue
         latest[key] = {
             "patient_key": row["patient_key"],
+            "patient_uuid": row["patient_uuid"] or "",
             "patient_name": row["patient_name"] or patient_data.get("name") or "Paciente sem nome",
             "patient_phone": row["patient_phone"] or patient_data.get("phone") or "",
             "patient_email": row["patient_email"] or patient_data.get("email") or "",
@@ -4921,6 +5015,7 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
             status_lookup[key] = row_data
     lead_lookup = build_kommo_lead_lookup(conn)
+    clinica_link_lookup = clinica_patient_link_lookup(conn)
     items = []
     for item in latest.values():
         sale_date = parse_iso_date(item["sale_date"])
@@ -4932,6 +5027,12 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
             name=item.get("patient_name"),
             phone=item.get("patient_phone"),
             email=item.get("patient_email"),
+        )
+        clinica_patient_link = find_clinica_patient_link(
+            clinica_link_lookup,
+            item.get("patient_uuid"),
+            item.get("patient_phone"),
+            item.get("patient_name"),
         )
         if status_info:
             status_sale_date = parse_iso_date(status_info.get("sale_date"))
@@ -4957,6 +5058,8 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
             item.get("patient_email"),
             item.get("patient_name"),
         )
+        item["clinica_patient_web_id"] = clinica_patient_link["web_id"] if clinica_patient_link else ""
+        item["clinica_patient_url"] = clinica_patient_link["url"] if clinica_patient_link else ""
         items.append(item)
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "warn": 2, "monitor": 3}.get(row["status"], 9),
@@ -5191,6 +5294,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
     status_rows = conn.execute("select * from quote_followup_status").fetchall()
     status_lookup = {row["quote_key"]: dict(row) for row in status_rows}
     lead_lookup = build_kommo_lead_lookup(conn)
+    clinica_link_lookup = clinica_patient_link_lookup(conn)
     patient_lookup = followup_patient_lookup(conn)
     items = []
     for row in rows:
@@ -5214,6 +5318,12 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         contacts = contact_lookup.get(quote_key, [])
         status_info = status_lookup.get(quote_key)
         kommo_lead = find_kommo_lead(lead_lookup, sale, patient_name, patient_phone, patient_email)
+        clinica_patient_link = find_clinica_patient_link(
+            clinica_link_lookup,
+            patient_uuid,
+            patient_phone,
+            patient_name,
+        )
         wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
         days_open = max(0, (datetime.now().date() - (parse_iso_date(quote_date) or datetime.now().date())).days)
         items.append({
@@ -5239,6 +5349,8 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             "kommo_lead_id": kommo_lead["id"] if kommo_lead else None,
             "kommo_lead_url": kommo_lead["url"] if kommo_lead else "",
             "kommo_search_url": kommo_search_url(patient_phone, patient_email, patient_name),
+            "clinica_patient_web_id": clinica_patient_link["web_id"] if clinica_patient_link else "",
+            "clinica_patient_url": clinica_patient_link["url"] if clinica_patient_link else "",
         })
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "monitor": 2}.get(row["status"], 9),
@@ -5331,6 +5443,43 @@ def set_quote_followup_status(payload):
             ),
         )
     return {"ok": True, "status": status, "lost": status == "lost", "won": status == "won"}
+
+
+def save_clinica_patient_link(payload):
+    patient_uuid = str(payload.get("patient_uuid") or "").strip()
+    web_id = re.sub(r"\D+", "", str(payload.get("web_id") or payload.get("clinica_patient_web_id") or ""))
+    if not patient_uuid or not web_id:
+        raise ValueError("Informe o UUID do paciente e o ID da ficha do Clínica Experts.")
+    patient_name = str(payload.get("patient_name") or "").strip()
+    patient_phone = str(payload.get("patient_phone") or "").strip()
+    with db() as conn:
+        if not patient_name or not patient_phone:
+            row = conn.execute(
+                "select name, phone from clinica_patients where uuid = ?",
+                (patient_uuid,),
+            ).fetchone()
+            if row:
+                patient_name = patient_name or row["name"] or ""
+                patient_phone = patient_phone or row["phone"] or ""
+        conn.execute(
+            """
+            insert into clinica_patient_links
+                (clinic, patient_uuid, patient_name, patient_phone, web_id, updated_at)
+            values (?, ?, ?, ?, ?, ?)
+            on conflict(clinic, patient_uuid) do update set
+                patient_name=excluded.patient_name,
+                patient_phone=excluded.patient_phone,
+                web_id=excluded.web_id,
+                updated_at=excluded.updated_at
+            """,
+            (current_clinic_id(), patient_uuid, patient_name, patient_phone, web_id, int(time.time())),
+        )
+    return {
+        "ok": True,
+        "patient_uuid": patient_uuid,
+        "web_id": web_id,
+        "url": clinica_patient_web_url(web_id),
+    }
 
 
 def day_label(value):
@@ -6079,6 +6228,18 @@ class Handler(SimpleHTTPRequestHandler):
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 except Exception as exc:
                     return json_response(self, {"ok": False, "error": f"Não foi possível atualizar o orçamento: {exc}"}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/clinica-patient-link":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    result = save_clinica_patient_link(payload)
+                    return json_response(self, result)
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível salvar o link da ficha: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-all":
             if not self.require_master_auth():
                 return
