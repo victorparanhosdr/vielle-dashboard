@@ -1008,6 +1008,34 @@ def init_db():
             create index if not exists idx_patient_followup_items_date on patient_followup_items(sale_date);
             create index if not exists idx_patient_followup_items_professional on patient_followup_items(professional_uuid);
             create index if not exists idx_patient_followup_items_patient_category on patient_followup_items(patient_key, category);
+            create table if not exists quote_followup_contacts (
+                id integer primary key autoincrement,
+                quote_key text not null,
+                patient_key text,
+                patient_name text,
+                quote_date text,
+                quote_total real,
+                contact_date text not null,
+                contacted_by text,
+                description text,
+                created_at integer not null
+            );
+
+            create table if not exists quote_followup_status (
+                quote_key text primary key,
+                patient_key text,
+                status text not null,
+                patient_name text,
+                quote_date text,
+                quote_total real,
+                status_date text not null,
+                marked_by text,
+                note text,
+                created_at integer not null
+            );
+
+            create index if not exists idx_quote_followup_contacts_quote on quote_followup_contacts(quote_key);
+            create index if not exists idx_quote_followup_status_status on quote_followup_status(status);
             insert or ignore into patient_followup_status
                 (patient_key, category, status, patient_name, procedure_name, sale_date, status_date, marked_by, note, created_at)
             select patient_key, category, 'lost', patient_name, procedure_name, sale_date, lost_date, marked_by, reason, created_at
@@ -3087,7 +3115,7 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
     return ("where " + " and ".join(clauses)) if clauses else "", params
 
 
-def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None, include_followup=False):
+def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None, include_followup=False, include_quote_followup=False):
     pipeline_ids = pipeline_ids or []
     clinic_id = current_clinic_id()
     pipeline_doctor_map = clinic_pipeline_doctor_map()
@@ -4307,6 +4335,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             )
         paid_traffic = paid_traffic_report(conn, date_from, date_to)
         patient_followup = build_patient_followup(conn, date_to, effective_professional_uuids) if include_followup else None
+        quote_followup = build_quote_followup(conn, date_from, date_to, effective_professional_uuids) if include_quote_followup else None
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
@@ -4395,6 +4424,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         },
         "paid_traffic": paid_traffic,
         "patient_followup": patient_followup,
+        "quote_followup": quote_followup,
         "general_panel": {
             "month": month_key,
             "goal": month_goal,
@@ -4909,6 +4939,256 @@ def set_patient_followup_lost(payload):
     return set_patient_followup_status(payload)
 
 
+def quote_patient_identity(sale_row, sale):
+    patient_uuid = sale_row["patient_uuid"] if isinstance(sale_row, sqlite3.Row) and "patient_uuid" in sale_row.keys() else None
+    patient = first_value(sale, ["buyer", "patient", "person", "client", "customer"])
+    patient_name = None
+    patient_phone = ""
+    patient_email = ""
+    if isinstance(patient, dict):
+        patient_uuid = patient_uuid or first_value(patient, ["uuid", "id"])
+        patient_name = first_value(patient, ["name", "full_name", "title"])
+        patient_phone = first_value(patient, ["phone", "mobile", "telephone"]) or ""
+        patient_email = first_value(patient, ["email"]) or ""
+    patient_name = patient_name or first_value(sale, ["patient_name", "client_name", "customer_name"]) or "Paciente sem nome"
+    patient_key = str(patient_uuid or normalize_lookup_text(patient_name))
+    return patient_key, str(patient_uuid or ""), str(patient_name), str(patient_phone or ""), str(patient_email or "")
+
+
+def quote_professional_identity(sale):
+    professional = first_value(sale, ["seller", "professional", "responsible"])
+    if isinstance(professional, dict):
+        return (
+            str(first_value(professional, ["uuid", "id"]) or ""),
+            str(first_value(professional, ["name", "full_name", "title"]) or ""),
+        )
+    return (
+        str(first_value(sale, ["seller_person_id", "professional_id", "responsible_id"]) or ""),
+        str(first_value(sale, ["seller_name", "professional_name", "responsible_name"]) or ""),
+    )
+
+
+def quote_was_converted(conn, patient_key, patient_uuid, quote_date):
+    if not quote_date:
+        return False
+    clauses = [
+        "substr(sale_date, 1, 10) >= ?",
+        "lower(coalesce(type, json_extract(raw_json, '$.type'), '')) not in ('sale_quote', 'quote', 'budget', 'proposal')",
+    ]
+    params = [quote_date]
+    if patient_uuid:
+        clauses.append("patient_uuid = ?")
+        params.append(patient_uuid)
+    else:
+        clauses.append(
+            """
+            lower(coalesce(
+              json_extract(raw_json, '$.buyer.name'),
+              json_extract(raw_json, '$.patient.name'),
+              json_extract(raw_json, '$.person.name'),
+              json_extract(raw_json, '$.client.name'),
+              json_extract(raw_json, '$.patient_name'),
+              ''
+            )) = ?
+            """
+        )
+        params.append(normalize_lookup_text(patient_key))
+    rows = conn.execute(
+        f"""
+        select raw_json, type
+        from clinica_sales
+        where {" and ".join(clauses)}
+        """,
+        params,
+    ).fetchall()
+    for row in rows:
+        try:
+            sale = json.loads(row["raw_json"])
+        except json.JSONDecodeError:
+            sale = {}
+        if sale_status_group(first_value(sale, ["status"]), row["type"]) == "venda":
+            return True
+    return False
+
+
+def build_quote_followup(conn, date_from, date_to, effective_professional_uuids):
+    clauses = [
+        "substr(coalesce(json_extract(raw_json, '$.quote_date'), json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) >= ?",
+        "substr(coalesce(json_extract(raw_json, '$.quote_date'), json_extract(raw_json, '$.created_at'), json_extract(raw_json, '$.updated_at'), sale_date), 1, 10) <= ?",
+        """
+        (
+          lower(coalesce(type, json_extract(raw_json, '$.type'), '')) in ('sale_quote', 'quote', 'budget', 'proposal')
+          or lower(coalesce(json_extract(raw_json, '$.status'), '')) in ('inactive', 'budget', 'quote', 'proposal', 'quoted', 'open', 'opened', 'aberto')
+        )
+        """,
+    ]
+    params = [date_from, date_to]
+    if effective_professional_uuids:
+        placeholders = ",".join("?" for _ in effective_professional_uuids)
+        clauses.append(
+            f"""(
+              json_extract(raw_json, '$.seller.uuid') in ({placeholders})
+              or json_extract(raw_json, '$.professional.uuid') in ({placeholders})
+              or json_extract(raw_json, '$.responsible.uuid') in ({placeholders})
+              or json_extract(raw_json, '$.seller_person_id') in ({placeholders})
+              or json_extract(raw_json, '$.professional_id') in ({placeholders})
+            )"""
+        )
+        params.extend(effective_professional_uuids * 5)
+    rows = conn.execute(
+        f"""
+        select uuid, patient_uuid, sale_date, total, raw_json
+        from clinica_sales
+        where {" and ".join(clauses)}
+        order by sale_date desc
+        """,
+        params,
+    ).fetchall()
+    contact_rows = conn.execute(
+        "select * from quote_followup_contacts order by contact_date desc, id desc"
+    ).fetchall()
+    contact_lookup = {}
+    for row in contact_rows:
+        contact_lookup.setdefault(row["quote_key"], []).append(dict(row))
+    status_rows = conn.execute("select * from quote_followup_status").fetchall()
+    status_lookup = {row["quote_key"]: dict(row) for row in status_rows}
+    items = []
+    for row in rows:
+        try:
+            sale = json.loads(row["raw_json"])
+        except json.JSONDecodeError:
+            sale = {}
+        quote_date = str(first_value(sale, ["quote_date", "created_at", "updated_at", "sale_date"]) or row["sale_date"] or "")[:10]
+        if not quote_date:
+            continue
+        patient_key, patient_uuid, patient_name, patient_phone, patient_email = quote_patient_identity(row, sale)
+        if quote_was_converted(conn, patient_key, patient_uuid, quote_date):
+            continue
+        quote_key = str(row["uuid"])
+        title = first_value(sale, ["title"])
+        quote_total = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount", "final_amount", "total", "amount"]))
+        if quote_total is None and isinstance(title, dict):
+            quote_total = money_value(first_value(title, ["nominal_amount", "final_amount", "total", "amount"]))
+        quote_total = quote_total if quote_total is not None else row["total"] or 0
+        professional_uuid, professional_name = quote_professional_identity(sale)
+        contacts = contact_lookup.get(quote_key, [])
+        status_info = status_lookup.get(quote_key)
+        wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
+        days_open = max(0, (datetime.now().date() - (parse_iso_date(quote_date) or datetime.now().date())).days)
+        items.append({
+            "quote_key": quote_key,
+            "patient_key": patient_key,
+            "patient_name": patient_name,
+            "patient_phone": patient_phone,
+            "patient_email": patient_email,
+            "quote_date": quote_date,
+            "quote_total": quote_total,
+            "professional_name": professional_name,
+            "professional_uuid": professional_uuid,
+            "days_open": days_open,
+            "status": "red" if days_open >= 14 else "due" if days_open >= 7 else "monitor",
+            "status_label": "Urgente" if days_open >= 14 else "Contato agora" if days_open >= 7 else "Monitorar",
+            "contact_count": len(contacts),
+            "last_contact": contacts[0] if contacts else None,
+            "contacts": contacts[:5],
+            "wallet_status": wallet_status,
+            "lost": wallet_status == "lost",
+            "won": wallet_status == "won",
+            "status_info": status_info,
+        })
+    items.sort(key=lambda row: (
+        {"red": 0, "due": 1, "monitor": 2}.get(row["status"], 9),
+        -row["quote_total"],
+        row["patient_name"],
+    ))
+    active_items = [item for item in items if item["wallet_status"] == "active"]
+    return {
+        "items": items,
+        "reference_date": datetime.now().date().strftime("%Y-%m-%d"),
+        "totals": {
+            "total": len(active_items),
+            "amount": sum(item["quote_total"] for item in active_items),
+            "red": len([item for item in active_items if item["status"] == "red"]),
+            "due": len([item for item in active_items if item["status"] == "due"]),
+            "monitor": len([item for item in active_items if item["status"] == "monitor"]),
+            "contacted": len([item for item in active_items if item["contact_count"]]),
+            "lost": len([item for item in items if item["wallet_status"] == "lost"]),
+            "won": len([item for item in items if item["wallet_status"] == "won"]),
+        },
+    }
+
+
+def save_quote_followup_contact(payload):
+    quote_key = str(payload.get("quote_key") or "").strip()
+    contact_date = str(payload.get("contact_date") or "").strip()
+    if not quote_key or not parse_iso_date(contact_date):
+        raise ValueError("Orçamento e data do contato são obrigatórios.")
+    with db() as conn:
+        cursor = conn.execute(
+            """
+            insert into quote_followup_contacts
+            (quote_key, patient_key, patient_name, quote_date, quote_total, contact_date, contacted_by, description, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                quote_key,
+                str(payload.get("patient_key") or "").strip(),
+                str(payload.get("patient_name") or "").strip(),
+                str(payload.get("quote_date") or "").strip(),
+                money_value(payload.get("quote_total")) if isinstance(payload.get("quote_total"), str) else float(payload.get("quote_total") or 0),
+                parse_iso_date(contact_date).strftime("%Y-%m-%d"),
+                str(payload.get("contacted_by") or "").strip(),
+                str(payload.get("description") or "").strip(),
+                int(time.time()),
+            ),
+        )
+    return {"ok": True, "id": cursor.lastrowid}
+
+
+def set_quote_followup_status(payload):
+    quote_key = str(payload.get("quote_key") or "").strip()
+    if not quote_key:
+        raise ValueError("Orçamento é obrigatório.")
+    status = str(payload.get("status") or "").strip().lower()
+    with db() as conn:
+        if status in ("", "active", "ativo"):
+            conn.execute("delete from quote_followup_status where quote_key = ?", (quote_key,))
+            return {"ok": True, "status": "active", "lost": False, "won": False}
+        if status not in ("lost", "won"):
+            raise ValueError("Status inválido.")
+        status_date = parse_iso_date(str(payload.get("status_date") or "")) or datetime.now().date()
+        conn.execute(
+            """
+            insert into quote_followup_status
+            (quote_key, patient_key, status, patient_name, quote_date, quote_total, status_date, marked_by, note, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict(quote_key) do update set
+                patient_key=excluded.patient_key,
+                status=excluded.status,
+                patient_name=excluded.patient_name,
+                quote_date=excluded.quote_date,
+                quote_total=excluded.quote_total,
+                status_date=excluded.status_date,
+                marked_by=excluded.marked_by,
+                note=excluded.note,
+                created_at=excluded.created_at
+            """,
+            (
+                quote_key,
+                str(payload.get("patient_key") or "").strip(),
+                status,
+                str(payload.get("patient_name") or "").strip(),
+                str(payload.get("quote_date") or "").strip(),
+                money_value(payload.get("quote_total")) if isinstance(payload.get("quote_total"), str) else float(payload.get("quote_total") or 0),
+                status_date.strftime("%Y-%m-%d"),
+                str(payload.get("marked_by") or "").strip(),
+                str(payload.get("note") or "").strip(),
+                int(time.time()),
+            ),
+        )
+    return {"ok": True, "status": status, "lost": status == "lost", "won": status == "won"}
+
+
 def day_label(value):
     if not value:
         return "-"
@@ -4934,6 +5214,7 @@ def query_report_args(params):
         "doctor": params.get("doctor", [""])[0],
         "seller": params.get("seller", [""])[0],
         "include_followup": params.get("include_followup", [""])[0] == "1",
+        "include_quote_followup": params.get("include_quote_followup", [""])[0] == "1",
     }
 
 
@@ -5630,6 +5911,30 @@ class Handler(SimpleHTTPRequestHandler):
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 except Exception as exc:
                     return json_response(self, {"ok": False, "error": f"Não foi possível atualizar o paciente: {exc}"}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/quote-followup-contact":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    result = save_quote_followup_contact(payload)
+                    return json_response(self, result)
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível salvar o contato do orçamento: {exc}"}, HTTPStatus.BAD_REQUEST)
+        if parsed.path == "/api/quote-followup-status":
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    payload = self.read_json_body()
+                    result = set_quote_followup_status(payload)
+                    return json_response(self, result)
+                except ValueError as exc:
+                    return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    return json_response(self, {"ok": False, "error": f"Não foi possível atualizar o orçamento: {exc}"}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/sync-all":
             if not self.require_master_auth():
                 return

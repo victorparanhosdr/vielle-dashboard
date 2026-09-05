@@ -4053,10 +4053,13 @@ select {
 .followupControls select,
 .followupControls input,
 .followupForm input,
+.followupForm select,
 .followupForm textarea,
 .followupStatusForm input,
+.followupStatusForm select,
 .followupStatusForm textarea,
 .followupLostForm input,
+.followupLostForm select,
 .followupLostForm textarea {
   min-height: 42px;
   border: 1px solid rgba(183, 225, 239, .95);

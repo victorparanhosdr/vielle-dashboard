@@ -91,6 +91,7 @@
         <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
         <button class="tabBtn" type="button" data-view="patientFollowupView">Acompanhamento de Paciente</button>
+        <button class="tabBtn" type="button" data-view="quoteFollowupView">Acompanhamento de Orçamentos</button>
         <button class="tabBtn" type="button" data-view="trafficView">Tráfego pago</button>
       </nav>
 
@@ -635,6 +636,79 @@
             </div>
           </div>
           <div id="patientFollowupList" class="patientFollowupList"></div>
+        </section>
+      </div>
+
+      <div id="quoteFollowupView" class="viewPanel">
+        <section class="patientFollowupHero panel">
+          <div class="panelHead">
+            <div>
+              <h2>Acompanhamento de Orçamentos</h2>
+              <span class="metaText">Carteira comercial de orçamentos em aberto</span>
+            </div>
+            <span id="quoteFollowupReferenceDate" class="metaText">Base: -</span>
+          </div>
+          <div class="followupMetricGrid">
+            <article class="followupMetric total">
+              <span>Orçamentos em aberto</span>
+              <strong id="quoteFollowupTotal">0</strong>
+              <small id="quoteFollowupAmount">R$ 0 em carteira</small>
+            </article>
+            <article class="followupMetric danger">
+              <span>Urgentes</span>
+              <strong id="quoteFollowupRed">0</strong>
+              <small>14 dias ou mais em aberto</small>
+            </article>
+            <article class="followupMetric attention">
+              <span>Contato agora</span>
+              <strong id="quoteFollowupDue">0</strong>
+              <small>7 a 13 dias em aberto</small>
+            </article>
+            <article class="followupMetric done">
+              <span>Já contatados</span>
+              <strong id="quoteFollowupContacted">0</strong>
+              <small>Com histórico registrado</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead patientFollowupHead">
+            <div>
+              <h2>Carteira de orçamentos</h2>
+              <span class="metaText">Orçamentos fechados somem automaticamente quando a venda aparece no Clínica Experts</span>
+              <strong id="quoteFollowupFilteredCount" class="followupFilteredCount">0 orçamentos no filtro</strong>
+            </div>
+            <div class="followupControls">
+              <label>
+                <span>Carteira</span>
+                <select id="quoteFollowupStatusWallet">
+                  <option value="active">Ativos</option>
+                  <option value="won">Ganhos</option>
+                  <option value="lost">Perdidos</option>
+                  <option value="all">Todos</option>
+                </select>
+              </label>
+              <label>
+                <span>Contato</span>
+                <select id="quoteFollowupContactFilter">
+                  <option value="">Todos</option>
+                  <option value="contacted">Já contatados</option>
+                  <option value="not_contacted">Não contatados</option>
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="quoteFollowupStatusFilter">
+                  <option value="">Todos</option>
+                  <option value="red">Urgentes</option>
+                  <option value="due">Contato agora</option>
+                  <option value="monitor">Monitorar</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="quoteFollowupList" class="patientFollowupList"></div>
         </section>
       </div>
 
