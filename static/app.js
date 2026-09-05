@@ -1578,6 +1578,9 @@ function renderPatientFollowupList() {
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
+    const kommoLink = item.kommo_lead_url
+      ? `<a class="followupKommoLink" href="${escapeHtml(item.kommo_lead_url)}" target="_blank" rel="noopener">Abrir no Kommo</a>`
+      : "";
     const statusInfo = item.status_info || item.lost_info || {};
     const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : statusLabel(item.status));
@@ -1616,6 +1619,7 @@ function renderPatientFollowupList() {
           <span>${phone}</span>
           <span>${email}</span>
           <span>${contactText}</span>
+          ${kommoLink}
         </div>
         ${statusNote}
         <details class="followupDetails">
@@ -1834,6 +1838,9 @@ function renderQuoteFollowupList() {
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
+    const kommoLink = item.kommo_lead_url
+      ? `<a class="followupKommoLink" href="${escapeHtml(item.kommo_lead_url)}" target="_blank" rel="noopener">Abrir no Kommo</a>`
+      : "";
     const statusInfo = item.status_info || {};
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));
     const statusNote = walletStatus !== "active"
@@ -1871,6 +1878,7 @@ function renderQuoteFollowupList() {
           <span>${phone}</span>
           <span>${email}</span>
           <span>${contactText}</span>
+          ${kommoLink}
         </div>
         ${statusNote}
         <details class="followupDetails">

@@ -4245,6 +4245,14 @@ select {
   white-space: nowrap;
 }
 
+.followupContactLine .followupKommoLink {
+  background: linear-gradient(135deg, var(--navy), var(--cyan));
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .followupDetails {
   border-top: 1px solid rgba(199, 222, 231, .75);
   padding-top: 12px;

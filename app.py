@@ -9,6 +9,7 @@ import html
 import io
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -288,6 +289,95 @@ def normalize_lookup_text(value):
     normalized = unicodedata.normalize("NFKD", str(value or ""))
     without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
     return without_accents.lower().strip()
+
+
+EMAIL_PATTERN = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
+
+
+def phone_lookup_keys(value):
+    digits = re.sub(r"\D+", "", str(value or ""))
+    if len(digits) < 10:
+        return set()
+    keys = {digits}
+    if digits.startswith("55") and len(digits) > 10:
+        keys.add(digits[2:])
+    keys.add(digits[-9:])
+    keys.add(digits[-8:])
+    return keys
+
+
+def iter_string_values(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from iter_string_values(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from iter_string_values(item)
+
+
+def nested_values_for_keys(value, target_keys):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized_key = normalize_lookup_text(key).replace(" ", "_")
+            if normalized_key in target_keys:
+                yield item
+            yield from nested_values_for_keys(item, target_keys)
+    elif isinstance(value, list):
+        for item in value:
+            yield from nested_values_for_keys(item, target_keys)
+
+
+def kommo_lead_url(lead_id):
+    try:
+        lead_id = int(lead_id)
+        return f"https://{account_domain()}/leads/detail/{lead_id}"
+    except Exception:
+        return ""
+
+
+def build_kommo_lead_lookup(conn):
+    rows = conn.execute("select id, name, raw_json from leads").fetchall()
+    lookup = {"id": {}, "phone": {}, "email": {}, "name": {}}
+    for row in rows:
+        lead_id = row["id"]
+        if not lead_id:
+            continue
+        entry = {"id": lead_id, "url": kommo_lead_url(lead_id)}
+        lookup["id"][str(lead_id)] = entry
+        try:
+            raw = json.loads(row["raw_json"])
+        except (TypeError, json.JSONDecodeError):
+            raw = {}
+        lead_name = normalize_lookup_text(row["name"])
+        if lead_name:
+            lookup["name"].setdefault(lead_name, entry)
+        for text in iter_string_values(raw):
+            for email in EMAIL_PATTERN.findall(text):
+                lookup["email"].setdefault(email.lower(), entry)
+            for phone_key in phone_lookup_keys(text):
+                lookup["phone"].setdefault(phone_key, entry)
+    return lookup
+
+
+def find_kommo_lead(lookup, raw_data=None, name="", phone="", email=""):
+    target_keys = {"kommo_lead_id", "kommo_id", "lead_id", "deal_id"}
+    for value in nested_values_for_keys(raw_data or {}, target_keys):
+        value = str(value or "").strip()
+        if value in lookup["id"]:
+            return lookup["id"][value]
+    for phone_key in phone_lookup_keys(phone):
+        if phone_key in lookup["phone"]:
+            return lookup["phone"][phone_key]
+    for found_email in EMAIL_PATTERN.findall(str(email or "")):
+        lead = lookup["email"].get(found_email.lower())
+        if lead:
+            return lead
+    normalized_name = normalize_lookup_text(name)
+    if normalized_name:
+        return lookup["name"].get(normalized_name)
+    return None
 
 
 def matches_forced_professional_name(name, clinic_id=None):
@@ -4800,12 +4890,19 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         row_data = dict(row)
         for key in patient_followup_identity_keys(row["patient_key"], row["patient_name"], row["category"]):
             status_lookup[key] = row_data
+    lead_lookup = build_kommo_lead_lookup(conn)
     items = []
     for item in latest.values():
         sale_date = parse_iso_date(item["sale_date"])
         status, status_label, next_contact, months = followup_stage(item["category"], sale_date, reference_date)
         contacts = first_patient_followup_match(contact_lookup, item) or []
         status_info = first_patient_followup_match(status_lookup, item)
+        kommo_lead = find_kommo_lead(
+            lead_lookup,
+            name=item.get("patient_name"),
+            phone=item.get("patient_phone"),
+            email=item.get("patient_email"),
+        )
         if status_info:
             status_sale_date = parse_iso_date(status_info.get("sale_date"))
             if status_sale_date and sale_date and sale_date > status_sale_date:
@@ -4823,6 +4920,8 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         item["won"] = wallet_status == "won"
         item["status_info"] = status_info
         item["lost_info"] = status_info if wallet_status == "lost" else None
+        item["kommo_lead_id"] = kommo_lead["id"] if kommo_lead else None
+        item["kommo_lead_url"] = kommo_lead["url"] if kommo_lead else ""
         items.append(item)
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "warn": 2, "monitor": 3}.get(row["status"], 9),
@@ -5052,6 +5151,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         contact_lookup.setdefault(row["quote_key"], []).append(dict(row))
     status_rows = conn.execute("select * from quote_followup_status").fetchall()
     status_lookup = {row["quote_key"]: dict(row) for row in status_rows}
+    lead_lookup = build_kommo_lead_lookup(conn)
     items = []
     for row in rows:
         try:
@@ -5073,6 +5173,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         professional_uuid, professional_name = quote_professional_identity(sale)
         contacts = contact_lookup.get(quote_key, [])
         status_info = status_lookup.get(quote_key)
+        kommo_lead = find_kommo_lead(lead_lookup, sale, patient_name, patient_phone, patient_email)
         wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
         days_open = max(0, (datetime.now().date() - (parse_iso_date(quote_date) or datetime.now().date())).days)
         items.append({
@@ -5095,6 +5196,8 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             "lost": wallet_status == "lost",
             "won": wallet_status == "won",
             "status_info": status_info,
+            "kommo_lead_id": kommo_lead["id"] if kommo_lead else None,
+            "kommo_lead_url": kommo_lead["url"] if kommo_lead else "",
         })
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "monitor": 2}.get(row["status"], 9),
