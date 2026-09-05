@@ -306,6 +306,17 @@ def phone_lookup_keys(value):
     return keys
 
 
+def kommo_phone_search_term(value):
+    digits = re.sub(r"\D+", "", str(value or ""))
+    if len(digits) < 10:
+        return ""
+    if digits.startswith("55") and len(digits) > 11:
+        digits = digits[2:]
+    if len(digits) > 11:
+        digits = digits[-11:]
+    return digits
+
+
 def iter_string_values(value):
     if isinstance(value, str):
         yield value
@@ -338,7 +349,13 @@ def kommo_lead_url(lead_id):
 
 
 def kommo_search_url(*values):
-    terms = [str(value or "").strip() for value in values if str(value or "").strip() and str(value or "").strip() != "-"]
+    terms = []
+    for value in values:
+        raw = str(value or "").strip()
+        if not raw or raw == "-":
+            continue
+        phone_term = kommo_phone_search_term(raw)
+        terms.append(phone_term or raw)
     if not terms:
         return ""
     query = terms[0]
