@@ -4016,7 +4016,7 @@ select {
   background:
     radial-gradient(circle at 86% 18%, rgba(150, 154, 120, .22), transparent 30%),
     rgba(255, 255, 255, .78);
-  box-shadow: 0 16px 34px rgba(14, 76, 101, .09);
+  box-shadow: 0 16px 34px rgba(16, 43, 37, .09);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -4044,7 +4044,9 @@ select {
 }
 
 .followupMetric.total {
-  background: linear-gradient(135deg, rgba(6, 55, 96, .98), rgba(6, 142, 163, .92));
+  background:
+    radial-gradient(circle at 86% 18%, rgba(180, 183, 155, .20), transparent 32%),
+    linear-gradient(135deg, var(--doc-primary-dark), var(--doc-primary-hover));
 }
 
 .followupMetric.total span,
@@ -4067,7 +4069,7 @@ select {
 }
 
 .followupMetric.attention {
-  background: linear-gradient(135deg, #969A78, #387A5A);
+  background: linear-gradient(135deg, var(--doc-warning), var(--doc-olive));
 }
 
 .followupMetric.done strong {
@@ -4079,10 +4081,10 @@ select {
   width: fit-content;
   margin-top: 10px;
   padding: 8px 12px;
-  border: 1px solid rgba(21, 181, 206, .28);
+  border: 1px solid rgba(16, 43, 37, .18);
   border-radius: 999px;
-  background: rgba(227, 246, 252, .75);
-  color: var(--accent);
+  background: rgba(232, 227, 217, .55);
+  color: var(--doc-primary);
   font-size: .82rem;
   font-weight: 900;
   letter-spacing: .04em;
@@ -4629,7 +4631,32 @@ select {
 }
 
 .systemLogo {
-  background: rgba(255, 255, 255, .96);
+  background: transparent;
+}
+
+.clinicLanding .landingHero {
+  min-height: 300px;
+  place-items: center;
+  border-color: rgba(232, 227, 217, .18) !important;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(180, 183, 155, .20), transparent 32%),
+    radial-gradient(circle at 82% 24%, rgba(245, 241, 233, .10), transparent 34%),
+    linear-gradient(135deg, var(--doc-primary-dark), var(--doc-primary) 58%, var(--doc-primary-hover)) !important;
+  box-shadow: 0 26px 62px rgba(16, 43, 37, .26) !important;
+}
+
+.clinicLanding .systemLogo {
+  width: min(520px, 82vw);
+  max-height: 210px;
+  object-fit: contain;
+  margin: 0;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, .18));
+}
+
+.clinicLanding .landingHero .eyebrow {
+  color: rgba(245, 241, 233, .88);
+  letter-spacing: .22em;
+  text-align: center;
 }
 
 .topbarBrand img {
