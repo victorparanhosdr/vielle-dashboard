@@ -4053,8 +4053,13 @@ select {
 .followupControls select,
 .followupControls input,
 .followupForm input,
+.followupForm select,
 .followupForm textarea,
+.followupStatusForm input,
+.followupStatusForm select,
+.followupStatusForm textarea,
 .followupLostForm input,
+.followupLostForm select,
 .followupLostForm textarea {
   min-height: 42px;
   border: 1px solid rgba(183, 225, 239, .95);
@@ -4103,6 +4108,10 @@ select {
 
 .followupCard.lost::before {
   background: #9c3f4d;
+}
+
+.followupCard.won::before {
+  background: #18c88d;
 }
 
 .followupCard.due::before,
@@ -4172,6 +4181,11 @@ select {
   color: #8d3140;
 }
 
+.followupCard.won .followupBadge {
+  background: rgba(24, 200, 141, .14);
+  color: #0c8466;
+}
+
 .followupCard.due .followupBadge,
 .followupCard.warn .followupBadge {
   background: rgba(243, 178, 63, .16);
@@ -4231,12 +4245,20 @@ select {
   white-space: nowrap;
 }
 
+.followupContactLine .followupKommoLink {
+  background: linear-gradient(135deg, var(--navy), var(--cyan));
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .followupDetails {
   border-top: 1px solid rgba(199, 222, 231, .75);
   padding-top: 12px;
 }
 
-.followupLostNote {
+.followupStatusNote {
   display: grid;
   gap: 4px;
   margin: 10px 0;
@@ -4248,12 +4270,17 @@ select {
   font-weight: 800;
 }
 
-.followupLostNote b,
-.followupLostNote em {
+.followupStatusNote.won {
+  background: rgba(24, 200, 141, .1);
+  color: #0c705d;
+}
+
+.followupStatusNote b,
+.followupStatusNote em {
   font-style: normal;
 }
 
-.followupLostNote button {
+.followupStatusNote button {
   justify-self: start;
   min-height: 30px;
   border: 1px solid rgba(156, 63, 77, .25);
@@ -4281,6 +4308,7 @@ select {
   margin: 12px 0;
 }
 
+.followupStatusForm,
 .followupLostForm {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4289,6 +4317,7 @@ select {
 }
 
 .followupForm textarea,
+.followupStatusForm textarea,
 .followupLostForm textarea {
   grid-column: 1 / -1;
   min-height: 58px;
@@ -4296,6 +4325,7 @@ select {
 }
 
 .followupForm button,
+.followupStatusForm button,
 .followupLostForm button {
   grid-column: 1 / -1;
   min-height: 38px;
@@ -4311,6 +4341,11 @@ select {
 .followupLostForm button {
   background: linear-gradient(135deg, #df5263, #f3b23f);
   color: #fff;
+}
+
+.followupWonDetails .followupStatusForm button {
+  background: linear-gradient(135deg, #18c88d, #16b9d1);
+  color: #072438;
 }
 
 .followupHistory {

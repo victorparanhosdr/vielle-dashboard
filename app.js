@@ -13,10 +13,16 @@ const state = {
   selectedFollowupCategory: "",
   selectedFollowupStatus: "",
   selectedFollowupLost: "active",
+  selectedFollowupContact: "",
   selectedFollowupLastFrom: "",
   selectedFollowupLastTo: "",
   patientFollowupItems: [],
   followupVisibleCount: 24,
+  selectedQuoteFollowupWallet: "active",
+  selectedQuoteFollowupContact: "",
+  selectedQuoteFollowupStatus: "",
+  quoteFollowupItems: [],
+  quoteFollowupVisibleCount: 24,
   activeView: "generalView",
   selectedMonth: "",
   dateFrom: "",
@@ -27,6 +33,7 @@ const state = {
 };
 
 let pendingAutoPrint = false;
+const FOLLOWUP_CALLERS = ["Emerson", "Mariana", "Ayrton", "Victor"];
 
 const clinics = {
   vielle: {
@@ -35,6 +42,7 @@ const clinics = {
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório atual conectado ao Kommo e Clínica Experts.",
     connected: true,
+    patientFollowup: true,
   },
   inspire: {
     id: "inspire",
@@ -97,9 +105,15 @@ function buildQuery() {
     if (state.dateFrom) params.set("date_from", state.dateFrom);
     if (state.dateTo) params.set("date_to", state.dateTo);
   }
-  if (state.activeView === "patientFollowupView") params.set("include_followup", "1");
+  if (state.activeView === "patientFollowupView" && clinicSupportsFollowup()) params.set("include_followup", "1");
+  if (state.activeView === "quoteFollowupView") params.set("include_quote_followup", "1");
   const query = params.toString();
   return query ? `?${query}` : "";
+}
+
+function clinicSupportsFollowup(clinicId = state.selectedClinic) {
+  const clinic = clinics[clinicId] || clinics.vielle;
+  return Boolean(clinic.patientFollowup);
 }
 
 function monthRange(monthValue) {
@@ -191,8 +205,11 @@ function render() {
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
-  if (state.activeView === "patientFollowupView") {
+  if (state.activeView === "patientFollowupView" && clinicSupportsFollowup()) {
     renderPatientFollowup(report.patient_followup || {});
+  }
+  if (state.activeView === "quoteFollowupView") {
+    renderQuoteFollowup(report.quote_followup || {});
   }
   renderStatusColumnChart(report.all_current_status || []);
 
@@ -256,8 +273,18 @@ function showDashboard() {
 }
 
 function applyActiveViewState() {
+  const supportsFollowup = clinicSupportsFollowup();
+  if (!supportsFollowup && state.followupOnlyMode) {
+    state.followupOnlyMode = false;
+    state.activeView = "generalView";
+  }
   if (state.followupOnlyMode) state.activeView = "patientFollowupView";
+  if (!supportsFollowup && state.activeView === "patientFollowupView") {
+    state.activeView = "generalView";
+  }
   document.querySelectorAll(".tabBtn").forEach(tab => {
+    const isFollowupTab = tab.dataset.view === "patientFollowupView";
+    tab.hidden = isFollowupTab && !supportsFollowup;
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
   document.querySelectorAll(".viewPanel").forEach(panel => {
@@ -1461,6 +1488,15 @@ function statusLabel(status) {
   }[status] || "Monitorar";
 }
 
+function callerSelect(name, placeholder) {
+  return `
+    <select name="${escapeHtml(name)}" required>
+      <option value="">${escapeHtml(placeholder)}</option>
+      ${FOLLOWUP_CALLERS.map(person => `<option value="${escapeHtml(person)}">${escapeHtml(person)}</option>`).join("")}
+    </select>
+  `;
+}
+
 function renderPatientFollowup(followup) {
   if (!followup.items) {
     const container = document.getElementById("patientFollowupList");
@@ -1477,6 +1513,8 @@ function renderPatientFollowup(followup) {
   document.getElementById("followupContacted").textContent = integerFormat(totals.contacted || 0);
   const lostSelect = document.getElementById("followupLostFilter");
   if (lostSelect) lostSelect.value = state.selectedFollowupLost;
+  const contactSelect = document.getElementById("followupContactFilter");
+  if (contactSelect) contactSelect.value = state.selectedFollowupContact;
 
   const categorySelect = document.getElementById("followupCategoryFilter");
   const categories = followup.categories || [];
@@ -1497,8 +1535,12 @@ function renderPatientFollowup(followup) {
 
 function filteredPatientFollowupItems() {
   return (state.patientFollowupItems || []).filter(item => {
-    if (state.selectedFollowupLost === "active" && item.lost) return false;
+    const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
+    if (state.selectedFollowupLost === "active" && walletStatus !== "active") return false;
     if (state.selectedFollowupLost === "lost" && !item.lost) return false;
+    if (state.selectedFollowupLost === "won" && !item.won) return false;
+    if (state.selectedFollowupContact === "contacted" && !item.contact_count) return false;
+    if (state.selectedFollowupContact === "not_contacted" && item.contact_count) return false;
     if (state.selectedFollowupCategory && item.category !== state.selectedFollowupCategory) return false;
     if (state.selectedFollowupStatus && item.status !== state.selectedFollowupStatus) return false;
     if (state.selectedFollowupLastFrom && item.sale_date < state.selectedFollowupLastFrom) return false;
@@ -1506,6 +1548,14 @@ function filteredPatientFollowupItems() {
     if (!state.selectedFollowupStatus && item.status === "monitor") return false;
     return true;
   });
+}
+
+function followupItemKey(item) {
+  return [item?.patient_key || "", item?.category || ""].map(value => encodeURIComponent(value)).join("::");
+}
+
+function followupItemByKey(key) {
+  return filteredPatientFollowupItems().find(item => followupItemKey(item) === key);
 }
 
 function renderPatientFollowupList() {
@@ -1520,20 +1570,29 @@ function renderPatientFollowupList() {
     return;
   }
   const visibleItems = items.slice(0, state.followupVisibleCount);
-  const cardsHtml = visibleItems.map((item, index) => {
+  const cardsHtml = visibleItems.map((item) => {
+    const itemKey = followupItemKey(item);
     const lastContact = item.last_contact;
     const contactText = lastContact
       ? `${formatDay(lastContact.contact_date)} · ${escapeHtml(lastContact.contacted_by || "Sem nome")}`
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
-    const lostInfo = item.lost_info || {};
-    const lostText = item.lost
-      ? `<div class="followupLostNote">
-          <b>Perdido</b>
-          <span>${formatDay(lostInfo.lost_date)} · ${escapeHtml(lostInfo.marked_by || "Sem responsável")}</span>
-          <em>${escapeHtml(lostInfo.reason || "Sem motivo informado")}</em>
-          <button class="followupRestoreBtn" type="button" data-followup-index="${index}">Reativar paciente</button>
+    const kommoHref = item.kommo_lead_url || item.kommo_search_url || "";
+    const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
+    const kommoLink = kommoHref
+      ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
+      : "";
+    const statusInfo = item.status_info || item.lost_info || {};
+    const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
+    const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : statusLabel(item.status));
+    const statusDate = statusInfo.status_date || statusInfo.lost_date;
+    const statusNote = walletStatus !== "active"
+      ? `<div class="followupStatusNote ${escapeHtml(walletStatus)}">
+          <b>${escapeHtml(item.won ? "Ganho" : "Perdido")}</b>
+          <span>${formatDay(statusDate)} · ${escapeHtml(statusInfo.marked_by || "Sem responsável")}</span>
+          <em>${escapeHtml(statusInfo.note || statusInfo.reason || "Sem observação")}</em>
+          <button class="followupRestoreBtn" type="button" data-followup-key="${escapeHtml(itemKey)}">Reativar paciente</button>
         </div>`
       : "";
     const history = (item.contacts || []).map(contact => `
@@ -1544,10 +1603,10 @@ function renderPatientFollowupList() {
       </li>
     `).join("");
     return `
-      <article class="followupCard ${escapeHtml(item.status)} ${item.lost ? "lost" : ""}">
+      <article class="followupCard ${escapeHtml(item.status)} ${item.lost ? "lost" : ""} ${item.won ? "won" : ""}">
         <div class="followupCardTop">
           <div>
-            <span class="followupBadge">${escapeHtml(item.lost ? "Perdido" : statusLabel(item.status))}</span>
+            <span class="followupBadge">${escapeHtml(walletText)}</span>
             <h3>${escapeHtml(item.patient_name)}</h3>
             <p>${escapeHtml(item.category)} · ${escapeHtml(item.procedure_name)}</p>
           </div>
@@ -1562,29 +1621,39 @@ function renderPatientFollowupList() {
           <span>${phone}</span>
           <span>${email}</span>
           <span>${contactText}</span>
+          ${kommoLink}
         </div>
-        ${lostText}
+        ${statusNote}
         <details class="followupDetails">
           <summary>Registrar novo contato</summary>
-          <form class="followupForm" data-followup-index="${index}">
+          <form class="followupForm" data-followup-key="${escapeHtml(itemKey)}">
             <input type="date" name="contact_date" value="${new Date().toISOString().slice(0, 10)}" required>
-            <input name="contacted_by" placeholder="Quem chamou" autocomplete="name">
+            ${callerSelect("contacted_by", "Quem chamou")}
             <textarea name="description" placeholder="Descrição do contato, retorno ou combinado"></textarea>
             <button type="submit">Salvar contato</button>
           </form>
           <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
         </details>
-        ${item.lost ? "" : `
+        ${walletStatus === "active" ? `
+          <details class="followupDetails followupWonDetails">
+            <summary>Dar como ganho</summary>
+            <form class="followupStatusForm" data-followup-key="${escapeHtml(itemKey)}" data-followup-status="won">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              ${callerSelect("marked_by", "Quem marcou")}
+              <textarea name="note" placeholder="Observação: fechou retorno, comprou novo plano..."></textarea>
+              <button type="submit">Marcar ganho</button>
+            </form>
+          </details>
           <details class="followupDetails followupLostDetails">
             <summary>Dar como perdido</summary>
-            <form class="followupLostForm" data-followup-index="${index}">
-              <input type="date" name="lost_date" value="${new Date().toISOString().slice(0, 10)}" required>
-              <input name="marked_by" placeholder="Quem marcou" autocomplete="name">
-              <textarea name="reason" placeholder="Motivo: não respondeu, sem interesse, fechou fora..."></textarea>
+            <form class="followupStatusForm followupLostForm" data-followup-key="${escapeHtml(itemKey)}" data-followup-status="lost">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              ${callerSelect("marked_by", "Quem marcou")}
+              <textarea name="note" placeholder="Motivo: não respondeu, sem interesse, fechou fora..."></textarea>
               <button type="submit">Marcar perdido</button>
             </form>
           </details>
-        `}
+        ` : ""}
       </article>
     `;
   }).join("");
@@ -1598,7 +1667,7 @@ function renderPatientFollowupList() {
 async function savePatientFollowupContact(event) {
   event.preventDefault();
   const form = event.target;
-  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  const item = followupItemByKey(form.dataset.followupKey);
   if (!item) return;
   const button = form.querySelector("button");
   const original = button.textContent;
@@ -1607,6 +1676,7 @@ async function savePatientFollowupContact(event) {
   try {
     const params = new URLSearchParams();
     if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    if (state.followupOnlyMode) params.set("modo", "equipe");
     const data = new FormData(form);
     const res = await fetch(`/api/patient-followup-contact?${params.toString()}`, {
       method: "POST",
@@ -1634,24 +1704,25 @@ async function savePatientFollowupContact(event) {
   }
 }
 
-async function setPatientFollowupLost(item, lost, formData = null) {
+async function setPatientFollowupStatus(item, status, formData = null) {
   if (!item) return;
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  if (state.followupOnlyMode) params.set("modo", "equipe");
   const body = {
     patient_key: item.patient_key,
     patient_name: item.patient_name,
     category: item.category,
     procedure_name: item.procedure_name,
     sale_date: item.sale_date,
-    lost,
+    status,
   };
   if (formData) {
-    body.lost_date = formData.get("lost_date");
+    body.status_date = formData.get("status_date");
     body.marked_by = formData.get("marked_by");
-    body.reason = formData.get("reason");
+    body.note = formData.get("note");
   }
-  const res = await fetch(`/api/patient-followup-lost?${params.toString()}`, {
+  const res = await fetch(`/api/patient-followup-status?${params.toString()}`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(body),
@@ -1660,22 +1731,23 @@ async function setPatientFollowupLost(item, lost, formData = null) {
   if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível atualizar o paciente.");
 }
 
-async function savePatientFollowupLost(event) {
+async function savePatientFollowupStatus(event) {
   event.preventDefault();
   const form = event.target;
-  const item = filteredPatientFollowupItems()[Number(form.dataset.followupIndex)];
+  const item = followupItemByKey(form.dataset.followupKey);
   if (!item) return;
   const button = form.querySelector("button");
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "Salvando...";
   try {
-    await setPatientFollowupLost(item, true, new FormData(form));
-    state.selectedFollowupLost = "lost";
-    showNotice("Paciente marcado como perdido.");
+    const status = form.dataset.followupStatus || "lost";
+    await setPatientFollowupStatus(item, status, new FormData(form));
+    state.selectedFollowupLost = status;
+    showNotice(status === "won" ? "Paciente marcado como ganho." : "Paciente marcado como perdido.");
     await loadReport();
   } catch (error) {
-    showNotice(error.message || "Não foi possível marcar como perdido.");
+    showNotice(error.message || "Não foi possível atualizar o paciente.");
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -1685,17 +1757,276 @@ async function savePatientFollowupLost(event) {
 async function restorePatientFollowup(event) {
   const button = event.target.closest(".followupRestoreBtn");
   if (!button) return;
-  const item = filteredPatientFollowupItems()[Number(button.dataset.followupIndex)];
+  const item = followupItemByKey(button.dataset.followupKey);
   if (!item) return;
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "Reativando...";
   try {
-    await setPatientFollowupLost(item, false);
+    await setPatientFollowupStatus(item, "active");
     showNotice("Paciente reativado na carteira.");
     await loadReport();
   } catch (error) {
     showNotice(error.message || "Não foi possível reativar o paciente.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function renderQuoteFollowup(followup) {
+  if (!followup.items) {
+    const container = document.getElementById("quoteFollowupList");
+    if (container) container.innerHTML = `<div class="empty">Carregando acompanhamento de orçamentos...</div>`;
+    return;
+  }
+  const totals = followup.totals || {};
+  state.quoteFollowupItems = followup.items || [];
+  document.getElementById("quoteFollowupReferenceDate").textContent = `Base: ${formatFullDay(followup.reference_date)}`;
+  document.getElementById("quoteFollowupTotal").textContent = integerFormat(totals.total || 0);
+  document.getElementById("quoteFollowupAmount").textContent = `${brl.format(totals.amount || 0)} em carteira`;
+  document.getElementById("quoteFollowupRed").textContent = integerFormat(totals.red || 0);
+  document.getElementById("quoteFollowupDue").textContent = integerFormat(totals.due || 0);
+  document.getElementById("quoteFollowupContacted").textContent = integerFormat(totals.contacted || 0);
+  const walletSelect = document.getElementById("quoteFollowupStatusWallet");
+  if (walletSelect) walletSelect.value = state.selectedQuoteFollowupWallet;
+  const contactSelect = document.getElementById("quoteFollowupContactFilter");
+  if (contactSelect) contactSelect.value = state.selectedQuoteFollowupContact;
+  const statusSelect = document.getElementById("quoteFollowupStatusFilter");
+  if (statusSelect) statusSelect.value = state.selectedQuoteFollowupStatus;
+  renderQuoteFollowupList();
+}
+
+function filteredQuoteFollowupItems() {
+  return (state.quoteFollowupItems || []).filter(item => {
+    const walletStatus = item.wallet_status || (item.lost ? "lost" : item.won ? "won" : "active");
+    if (state.selectedQuoteFollowupWallet === "active" && walletStatus !== "active") return false;
+    if (state.selectedQuoteFollowupWallet === "lost" && walletStatus !== "lost") return false;
+    if (state.selectedQuoteFollowupWallet === "won" && walletStatus !== "won") return false;
+    if (state.selectedQuoteFollowupContact === "contacted" && !item.contact_count) return false;
+    if (state.selectedQuoteFollowupContact === "not_contacted" && item.contact_count) return false;
+    if (state.selectedQuoteFollowupStatus && item.status !== state.selectedQuoteFollowupStatus) return false;
+    return true;
+  });
+}
+
+function quoteFollowupItemKey(item) {
+  return encodeURIComponent(item?.quote_key || "");
+}
+
+function quoteFollowupItemByKey(key) {
+  return filteredQuoteFollowupItems().find(item => quoteFollowupItemKey(item) === key);
+}
+
+function renderQuoteFollowupList() {
+  const container = document.getElementById("quoteFollowupList");
+  if (!container) return;
+  const items = filteredQuoteFollowupItems();
+  const countEl = document.getElementById("quoteFollowupFilteredCount");
+  if (countEl) {
+    countEl.textContent = `${integerFormat(items.length)} ${items.length === 1 ? "orçamento" : "orçamentos"} no filtro`;
+  }
+  if (!items.length) {
+    container.innerHTML = `<div class="empty">Nenhum orçamento encontrado para este filtro.</div>`;
+    return;
+  }
+  const visibleItems = items.slice(0, state.quoteFollowupVisibleCount);
+  const cardsHtml = visibleItems.map(item => {
+    const itemKey = quoteFollowupItemKey(item);
+    const walletStatus = item.wallet_status || "active";
+    const lastContact = item.last_contact;
+    const contactText = lastContact
+      ? `${formatDay(lastContact.contact_date)} · ${escapeHtml(lastContact.contacted_by || "Sem nome")}`
+      : "Ainda sem contato registrado";
+    const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
+    const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
+    const kommoHref = item.kommo_lead_url || item.kommo_search_url || "";
+    const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
+    const kommoLink = kommoHref
+      ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
+      : "";
+    const statusInfo = item.status_info || {};
+    const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));
+    const statusNote = walletStatus !== "active"
+      ? `<div class="followupStatusNote ${escapeHtml(walletStatus)}">
+          <b>${escapeHtml(item.won ? "Ganho" : "Perdido")}</b>
+          <span>${formatDay(statusInfo.status_date)} · ${escapeHtml(statusInfo.marked_by || "Sem responsável")}</span>
+          <em>${escapeHtml(statusInfo.note || "Sem observação")}</em>
+          <button class="quoteFollowupRestoreBtn" type="button" data-quote-key="${escapeHtml(itemKey)}">Reativar orçamento</button>
+        </div>`
+      : "";
+    const history = (item.contacts || []).map(contact => `
+      <li>
+        <b>${formatDay(contact.contact_date)}</b>
+        <span>${escapeHtml(contact.contacted_by || "Sem nome")}</span>
+        <em>${escapeHtml(contact.description || "Sem descrição")}</em>
+      </li>
+    `).join("");
+    return `
+      <article class="followupCard ${escapeHtml(item.status || "monitor")} ${item.lost ? "lost" : ""} ${item.won ? "won" : ""}">
+        <div class="followupCardTop">
+          <div>
+            <span class="followupBadge">${escapeHtml(walletText)}</span>
+            <h3>${escapeHtml(item.patient_name)}</h3>
+            <p>Orçamento · ${brl.format(item.quote_total || 0)}</p>
+          </div>
+          <strong>${integerFormat(item.days_open || 0)} dias</strong>
+        </div>
+        <div class="followupFacts">
+          <span><b>Data do orçamento</b>${formatFullDay(item.quote_date)}</span>
+          <span><b>Doutor(a)</b>${escapeHtml(item.professional_name || "-")}</span>
+          <span><b>Valor</b>${brl.format(item.quote_total || 0)}</span>
+          <span><b>Contatos</b>${integerFormat(item.contact_count || 0)}</span>
+        </div>
+        <div class="followupContactLine">
+          <span>${phone}</span>
+          <span>${email}</span>
+          <span>${contactText}</span>
+          ${kommoLink}
+        </div>
+        ${statusNote}
+        <details class="followupDetails">
+          <summary>Registrar novo contato</summary>
+          <form class="quoteFollowupForm followupForm" data-quote-key="${escapeHtml(itemKey)}">
+            <input type="date" name="contact_date" value="${new Date().toISOString().slice(0, 10)}" required>
+            ${callerSelect("contacted_by", "Quem chamou")}
+            <textarea name="description" placeholder="Descrição do contato, objeção, retorno ou combinado"></textarea>
+            <button type="submit">Salvar contato</button>
+          </form>
+          <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
+        </details>
+        ${walletStatus === "active" ? `
+          <details class="followupDetails followupWonDetails">
+            <summary>Dar como ganho</summary>
+            <form class="quoteFollowupStatusForm followupStatusForm" data-quote-key="${escapeHtml(itemKey)}" data-quote-status="won">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              ${callerSelect("marked_by", "Quem marcou")}
+              <textarea name="note" placeholder="Observação: fechou no Clínica Experts, fechou depois, aguardando lançamento..."></textarea>
+              <button type="submit">Marcar ganho</button>
+            </form>
+          </details>
+          <details class="followupDetails followupLostDetails">
+            <summary>Dar como perdido</summary>
+            <form class="quoteFollowupStatusForm followupStatusForm followupLostForm" data-quote-key="${escapeHtml(itemKey)}" data-quote-status="lost">
+              <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
+              ${callerSelect("marked_by", "Quem marcou")}
+              <textarea name="note" placeholder="Motivo: preço, sem retorno, decidiu não fazer..."></textarea>
+              <button type="submit">Marcar perdido</button>
+            </form>
+          </details>
+        ` : ""}
+      </article>
+    `;
+  }).join("");
+  const remaining = items.length - visibleItems.length;
+  const moreHtml = remaining > 0
+    ? `<div class="followupMore"><button type="button" id="quoteFollowupShowMore">Mostrar mais ${integerFormat(Math.min(24, remaining))} de ${integerFormat(remaining)} orçamentos</button></div>`
+    : "";
+  container.innerHTML = `${cardsHtml}${moreHtml}`;
+}
+
+async function saveQuoteFollowupContact(event) {
+  event.preventDefault();
+  const form = event.target;
+  const item = quoteFollowupItemByKey(form.dataset.quoteKey);
+  if (!item) return;
+  const button = form.querySelector("button");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Salvando...";
+  try {
+    const params = new URLSearchParams();
+    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+    const data = new FormData(form);
+    const res = await fetch(`/api/quote-followup-contact?${params.toString()}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        quote_key: item.quote_key,
+        patient_key: item.patient_key,
+        patient_name: item.patient_name,
+        quote_date: item.quote_date,
+        quote_total: item.quote_total,
+        contact_date: data.get("contact_date"),
+        contacted_by: data.get("contacted_by"),
+        description: data.get("description"),
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar o contato.");
+    showNotice("Contato do orçamento registrado.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível salvar o contato.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function setQuoteFollowupStatus(item, status, formData = null) {
+  if (!item) return;
+  const params = new URLSearchParams();
+  if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  const body = {
+    quote_key: item.quote_key,
+    patient_key: item.patient_key,
+    patient_name: item.patient_name,
+    quote_date: item.quote_date,
+    quote_total: item.quote_total,
+    status,
+  };
+  if (formData) {
+    body.status_date = formData.get("status_date");
+    body.marked_by = formData.get("marked_by");
+    body.note = formData.get("note");
+  }
+  const res = await fetch(`/api/quote-followup-status?${params.toString()}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body),
+  });
+  const payload = await res.json();
+  if (!res.ok || !payload.ok) throw new Error(payload.error || "Não foi possível atualizar o orçamento.");
+}
+
+async function saveQuoteFollowupStatus(event) {
+  event.preventDefault();
+  const form = event.target;
+  const item = quoteFollowupItemByKey(form.dataset.quoteKey);
+  if (!item) return;
+  const button = form.querySelector("button");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Salvando...";
+  try {
+    const status = form.dataset.quoteStatus || "lost";
+    await setQuoteFollowupStatus(item, status, new FormData(form));
+    state.selectedQuoteFollowupWallet = status;
+    showNotice(status === "won" ? "Orçamento marcado como ganho." : "Orçamento marcado como perdido.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível atualizar o orçamento.");
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+async function restoreQuoteFollowup(event) {
+  const button = event.target.closest(".quoteFollowupRestoreBtn");
+  if (!button) return;
+  const item = quoteFollowupItemByKey(button.dataset.quoteKey);
+  if (!item) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Reativando...";
+  try {
+    await setQuoteFollowupStatus(item, "active");
+    showNotice("Orçamento reativado na carteira.");
+    await loadReport();
+  } catch (error) {
+    showNotice(error.message || "Não foi possível reativar o orçamento.");
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -2391,6 +2722,11 @@ document.getElementById("followupLostFilter")?.addEventListener("change", event 
   state.followupVisibleCount = 24;
   renderPatientFollowupList();
 });
+document.getElementById("followupContactFilter")?.addEventListener("change", event => {
+  state.selectedFollowupContact = event.target.value;
+  state.followupVisibleCount = 24;
+  renderPatientFollowupList();
+});
 document.getElementById("followupCategoryFilter")?.addEventListener("change", event => {
   state.selectedFollowupCategory = event.target.value;
   state.followupVisibleCount = 24;
@@ -2413,7 +2749,7 @@ document.getElementById("followupLastTo")?.addEventListener("change", event => {
 });
 document.getElementById("patientFollowupList")?.addEventListener("submit", event => {
   if (event.target.matches(".followupForm")) savePatientFollowupContact(event);
-  if (event.target.matches(".followupLostForm")) savePatientFollowupLost(event);
+  if (event.target.matches(".followupStatusForm")) savePatientFollowupStatus(event);
 });
 document.getElementById("patientFollowupList")?.addEventListener("click", event => {
   if (event.target.matches("#followupShowMore")) {
@@ -2422,6 +2758,33 @@ document.getElementById("patientFollowupList")?.addEventListener("click", event 
     return;
   }
   restorePatientFollowup(event);
+});
+document.getElementById("quoteFollowupStatusWallet")?.addEventListener("change", event => {
+  state.selectedQuoteFollowupWallet = event.target.value;
+  state.quoteFollowupVisibleCount = 24;
+  renderQuoteFollowupList();
+});
+document.getElementById("quoteFollowupContactFilter")?.addEventListener("change", event => {
+  state.selectedQuoteFollowupContact = event.target.value;
+  state.quoteFollowupVisibleCount = 24;
+  renderQuoteFollowupList();
+});
+document.getElementById("quoteFollowupStatusFilter")?.addEventListener("change", event => {
+  state.selectedQuoteFollowupStatus = event.target.value;
+  state.quoteFollowupVisibleCount = 24;
+  renderQuoteFollowupList();
+});
+document.getElementById("quoteFollowupList")?.addEventListener("submit", event => {
+  if (event.target.matches(".quoteFollowupForm")) saveQuoteFollowupContact(event);
+  if (event.target.matches(".quoteFollowupStatusForm")) saveQuoteFollowupStatus(event);
+});
+document.getElementById("quoteFollowupList")?.addEventListener("click", event => {
+  if (event.target.matches("#quoteFollowupShowMore")) {
+    state.quoteFollowupVisibleCount += 24;
+    renderQuoteFollowupList();
+    return;
+  }
+  restoreQuoteFollowup(event);
 });
 document.querySelectorAll("[data-rank-close]").forEach(button => {
   button.addEventListener("click", closeRankModal);
@@ -2441,7 +2804,7 @@ document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view || "commercialView";
     applyActiveViewState();
-    if (state.activeView === "generalView" || state.activeView === "patientFollowupView") {
+    if (state.activeView === "generalView" || state.activeView === "patientFollowupView" || state.activeView === "quoteFollowupView") {
       loadReport();
     } else {
       render();
