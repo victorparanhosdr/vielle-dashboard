@@ -312,10 +312,15 @@ body {
 }
 
 .clinicActionRow button.secondary {
-  border-color: rgba(150, 154, 120, .28);
-  background: rgba(255, 255, 255, .72);
-  color: var(--brand-dark);
-  box-shadow: none;
+  border-color: rgba(16, 43, 37, .18) !important;
+  background: rgba(232, 227, 217, .72) !important;
+  color: var(--doc-primary-dark) !important;
+  box-shadow: 0 10px 24px rgba(16, 43, 37, .10) !important;
+}
+
+.clinicActionRow button.secondary:hover {
+  background: linear-gradient(135deg, var(--doc-primary), var(--doc-olive)) !important;
+  color: #FFFFFF !important;
 }
 
 .clinicAccessCard.casaVitalle button {
