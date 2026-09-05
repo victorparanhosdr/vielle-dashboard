@@ -337,6 +337,17 @@ def kommo_lead_url(lead_id):
         return ""
 
 
+def kommo_search_url(*values):
+    terms = [str(value or "").strip() for value in values if str(value or "").strip() and str(value or "").strip() != "-"]
+    if not terms:
+        return ""
+    query = terms[0]
+    try:
+        return f"https://{account_domain()}/leads/list/?{urllib.parse.urlencode({'term': query})}"
+    except Exception:
+        return ""
+
+
 def build_kommo_lead_lookup(conn):
     rows = conn.execute("select id, name, raw_json from leads").fetchall()
     lookup = {"id": {}, "phone": {}, "email": {}, "name": {}}
@@ -4922,6 +4933,11 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         item["lost_info"] = status_info if wallet_status == "lost" else None
         item["kommo_lead_id"] = kommo_lead["id"] if kommo_lead else None
         item["kommo_lead_url"] = kommo_lead["url"] if kommo_lead else ""
+        item["kommo_search_url"] = kommo_search_url(
+            item.get("patient_phone"),
+            item.get("patient_email"),
+            item.get("patient_name"),
+        )
         items.append(item)
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "warn": 2, "monitor": 3}.get(row["status"], 9),
@@ -5198,6 +5214,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             "status_info": status_info,
             "kommo_lead_id": kommo_lead["id"] if kommo_lead else None,
             "kommo_lead_url": kommo_lead["url"] if kommo_lead else "",
+            "kommo_search_url": kommo_search_url(patient_phone, patient_email, patient_name),
         })
     items.sort(key=lambda row: (
         {"red": 0, "due": 1, "monitor": 2}.get(row["status"], 9),
