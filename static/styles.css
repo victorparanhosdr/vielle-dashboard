@@ -465,14 +465,14 @@ body {
 }
 
 .topbarBrand img {
-  width: 174px;
-  max-width: 34vw;
+  width: 250px;
+  max-width: 38vw;
   height: auto;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, .62);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .94);
-  box-shadow: 0 14px 30px rgba(16, 43, 37, .14);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .topbarBrand h1 {
@@ -4628,9 +4628,15 @@ select {
   box-shadow: 0 24px 54px rgba(16, 43, 37, .22);
 }
 
-.topbarBrand img,
 .systemLogo {
   background: rgba(255, 255, 255, .96);
+}
+
+.topbarBrand img {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, .22));
 }
 
 .eyebrow,
@@ -4735,6 +4741,15 @@ h2,
 .topbar h1,
 .topbarBrand h1 {
   color: #FFFFFF !important;
+}
+
+.topbarBrand h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .metric.featured,
