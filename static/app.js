@@ -109,7 +109,7 @@ function clinicaPatientUrl(item) {
     : "";
   const term = phoneTerm || item?.patient_email || item?.patient_name || "";
   if (!term || term === "-") return "";
-  return `https://app.clinicaexperts.com.br/clinica/contatos/listagem/paciente?search=${encodeURIComponent(term)}`;
+  return `https://app.clinicaexperts.com.br/clinica/contatos/listagem-contatos?search=${encodeURIComponent(term)}`;
 }
 
 function buildQuery() {
