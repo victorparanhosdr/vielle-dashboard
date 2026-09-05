@@ -4566,6 +4566,17 @@ select {
     flex-direction: column;
   }
 
+  .topbarBrand {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .topbarBrand img {
+    width: min(220px, 72vw);
+    max-width: 100%;
+  }
+
   .panelHeadControls, .miniFilter, .miniFilter select {
     width: 100%;
   }
