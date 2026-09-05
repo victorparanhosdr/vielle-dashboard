@@ -4512,6 +4512,15 @@ select {
 }
 
 @media (max-width: 860px) {
+  .shell {
+    width: min(100%, calc(100% - 16px));
+  }
+
+  .filterPanel {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
   .generalExecutive {
     grid-template-columns: 1fr;
   }
@@ -4684,8 +4693,22 @@ select {
     grid-template-columns: 1fr;
   }
 
-  input, select, .filterGrid label, .pipelineSelect {
+  .filterGrid > *,
+  input,
+  select,
+  textarea,
+  .filterGrid label,
+  .pipelineSelect,
+  .pipelineSelect details,
+  .pipelineSelect summary {
+    min-width: 0;
+    max-width: 100%;
     width: 100%;
+  }
+
+  input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
   }
 }
 
