@@ -514,10 +514,20 @@ h2 {
 
 .actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
+  max-width: 760px;
+}
+
+.topbar .actions button,
+.topbar .actions .buttonLink {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 button {
@@ -587,11 +597,13 @@ button.secondary:hover {
 
 .clinicHeaderName {
   display: inline-flex;
-  min-height: 42px;
+  flex: 0 0 100%;
+  min-height: auto;
   align-items: center;
-  margin: 0;
-  padding: 0 14px;
-  border-right: 1px solid rgba(232, 227, 217, .28);
+  justify-content: flex-end;
+  margin: 2px 0 0;
+  padding: 9px 0 0;
+  border-top: 1px solid rgba(232, 227, 217, .28);
   color: rgba(245, 241, 233, .92);
   font-size: 12px;
   font-weight: 950;
