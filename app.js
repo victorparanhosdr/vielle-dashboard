@@ -39,6 +39,7 @@ const clinics = {
   vielle: {
     id: "vielle",
     name: "Vielle Clinic",
+    kommoSubdomain: "vielleclinic",
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório atual conectado ao Kommo e Clínica Experts.",
     connected: true,
@@ -47,6 +48,7 @@ const clinics = {
   inspire: {
     id: "inspire",
     name: "Clínica Inspire",
+    kommoSubdomain: "clinicamedicainspire",
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório da Clínica Inspire conectado ao Kommo.",
     connected: true,
@@ -54,6 +56,7 @@ const clinics = {
   carla: {
     id: "carla",
     name: "Dr. Carla Ferreira",
+    kommoSubdomain: "",
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
     connected: true,
@@ -82,6 +85,17 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#039;",
   }[char]));
+}
+
+function kommoFollowupUrl(item) {
+  if (item?.kommo_lead_url) return item.kommo_lead_url;
+  if (item?.kommo_search_url) return item.kommo_search_url;
+  const clinic = clinics[state.selectedClinic] || clinics.vielle;
+  const subdomain = clinic.kommoSubdomain;
+  if (!subdomain) return "";
+  const term = item?.patient_phone || item?.patient_email || item?.patient_name || "";
+  if (!term || term === "-") return "";
+  return `https://${subdomain}.kommo.com/leads/list/?term=${encodeURIComponent(term)}`;
 }
 
 function buildQuery() {
@@ -1578,7 +1592,7 @@ function renderPatientFollowupList() {
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
-    const kommoHref = item.kommo_lead_url || item.kommo_search_url || "";
+    const kommoHref = kommoFollowupUrl(item);
     const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
     const kommoLink = kommoHref
       ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
@@ -1840,7 +1854,7 @@ function renderQuoteFollowupList() {
       : "Ainda sem contato registrado";
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
-    const kommoHref = item.kommo_lead_url || item.kommo_search_url || "";
+    const kommoHref = kommoFollowupUrl(item);
     const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
     const kommoLink = kommoHref
       ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
