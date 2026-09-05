@@ -4857,20 +4857,22 @@ def build_patient_followup(conn, date_to, effective_professional_uuids):
         """,
         params,
     ).fetchall()
+    patient_lookup = followup_patient_lookup(conn)
     latest = {}
     for row in rows:
         sale_date = parse_iso_date(row["sale_date"])
         if not sale_date:
             continue
+        patient_data = patient_lookup.get(str(row["patient_uuid"] or ""), {})
         key = (row["patient_key"], row["category"])
         existing = latest.get(key)
         if existing and existing["sale_date"] >= sale_date.strftime("%Y-%m-%d"):
             continue
         latest[key] = {
             "patient_key": row["patient_key"],
-            "patient_name": row["patient_name"] or "Paciente sem nome",
-            "patient_phone": row["patient_phone"] or "",
-            "patient_email": row["patient_email"] or "",
+            "patient_name": row["patient_name"] or patient_data.get("name") or "Paciente sem nome",
+            "patient_phone": row["patient_phone"] or patient_data.get("phone") or "",
+            "patient_email": row["patient_email"] or patient_data.get("email") or "",
             "category": row["category"],
             "procedure_name": row["procedure_name"] or "Procedimento sem nome",
             "sale_date": sale_date.strftime("%Y-%m-%d"),
@@ -5054,7 +5056,7 @@ def set_patient_followup_lost(payload):
     return set_patient_followup_status(payload)
 
 
-def quote_patient_identity(sale_row, sale):
+def quote_patient_identity(sale_row, sale, patient_lookup=None):
     patient_uuid = sale_row["patient_uuid"] if isinstance(sale_row, sqlite3.Row) and "patient_uuid" in sale_row.keys() else None
     patient = first_value(sale, ["buyer", "patient", "person", "client", "customer"])
     patient_name = None
@@ -5065,6 +5067,10 @@ def quote_patient_identity(sale_row, sale):
         patient_name = first_value(patient, ["name", "full_name", "title"])
         patient_phone = first_value(patient, ["phone", "mobile", "telephone"]) or ""
         patient_email = first_value(patient, ["email"]) or ""
+    patient_data = (patient_lookup or {}).get(str(patient_uuid or ""), {})
+    patient_name = patient_name or patient_data.get("name")
+    patient_phone = patient_phone or patient_data.get("phone") or ""
+    patient_email = patient_email or patient_data.get("email") or ""
     patient_name = patient_name or first_value(sale, ["patient_name", "client_name", "customer_name"]) or "Paciente sem nome"
     patient_key = str(patient_uuid or normalize_lookup_text(patient_name))
     return patient_key, str(patient_uuid or ""), str(patient_name), str(patient_phone or ""), str(patient_email or "")
@@ -5168,6 +5174,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
     status_rows = conn.execute("select * from quote_followup_status").fetchall()
     status_lookup = {row["quote_key"]: dict(row) for row in status_rows}
     lead_lookup = build_kommo_lead_lookup(conn)
+    patient_lookup = followup_patient_lookup(conn)
     items = []
     for row in rows:
         try:
@@ -5177,7 +5184,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         quote_date = str(first_value(sale, ["quote_date", "created_at", "updated_at", "sale_date"]) or row["sale_date"] or "")[:10]
         if not quote_date:
             continue
-        patient_key, patient_uuid, patient_name, patient_phone, patient_email = quote_patient_identity(row, sale)
+        patient_key, patient_uuid, patient_name, patient_phone, patient_email = quote_patient_identity(row, sale, patient_lookup)
         if quote_was_converted(conn, patient_key, patient_uuid, quote_date):
             continue
         quote_key = str(row["uuid"])
