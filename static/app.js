@@ -36,6 +36,7 @@ const clinics = {
     title: "DASHBOARD ESTRATÉGICO",
     status: "Relatório atual conectado ao Kommo e Clínica Experts.",
     connected: true,
+    patientFollowup: true,
   },
   inspire: {
     id: "inspire",
@@ -98,9 +99,14 @@ function buildQuery() {
     if (state.dateFrom) params.set("date_from", state.dateFrom);
     if (state.dateTo) params.set("date_to", state.dateTo);
   }
-  if (state.activeView === "patientFollowupView") params.set("include_followup", "1");
+  if (state.activeView === "patientFollowupView" && clinicSupportsFollowup()) params.set("include_followup", "1");
   const query = params.toString();
   return query ? `?${query}` : "";
+}
+
+function clinicSupportsFollowup(clinicId = state.selectedClinic) {
+  const clinic = clinics[clinicId] || clinics.vielle;
+  return Boolean(clinic.patientFollowup);
 }
 
 function monthRange(monthValue) {
@@ -192,7 +198,7 @@ function render() {
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
-  if (state.activeView === "patientFollowupView") {
+  if (state.activeView === "patientFollowupView" && clinicSupportsFollowup()) {
     renderPatientFollowup(report.patient_followup || {});
   }
   renderStatusColumnChart(report.all_current_status || []);
@@ -257,8 +263,18 @@ function showDashboard() {
 }
 
 function applyActiveViewState() {
+  const supportsFollowup = clinicSupportsFollowup();
+  if (!supportsFollowup && state.followupOnlyMode) {
+    state.followupOnlyMode = false;
+    state.activeView = "generalView";
+  }
   if (state.followupOnlyMode) state.activeView = "patientFollowupView";
+  if (!supportsFollowup && state.activeView === "patientFollowupView") {
+    state.activeView = "generalView";
+  }
   document.querySelectorAll(".tabBtn").forEach(tab => {
+    const isFollowupTab = tab.dataset.view === "patientFollowupView";
+    tab.hidden = isFollowupTab && !supportsFollowup;
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
   document.querySelectorAll(".viewPanel").forEach(panel => {
