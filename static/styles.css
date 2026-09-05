@@ -1,21 +1,44 @@
 :root {
   color-scheme: light;
-  --bg: #eef5fb;
-  --panel: rgba(255, 255, 255, .90);
-  --panel-strong: #ffffff;
-  --ink: #101b2f;
-  --muted: #68788d;
-  --line: rgba(45, 93, 136, .16);
-  --brand: #18b9d4;
-  --brand-dark: #087793;
-  --violet: #6d63db;
-  --green: #16c784;
-  --gold: #e4b64c;
-  --coral: #f0756d;
-  --navy: #151b4b;
-  --navy-2: #22306f;
-  --shadow: 0 18px 44px rgba(18, 35, 70, .13);
-  --soft-glow: 0 0 0 1px rgba(24, 185, 212, .10), 0 18px 60px rgba(24, 185, 212, .12);
+  --doc-primary: #102B25;
+  --doc-primary-hover: #183A32;
+  --doc-primary-dark: #071C18;
+  --doc-olive: #969A78;
+  --doc-olive-light: #B4B79B;
+  --doc-background: #F8F8F5;
+  --doc-surface: #FFFFFF;
+  --doc-surface-secondary: #F5F5F3;
+  --doc-beige: #E8E3D9;
+  --doc-text-primary: #20201E;
+  --doc-text-secondary: #81817C;
+  --doc-text-tertiary: #A3A39E;
+  --doc-border-light: #EEEEEB;
+  --doc-border: #E2E2DE;
+  --doc-border-strong: #CACAC5;
+  --doc-success: #387A5A;
+  --doc-success-bg: #EAF4EE;
+  --doc-warning: #B58A45;
+  --doc-warning-bg: #FAF2E4;
+  --doc-danger: #B95656;
+  --doc-danger-bg: #FBECEC;
+  --doc-info: #55788F;
+  --doc-info-bg: #EBF2F5;
+  --bg: var(--doc-background);
+  --panel: rgba(255, 255, 255, .92);
+  --panel-strong: var(--doc-surface);
+  --ink: var(--doc-text-primary);
+  --muted: var(--doc-text-secondary);
+  --line: rgba(16, 43, 37, .12);
+  --brand: var(--doc-olive);
+  --brand-dark: var(--doc-primary);
+  --violet: var(--doc-olive-light);
+  --green: var(--doc-success);
+  --gold: var(--doc-warning);
+  --coral: var(--doc-danger);
+  --navy: var(--doc-primary-dark);
+  --navy-2: var(--doc-primary-hover);
+  --shadow: 0 18px 44px rgba(16, 43, 37, .11);
+  --soft-glow: 0 0 0 1px rgba(150, 154, 120, .12), 0 18px 60px rgba(16, 43, 37, .10);
 }
 
 * {
@@ -27,9 +50,10 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    linear-gradient(rgba(24, 185, 212, .055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 185, 212, .045) 1px, transparent 1px),
-    linear-gradient(135deg, #f4f9fd 0%, #e7f3f8 42%, #eef1fb 100%);
+    linear-gradient(rgba(16, 43, 37, .038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 43, 37, .032) 1px, transparent 1px),
+    radial-gradient(circle at 14% 8%, rgba(180, 183, 155, .20), transparent 30%),
+    linear-gradient(135deg, var(--doc-background) 0%, var(--doc-surface-secondary) 48%, var(--doc-beige) 100%);
   background-size: 48px 48px, 48px 48px, auto;
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -41,9 +65,9 @@ body {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(118deg, transparent 0 33%, rgba(24, 185, 212, .10) 33.4%, transparent 34.2% 100%),
-    linear-gradient(62deg, transparent 0 67%, rgba(228, 182, 76, .11) 67.4%, transparent 68.2% 100%),
-    linear-gradient(180deg, rgba(21, 27, 75, .04), transparent 40%);
+    linear-gradient(118deg, transparent 0 33%, rgba(150, 154, 120, .10) 33.4%, transparent 34.2% 100%),
+    linear-gradient(62deg, transparent 0 67%, rgba(232, 227, 217, .28) 67.4%, transparent 68.2% 100%),
+    linear-gradient(180deg, rgba(16, 43, 37, .06), transparent 40%);
   opacity: .8;
   mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), rgba(0,0,0,.08));
 }
@@ -83,8 +107,8 @@ body {
   border-radius: 12px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(244, 249, 246, .90)),
-    radial-gradient(circle at top right, rgba(123, 226, 209, .20), transparent 42%);
-  box-shadow: 0 28px 80px rgba(21, 27, 75, .20);
+    radial-gradient(circle at top right, rgba(232, 227, 217, .20), transparent 42%);
+  box-shadow: 0 28px 80px rgba(16, 43, 37, .20);
 }
 
 .systemLogo {
@@ -120,12 +144,12 @@ body {
   gap: 18px;
   overflow: hidden;
   padding: 24px;
-  border: 1px solid rgba(24, 185, 212, .18);
+  border: 1px solid rgba(150, 154, 120, .18);
   border-radius: 12px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .94), rgba(238, 248, 252, .86)),
-    linear-gradient(135deg, rgba(24, 185, 212, .14), rgba(109, 99, 219, .10));
-  box-shadow: 0 22px 58px rgba(18, 35, 70, .13);
+    linear-gradient(135deg, rgba(150, 154, 120, .14), rgba(180, 183, 155, .10));
+  box-shadow: 0 22px 58px rgba(16, 43, 37, .13);
 }
 
 .clinicAccessCard::after {
@@ -135,15 +159,15 @@ body {
   bottom: -80px;
   width: 230px;
   height: 230px;
-  border: 1px solid rgba(24, 185, 212, .20);
+  border: 1px solid rgba(150, 154, 120, .20);
   border-radius: 50%;
-  box-shadow: inset 0 0 0 28px rgba(24, 185, 212, .04);
+  box-shadow: inset 0 0 0 28px rgba(150, 154, 120, .04);
 }
 
 .clinicAccessCard.inspire {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .95), rgba(247, 244, 255, .88)),
-    linear-gradient(135deg, rgba(109, 99, 219, .16), rgba(228, 182, 76, .10));
+    linear-gradient(135deg, rgba(180, 183, 155, .16), rgba(181, 138, 69, .10));
 }
 
 .clinicAccessCard.carla {
@@ -179,24 +203,24 @@ body {
   height: 64px;
   border-radius: 18px;
   background: linear-gradient(135deg, var(--navy), var(--brand-dark));
-  color: #ffffff;
+  color: #FFFFFF;
   font-size: 22px;
   font-weight: 950;
-  box-shadow: 0 18px 34px rgba(21, 27, 75, .18);
+  box-shadow: 0 18px 34px rgba(16, 43, 37, .18);
 }
 
 .clinicAccessCard.inspire > div span {
-  background: linear-gradient(135deg, #6d63db, #18b9d4);
+  background: linear-gradient(135deg, #B4B79B, #969A78);
 }
 
 .clinicAccessCard.carla > div span {
-  background: linear-gradient(135deg, #0f766e, #de6fa1);
+  background: linear-gradient(135deg, #387A5A, #B95656);
 }
 
 .clinicAccessCard.casaVitalle > div span {
   border: 1px solid rgba(187, 169, 138, .48);
-  background: linear-gradient(135deg, #263b32, #5a4337);
-  color: #f5f1e9;
+  background: linear-gradient(135deg, #102B25, #102B25);
+  color: #F8F8F5;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 34px;
   font-weight: 500;
@@ -205,8 +229,8 @@ body {
 .clinicAccessCard small {
   padding: 8px 10px;
   border-radius: 999px;
-  background: rgba(22, 199, 132, .12);
-  color: #087f5b;
+  background: rgba(56, 122, 90, .12);
+  color: #387A5A;
   font-size: 12px;
   font-weight: 950;
   letter-spacing: .08em;
@@ -215,18 +239,18 @@ body {
 
 .clinicAccessCard.casaVitalle small {
   background: rgba(187, 169, 138, .16);
-  color: #d8c8aa;
+  color: #B4B79B;
 }
 
 .clinicAccessCard h2 {
-  color: #172338;
+  color: #20201E;
   font-size: clamp(27px, 3vw, 40px);
   letter-spacing: 0;
   text-transform: none;
 }
 
 .clinicAccessCard.casaVitalle h2 {
-  color: #f5f1e9;
+  color: #F8F8F5;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(34px, 4vw, 54px);
   font-weight: 500;
@@ -241,7 +265,7 @@ body {
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #bba98a;
+  color: #B4B79B;
   font-family: var(--font);
   font-size: 13px;
   font-weight: 850;
@@ -256,7 +280,7 @@ body {
   border: 1px solid rgba(187, 169, 138, .26);
   border-radius: 18px;
   object-fit: contain;
-  background: #10231b;
+  background: #071C18;
   padding: 14px;
   box-shadow: 0 20px 44px rgba(8, 21, 17, .20);
 }
@@ -289,15 +313,15 @@ body {
 }
 
 .clinicActionRow button.secondary {
-  border-color: rgba(24, 185, 212, .28);
+  border-color: rgba(150, 154, 120, .28);
   background: rgba(255, 255, 255, .72);
   color: var(--brand-dark);
   box-shadow: none;
 }
 
 .clinicAccessCard.casaVitalle button {
-  background: linear-gradient(135deg, #ded5c7, #bba98a);
-  color: #263b32;
+  background: linear-gradient(135deg, #E8E3D9, #B4B79B);
+  color: #102B25;
   box-shadow: 0 16px 32px rgba(187, 169, 138, .20);
 }
 
@@ -309,7 +333,7 @@ body {
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(circle at 48% 24%, rgba(42, 191, 212, .22), transparent 34%),
+    radial-gradient(circle at 48% 24%, rgba(150, 154, 120, .22), transparent 34%),
     rgba(5, 17, 33, .36);
   backdrop-filter: blur(18px);
 }
@@ -317,23 +341,23 @@ body {
 .clinicAccessBox {
   position: relative;
   width: min(440px, 100%);
-  border: 1px solid rgba(189, 226, 239, .86);
+  border: 1px solid rgba(226, 226, 222, .86);
   border-radius: 24px;
   padding: 34px;
   background: linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(241, 249, 252, .95));
-  box-shadow: 0 28px 80px rgba(20, 58, 91, .24);
+  box-shadow: 0 28px 80px rgba(16, 43, 37, .24);
 }
 
 .clinicAccessBox h2 {
   margin: 8px 0 8px;
-  color: #102136;
+  color: #20201E;
   font-size: 1.9rem;
   letter-spacing: 0;
 }
 
 .clinicAccessBox > span {
   display: block;
-  color: #64758a;
+  color: #81817C;
   line-height: 1.5;
 }
 
@@ -344,7 +368,7 @@ body {
 }
 
 .clinicAccessBox label span {
-  color: #6b788c;
+  color: #81817C;
   font-size: .78rem;
   font-weight: 900;
   letter-spacing: .12em;
@@ -353,10 +377,10 @@ body {
 
 .clinicAccessBox input {
   min-height: 54px;
-  border: 1px solid rgba(184, 219, 234, .95);
+  border: 1px solid rgba(226, 226, 222, .95);
   border-radius: 14px;
   padding: 0 16px;
-  color: #102136;
+  color: #20201E;
   font: inherit;
   font-weight: 800;
   outline: none;
@@ -365,7 +389,7 @@ body {
 }
 
 .clinicAccessBox input:focus {
-  border-color: #21aeca;
+  border-color: #969A78;
   box-shadow: 0 0 0 4px rgba(33, 174, 202, .14);
 }
 
@@ -373,7 +397,7 @@ body {
   display: block;
   min-height: 20px;
   margin-top: 10px;
-  color: #d84f62;
+  color: #B95656;
   font-weight: 800;
 }
 
@@ -387,7 +411,7 @@ body {
   font: inherit;
   font-weight: 900;
   cursor: pointer;
-  background: linear-gradient(135deg, #15b8d1, #21c89a);
+  background: linear-gradient(135deg, #969A78, #387A5A);
   box-shadow: 0 18px 42px rgba(26, 176, 190, .26);
 }
 
@@ -397,9 +421,9 @@ body {
   right: 16px;
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(184, 219, 234, .9);
+  border: 1px solid rgba(226, 226, 222, .9);
   border-radius: 50%;
-  color: #607286;
+  color: #81817C;
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
@@ -414,9 +438,9 @@ body {
   border: 1px solid rgba(255, 255, 255, .50);
   border-radius: 12px;
   background:
-    linear-gradient(135deg, rgba(35, 47, 121, .18), rgba(24, 185, 212, .10) 35%, rgba(22, 199, 132, .08)),
+    linear-gradient(135deg, rgba(16, 43, 37, .18), rgba(150, 154, 120, .10) 35%, rgba(56, 122, 90, .08)),
     rgba(255, 255, 255, .24);
-  box-shadow: 0 28px 80px rgba(21, 27, 75, .12);
+  box-shadow: 0 28px 80px rgba(16, 43, 37, .12);
   backdrop-filter: blur(16px);
 }
 
@@ -430,8 +454,8 @@ body {
   border: 1px solid rgba(255, 255, 255, .18);
   border-radius: 10px;
   background:
-    linear-gradient(110deg, rgba(21, 27, 75, .98), rgba(34, 48, 111, .98) 52%, rgba(15, 93, 118, .95));
-  box-shadow: 0 22px 44px rgba(21, 27, 75, .22);
+    linear-gradient(110deg, rgba(16, 43, 37, .98), rgba(24, 58, 50, .98) 52%, rgba(150, 154, 120, .95));
+  box-shadow: 0 22px 44px rgba(16, 43, 37, .22);
 }
 
 .topbarBrand {
@@ -449,7 +473,7 @@ body {
   border: 1px solid rgba(255, 255, 255, .62);
   border-radius: 12px;
   background: rgba(255, 255, 255, .94);
-  box-shadow: 0 14px 30px rgba(6, 19, 38, .14);
+  box-shadow: 0 14px 30px rgba(16, 43, 37, .14);
 }
 
 .topbarBrand h1 {
@@ -458,7 +482,7 @@ body {
 
 .eyebrow {
   margin: 0 0 6px;
-  color: #7be2d1;
+  color: #E8E3D9;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: .18em;
@@ -471,13 +495,13 @@ h1, h2 {
 }
 
 h1 {
-  color: #ffffff;
+  color: #FFFFFF;
   font-size: clamp(31px, 4vw, 48px);
   line-height: 1;
 }
 
 h2 {
-  color: #172338;
+  color: #20201E;
   font-size: 15px;
   font-weight: 900;
   letter-spacing: .06em;
@@ -493,15 +517,15 @@ h2 {
 
 button {
   min-height: 42px;
-  border: 1px solid rgba(123, 226, 209, .28);
+  border: 1px solid rgba(232, 227, 217, .28);
   border-radius: 8px;
-  background: linear-gradient(135deg, #22c0d9, #16c784);
-  color: #061f2d;
+  background: linear-gradient(135deg, #969A78, #387A5A);
+  color: #20201E;
   padding: 0 16px;
   font: inherit;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(26, 167, 201, .18);
+  box-shadow: 0 10px 24px rgba(150, 154, 120, .18);
 }
 
 button:hover {
@@ -511,11 +535,11 @@ button:hover {
 button.secondary {
   background: rgba(255, 255, 255, .86);
   color: var(--brand-dark);
-  box-shadow: 0 10px 24px rgba(24, 185, 212, .10);
+  box-shadow: 0 10px 24px rgba(150, 154, 120, .10);
 }
 
 button.secondary:hover {
-  background: #ffffff;
+  background: #FFFFFF;
 }
 
 .buttonLink {
@@ -523,26 +547,26 @@ button.secondary:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(123, 226, 209, .28);
+  border: 1px solid rgba(232, 227, 217, .28);
   border-radius: 8px;
-  background: linear-gradient(135deg, #22c0d9, #16c784);
-  color: #061f2d;
+  background: linear-gradient(135deg, #969A78, #387A5A);
+  color: #20201E;
   padding: 0 16px;
   font: inherit;
   font-weight: 900;
   text-decoration: none;
-  box-shadow: 0 10px 24px rgba(26, 167, 201, .18);
+  box-shadow: 0 10px 24px rgba(150, 154, 120, .18);
 }
 
 .buttonLink.secondary {
   background: rgba(255, 255, 255, .86);
   color: var(--brand-dark);
-  box-shadow: 0 10px 24px rgba(24, 185, 212, .10);
+  box-shadow: 0 10px 24px rgba(150, 154, 120, .10);
 }
 
 .topbar button.secondary {
   background: rgba(255, 255, 255, .10);
-  color: #e9fbff;
+  color: #FFFFFF;
   box-shadow: none;
 }
 
@@ -552,14 +576,14 @@ button.secondary:hover {
 
 .topbar .buttonLink.secondary {
   background: rgba(255, 255, 255, .10);
-  color: #e9fbff;
+  color: #FFFFFF;
   box-shadow: none;
 }
 
 button.danger {
-  border-color: rgba(240, 117, 109, .30);
-  background: linear-gradient(135deg, #f0756d, #d74f63);
-  color: #ffffff;
+  border-color: rgba(185, 86, 86, .30);
+  background: linear-gradient(135deg, #B95656, #B95656);
+  color: #FFFFFF;
 }
 
 .viewTabs {
@@ -570,7 +594,7 @@ button.danger {
   border: 1px solid rgba(255, 255, 255, .55);
   border-radius: 10px;
   background: rgba(255, 255, 255, .64);
-  box-shadow: 0 12px 34px rgba(21, 27, 75, .10);
+  box-shadow: 0 12px 34px rgba(16, 43, 37, .10);
   backdrop-filter: blur(16px);
 }
 
@@ -584,8 +608,8 @@ button.danger {
 
 .tabBtn.active {
   background: linear-gradient(135deg, var(--navy), var(--brand-dark));
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(21, 27, 75, .18);
+  color: #FFFFFF;
+  box-shadow: 0 12px 24px rgba(16, 43, 37, .18);
 }
 
 .viewPanel {
@@ -652,7 +676,7 @@ button.danger {
 .generalControls button {
   min-height: 40px;
   background: linear-gradient(135deg, var(--green), var(--brand));
-  color: #082034;
+  color: #20201E;
   white-space: nowrap;
 }
 
@@ -669,7 +693,7 @@ button.danger {
   padding: 16px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .94), rgba(236, 248, 252, .84)),
-    linear-gradient(135deg, rgba(24, 185, 212, .16), transparent 62%);
+    linear-gradient(135deg, rgba(150, 154, 120, .16), transparent 62%);
 }
 
 .generalMetric::after {
@@ -679,9 +703,9 @@ button.danger {
   bottom: -46px;
   width: 128px;
   height: 128px;
-  border: 1px solid rgba(24, 185, 212, .16);
+  border: 1px solid rgba(150, 154, 120, .16);
   border-radius: 50%;
-  box-shadow: inset 0 0 0 22px rgba(24, 185, 212, .04);
+  box-shadow: inset 0 0 0 22px rgba(150, 154, 120, .04);
 }
 
 .generalMetric span {
@@ -689,7 +713,7 @@ button.danger {
   z-index: 1;
   display: block;
   min-height: 38px;
-  color: #60728a;
+  color: #81817C;
   font-size: 12px;
   font-weight: 950;
   letter-spacing: .06em;
@@ -702,7 +726,7 @@ button.danger {
   z-index: 1;
   display: block;
   margin: 10px 0 8px;
-  color: #12213a;
+  color: #20201E;
   font-size: clamp(25px, 2.8vw, 38px);
   line-height: 1;
 }
@@ -725,7 +749,7 @@ button.danger {
 }
 
 .generalMetric.projection strong {
-  color: #078766;
+  color: #387A5A;
 }
 
 .generalComboChart {
@@ -738,7 +762,7 @@ button.danger {
   justify-content: flex-end;
   gap: 18px;
   margin-bottom: 8px;
-  color: #5f6d83;
+  color: #81817C;
   font-size: 13px;
   font-weight: 900;
 }
@@ -763,7 +787,7 @@ button.danger {
   border-radius: 18px;
   background:
     radial-gradient(circle at 18% 12%, rgba(187, 169, 138, .18), transparent 26%),
-    linear-gradient(135deg, #f7f1e9 0%, #fbfaf8 46%, #eef8f9 100%);
+    linear-gradient(135deg, #F8F8F5 0%, #F8F8F5 46%, #F5F5F3 100%);
   box-shadow: 0 24px 70px rgba(19, 43, 56, .14);
 }
 
@@ -776,8 +800,8 @@ button.danger {
   border-radius: 18px 0 0 18px;
   background:
     radial-gradient(circle at 35% 12%, rgba(187, 169, 138, .22), transparent 25%),
-    linear-gradient(180deg, #0f3a2b 0%, #092a22 100%);
-  color: #fffaf2;
+    linear-gradient(180deg, #102B25 0%, #071C18 100%);
+  color: #FFFFFF;
 }
 
 .generalBrandMark {
@@ -787,7 +811,7 @@ button.danger {
   place-items: center;
   border: 1px solid rgba(222, 197, 160, .78);
   border-radius: 50%;
-  color: #dec5a0;
+  color: #E8E3D9;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 32px;
   line-height: 1;
@@ -825,7 +849,7 @@ button.danger {
 
 .generalSidebar nav span.active {
   background: rgba(255, 255, 255, .13);
-  color: #fffaf2;
+  color: #FFFFFF;
 }
 
 .generalSidebar footer {
@@ -837,7 +861,7 @@ button.danger {
 .generalSidebar footer b {
   display: block;
   margin-top: 4px;
-  color: #dec5a0;
+  color: #E8E3D9;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 22px;
   font-weight: 500;
@@ -858,7 +882,7 @@ button.danger {
 }
 
 .generalExecutiveHeader > div:first-child span {
-  color: #7b5f43;
+  color: #81817C;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: .16em;
@@ -867,7 +891,7 @@ button.danger {
 
 .generalExecutiveHeader h2 {
   margin: 6px 0 4px;
-  color: #111827;
+  color: #20201E;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(34px, 5vw, 62px);
   font-weight: 500;
@@ -877,7 +901,7 @@ button.danger {
 }
 
 .generalExecutiveHeader small {
-  color: #4c3b2d;
+  color: #81817C;
   font-size: 14px;
   font-weight: 800;
   letter-spacing: .18em;
@@ -917,8 +941,8 @@ button.danger {
 .generalMetric.featured {
   background:
     radial-gradient(circle at 88% 12%, rgba(222, 197, 160, .18), transparent 33%),
-    linear-gradient(135deg, #143f31, #0d3027);
-  color: #fffaf2;
+    linear-gradient(135deg, #102B25, #102B25);
+  color: #FFFFFF;
 }
 
 .generalMetric.featured span,
@@ -927,7 +951,7 @@ button.danger {
 }
 
 .generalMetric.featured strong {
-  color: #fffaf2;
+  color: #FFFFFF;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(34px, 4vw, 52px);
   font-weight: 500;
@@ -939,7 +963,7 @@ button.danger {
 }
 
 .generalMetric strong {
-  color: #111827;
+  color: #20201E;
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 500;
 }
@@ -956,7 +980,7 @@ button.danger {
 
 .generalMetric.compact strong {
   margin: 8px 0 6px;
-  color: #0d7891;
+  color: #102B25;
   font-family: var(--font);
   font-size: clamp(24px, 2.2vw, 34px);
   font-weight: 950;
@@ -976,7 +1000,7 @@ button.danger {
 }
 
 .generalDashboardGrid .panelHead h2 {
-  color: #111827;
+  color: #20201E;
   font-size: 13px;
   letter-spacing: .10em;
 }
@@ -1008,7 +1032,7 @@ button.danger {
   grid-template-rows: 1fr 24px;
   align-items: end;
   justify-items: center;
-  color: #5f6d83;
+  color: #81817C;
   font-size: 10px;
   font-weight: 800;
 }
@@ -1018,13 +1042,13 @@ button.danger {
   width: 72%;
   min-height: 2px;
   border-radius: 6px 6px 0 0;
-  background: linear-gradient(180deg, #1c563f, #0e3329);
+  background: linear-gradient(180deg, #102B25, #102B25);
   box-shadow: 0 8px 18px rgba(18, 73, 54, .18);
 }
 
 .generalBarDay b {
   align-self: center;
-  color: #6a7486;
+  color: #81817C;
   font-size: 10px;
 }
 
@@ -1039,13 +1063,13 @@ button.danger {
 .generalMicroStats span {
   display: grid;
   gap: 4px;
-  color: #6b7280;
+  color: #81817C;
   font-size: 11px;
   font-weight: 800;
 }
 
 .generalMicroStats b {
-  color: #111827;
+  color: #20201E;
   font-size: 14px;
 }
 
@@ -1079,13 +1103,13 @@ button.danger {
 }
 
 .generalDonut strong {
-  color: #111827;
+  color: #20201E;
   font-size: 16px;
 }
 
 .generalDonut span {
   margin-top: 36px;
-  color: #6b7280;
+  color: #81817C;
   font-size: 11px;
   font-weight: 800;
 }
@@ -1100,7 +1124,7 @@ button.danger {
   grid-template-columns: 10px 1fr;
   column-gap: 9px;
   align-items: start;
-  color: #111827;
+  color: #20201E;
 }
 
 .generalDonutLegend i {
@@ -1116,7 +1140,7 @@ button.danger {
 
 .generalDonutLegend small {
   grid-column: 2;
-  color: #6b7280;
+  color: #81817C;
   font-size: 11px;
   font-weight: 750;
 }
@@ -1136,7 +1160,7 @@ button.danger {
   gap: 4px;
   padding: 14px 0;
   border-bottom: 1px solid rgba(120, 87, 58, .12);
-  color: #6b7280;
+  color: #81817C;
   font-size: 12px;
   font-weight: 800;
 }
@@ -1146,7 +1170,7 @@ button.danger {
 }
 
 .generalQuickList b {
-  color: #111827;
+  color: #20201E;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 25px;
   font-weight: 500;
@@ -1171,14 +1195,14 @@ button.danger {
 
 .generalAccumulatedLine {
   fill: none;
-  stroke: #143f31;
+  stroke: #102B25;
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .generalAccumulatedPoint circle {
-  fill: #ffffff;
+  fill: #FFFFFF;
   stroke: var(--brand-dark);
   stroke-width: 2;
   opacity: 0;
@@ -1203,13 +1227,13 @@ button.danger {
   grid-template-columns: 28px minmax(0, 1fr) minmax(80px, .8fr) auto;
   gap: 10px;
   align-items: center;
-  color: #111827;
+  color: #20201E;
   font-size: 12px;
   font-weight: 850;
 }
 
 .generalTopItem > b {
-  color: #7b5f43;
+  color: #81817C;
   font-size: 12px;
 }
 
@@ -1224,18 +1248,18 @@ button.danger {
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
-  background: #efe8df;
+  background: #E8E3D9;
 }
 
 .generalTopItem em {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #143f31, #1f6a50);
+  background: linear-gradient(90deg, #102B25, #387A5A);
 }
 
 .generalTopItem strong {
-  color: #4c3b2d;
+  color: #81817C;
   font-size: 12px;
 }
 
@@ -1255,13 +1279,13 @@ button.danger {
 
 .generalRangeItem b {
   display: block;
-  color: #111827;
+  color: #20201E;
   font-size: 13px;
   font-weight: 900;
 }
 
 .generalRangeItem small {
-  color: #6b7280;
+  color: #81817C;
   font-size: 11px;
   font-weight: 800;
 }
@@ -1270,18 +1294,18 @@ button.danger {
   height: 14px;
   overflow: hidden;
   border-radius: 999px;
-  background: #efe8df;
+  background: #E8E3D9;
 }
 
 .generalRangeItem em {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #143f31, #18b9d4);
+  background: linear-gradient(90deg, #102B25, #969A78);
 }
 
 .generalRangeItem strong {
-  color: #4c3b2d;
+  color: #81817C;
   font-size: 13px;
   font-weight: 950;
 }
@@ -1305,11 +1329,11 @@ button.danger {
 .generalExecutiveHeader {
   grid-template-columns: minmax(220px, 1fr) minmax(420px, auto);
   padding: 18px;
-  border: 1px solid rgba(204, 230, 242, .88);
+  border: 1px solid rgba(226, 226, 222, .88);
   border-radius: 10px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(239, 249, 252, .88)),
-    linear-gradient(90deg, rgba(21, 27, 75, .05), transparent);
+    linear-gradient(90deg, rgba(16, 43, 37, .05), transparent);
   box-shadow: var(--shadow);
 }
 
@@ -1319,7 +1343,7 @@ button.danger {
 }
 
 .generalExecutiveHeader h2 {
-  color: #12213a;
+  color: #20201E;
   font-family: var(--font);
   font-size: clamp(24px, 2.2vw, 34px);
   font-weight: 950;
@@ -1335,14 +1359,14 @@ button.danger {
 
 .generalExecutive .generalControls {
   grid-template-columns: minmax(210px, 260px) minmax(155px, 190px) auto;
-  border-color: rgba(204, 230, 242, .92);
+  border-color: rgba(226, 226, 222, .92);
   background: rgba(255, 255, 255, .86);
-  box-shadow: 0 12px 30px rgba(21, 27, 75, .08);
+  box-shadow: 0 12px 30px rgba(16, 43, 37, .08);
 }
 
 .generalExecutive .generalControls input,
 .generalExecutive .generalControls select {
-  border-color: rgba(204, 230, 242, .94);
+  border-color: rgba(226, 226, 222, .94);
   background: rgba(255, 255, 255, .94);
 }
 
@@ -1385,11 +1409,11 @@ button.danger {
   min-width: 0;
   min-height: 100px;
   padding: 14px;
-  border: 1px solid rgba(204, 230, 242, .90);
+  border: 1px solid rgba(226, 226, 222, .90);
   border-radius: 10px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(239, 248, 252, .88)),
-    linear-gradient(135deg, rgba(24, 185, 212, .12), transparent 62%);
+    linear-gradient(135deg, rgba(150, 154, 120, .12), transparent 62%);
   box-shadow: var(--shadow);
 }
 
@@ -1404,9 +1428,9 @@ button.danger {
   grid-row: span 2;
   min-height: 216px;
   background:
-    radial-gradient(circle at 92% 14%, rgba(50, 205, 215, .32), transparent 30%),
-    linear-gradient(135deg, #132456, #0b7894 90%);
-  color: #fff;
+    radial-gradient(circle at 92% 14%, rgba(150, 154, 120, .32), transparent 30%),
+    linear-gradient(135deg, #102B25, #969A78 90%);
+  color: #FFFFFF;
 }
 
 .generalMetric.featured span,
@@ -1418,7 +1442,7 @@ button.danger {
 .generalMetric strong {
   max-width: 100%;
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-family: var(--font);
   margin: 8px 0 6px;
   font-size: clamp(20px, 1.35vw, 27px);
@@ -1430,7 +1454,7 @@ button.danger {
 }
 
 .generalMetric.featured strong {
-  color: #fff;
+  color: #FFFFFF;
   font-size: clamp(29px, 2.25vw, 40px);
 }
 
@@ -1464,7 +1488,7 @@ button.danger {
 .featuredFinanceSplit b {
   display: block;
   overflow: hidden;
-  color: #fff;
+  color: #FFFFFF;
   font-size: clamp(16px, 1.4vw, 22px);
   font-weight: 950;
   line-height: 1.05;
@@ -1483,7 +1507,7 @@ button.danger {
 .generalMetric.emphasisMargin {
   background:
     radial-gradient(circle at 90% 18%, rgba(255, 255, 255, .22), transparent 28%),
-    linear-gradient(135deg, #0d7891, #16c7a9);
+    linear-gradient(135deg, #102B25, #969A78);
 }
 
 .generalMetric.emphasisMargin span,
@@ -1495,7 +1519,7 @@ button.danger {
 .generalMetric.emphasisBookings span,
 .generalMetric.emphasisBookings strong,
 .generalMetric.emphasisBookings small {
-  color: #fff;
+  color: #FFFFFF;
 }
 
 .generalMetric.emphasisLeads,
@@ -1507,13 +1531,13 @@ button.danger {
 .generalMetric.emphasisLeads {
   background:
     radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .24), transparent 28%),
-    linear-gradient(135deg, #078766, #1fbfd5);
+    linear-gradient(135deg, #387A5A, #969A78);
 }
 
 .generalMetric.emphasisBookings {
   background:
     radial-gradient(circle at 88% 16%, rgba(255, 255, 255, .22), transparent 28%),
-    linear-gradient(135deg, #3157d8, #17b8cf);
+    linear-gradient(135deg, #55788F, #969A78);
 }
 
 .generalMetric.revenue strong,
@@ -1544,8 +1568,8 @@ button.danger {
 }
 
 .generalMetric::after {
-  border-color: rgba(24, 185, 212, .14);
-  box-shadow: inset 0 0 0 22px rgba(24, 185, 212, .035);
+  border-color: rgba(150, 154, 120, .14);
+  box-shadow: inset 0 0 0 22px rgba(150, 154, 120, .035);
 }
 
 .generalDashboardGrid {
@@ -1553,7 +1577,7 @@ button.danger {
 }
 
 .generalDashboardGrid .panel {
-  border-color: rgba(204, 230, 242, .90);
+  border-color: rgba(226, 226, 222, .90);
   border-radius: 10px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(239, 248, 252, .88));
@@ -1561,7 +1585,7 @@ button.danger {
 }
 
 .generalDashboardGrid .panelHead h2 {
-  color: #12213a;
+  color: #20201E;
   font-size: 13px;
   letter-spacing: .07em;
 }
@@ -1603,7 +1627,7 @@ button.danger {
   min-height: 128px;
   align-content: center;
   gap: 10px;
-  border: 1px solid rgba(204, 230, 242, .90);
+  border: 1px solid rgba(226, 226, 222, .90);
   border-radius: 10px;
   padding: 16px;
   background:
@@ -1622,7 +1646,7 @@ button.danger {
 
 .expenseHeroValue strong {
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: clamp(31px, 3.2vw, 46px);
   font-weight: 950;
   letter-spacing: 0;
@@ -1642,7 +1666,7 @@ button.danger {
   gap: 7px;
   min-height: 76px;
   align-content: center;
-  border: 1px solid rgba(204, 230, 242, .86);
+  border: 1px solid rgba(226, 226, 222, .86);
   border-radius: 10px;
   padding: 12px;
   background: rgba(255, 255, 255, .72);
@@ -1697,7 +1721,7 @@ button.danger {
 .expenseDonut strong {
   max-width: 118px;
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: 18px;
   font-weight: 950;
   text-overflow: ellipsis;
@@ -1725,7 +1749,7 @@ button.danger {
   grid-template-columns: 10px minmax(0, 1fr) minmax(94px, auto);
   gap: 10px;
   align-items: center;
-  border-bottom: 1px solid rgba(83, 113, 145, .12);
+  border-bottom: 1px solid rgba(129, 129, 124, .12);
   padding: 0 0 10px;
 }
 
@@ -1738,7 +1762,7 @@ button.danger {
 .expenseCategoryRow strong {
   display: block;
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: 13px;
   font-weight: 950;
   text-overflow: ellipsis;
@@ -1788,7 +1812,7 @@ button.danger {
   min-height: 102px;
   align-content: center;
   gap: 7px;
-  border: 1px solid rgba(204, 230, 242, .86);
+  border: 1px solid rgba(226, 226, 222, .86);
   border-radius: 10px;
   padding: 13px;
   background:
@@ -1806,7 +1830,7 @@ button.danger {
 
 .incomeTypeCard strong {
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: clamp(22px, 2vw, 30px);
   line-height: 1;
   text-overflow: ellipsis;
@@ -1823,11 +1847,11 @@ button.danger {
   min-width: 760px;
   min-height: 250px;
   overflow: visible;
-  border: 1px solid rgba(204, 230, 242, .88);
+  border: 1px solid rgba(226, 226, 222, .88);
   border-radius: 8px;
   padding: 14px 12px 0;
   background:
-    repeating-linear-gradient(0deg, transparent 0 54px, rgba(92, 116, 145, .10) 55px 56px),
+    repeating-linear-gradient(0deg, transparent 0 54px, rgba(129, 129, 124, .10) 55px 56px),
     linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(238, 247, 252, .58));
 }
 
@@ -1845,7 +1869,7 @@ button.danger {
 .generalBarDay i {
   width: 76%;
   background: linear-gradient(180deg, var(--violet), var(--brand));
-  box-shadow: 0 10px 20px rgba(24, 185, 212, .20);
+  box-shadow: 0 10px 20px rgba(150, 154, 120, .20);
 }
 
 .generalBarDay:hover::after,
@@ -1859,9 +1883,9 @@ button.danger {
   max-width: 270px;
   transform: translateX(-50%);
   border-radius: 8px;
-  background: #12213a;
+  background: #20201E;
   padding: 9px 11px;
-  color: #fff;
+  color: #FFFFFF;
   font-size: 12px;
   font-weight: 850;
   line-height: 1.3;
@@ -1875,7 +1899,7 @@ button.danger {
   justify-content: flex-end;
   gap: 16px;
   margin-bottom: 12px;
-  color: #5f6d83;
+  color: #81817C;
   font-size: 12px;
   font-weight: 900;
 }
@@ -1909,7 +1933,7 @@ button.danger {
 }
 
 .generalHorizontalRow > b {
-  color: #12213a;
+  color: #20201E;
   font-size: 12px;
   font-weight: 950;
 }
@@ -1942,7 +1966,7 @@ button.danger {
   z-index: 1;
   justify-self: end;
   padding: 0 8px;
-  color: #12213a;
+  color: #20201E;
   font-size: 11px;
   font-style: normal;
   font-weight: 950;
@@ -1962,7 +1986,7 @@ button.danger {
 }
 
 .trafficActions strong {
-  color: #12213a;
+  color: #20201E;
   font-size: 18px;
   font-weight: 950;
 }
@@ -1978,11 +2002,11 @@ button.danger {
   border: 0;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--green), var(--brand));
-  color: #102136;
+  color: #20201E;
   font-size: 15px;
   font-weight: 950;
   cursor: pointer;
-  box-shadow: 0 14px 28px rgba(24, 185, 212, .20);
+  box-shadow: 0 14px 28px rgba(150, 154, 120, .20);
 }
 
 .trafficActions button:disabled {
@@ -2002,11 +2026,11 @@ button.danger {
   align-content: space-between;
   min-height: 132px;
   padding: 16px;
-  border: 1px solid rgba(204, 230, 242, .90);
+  border: 1px solid rgba(226, 226, 222, .90);
   border-radius: 10px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .96), rgba(239, 248, 252, .88)),
-    linear-gradient(135deg, rgba(24, 185, 212, .12), transparent 62%);
+    linear-gradient(135deg, rgba(150, 154, 120, .12), transparent 62%);
   box-shadow: var(--shadow);
 }
 
@@ -2020,7 +2044,7 @@ button.danger {
 
 .trafficMetric strong {
   margin-top: 18px;
-  color: #12213a;
+  color: #20201E;
   font-size: clamp(25px, 2.2vw, 38px);
   font-weight: 950;
   line-height: 1;
@@ -2038,7 +2062,7 @@ button.danger {
 .trafficMetric.emphasisLeads {
   background:
     radial-gradient(circle at 95% 10%, rgba(255, 255, 255, .22), transparent 28%),
-    linear-gradient(135deg, #14235a, #0a86a0 92%);
+    linear-gradient(135deg, #102B25, #969A78 92%);
 }
 
 .trafficMetric.emphasisRevenue span,
@@ -2047,7 +2071,7 @@ button.danger {
 .trafficMetric.emphasisLeads small,
 .trafficMetric.emphasisRevenue strong,
 .trafficMetric.emphasisLeads strong {
-  color: #fff;
+  color: #FFFFFF;
 }
 
 .trafficMetric.emphasisRevenue small,
@@ -2072,7 +2096,7 @@ button.danger {
   gap: 4px;
   min-width: 0;
   padding: 12px 14px;
-  border: 1px solid rgba(204, 230, 242, .82);
+  border: 1px solid rgba(226, 226, 222, .82);
   border-radius: 8px;
   background: rgba(255, 255, 255, .72);
   box-shadow: 0 14px 34px rgba(17, 36, 54, .07);
@@ -2080,7 +2104,7 @@ button.danger {
 
 .trafficDailySummary b {
   overflow: hidden;
-  color: #10223b;
+  color: #102B25;
   font-size: clamp(18px, 2vw, 25px);
   font-weight: 950;
   line-height: 1.05;
@@ -2090,7 +2114,7 @@ button.danger {
 
 .trafficDailySummary small {
   overflow: hidden;
-  color: #65758e;
+  color: #81817C;
   font-size: 12px;
   font-weight: 850;
   line-height: 1.25;
@@ -2103,22 +2127,22 @@ button.danger {
 }
 
 .trafficSpendSwatch {
-  background: linear-gradient(90deg, #7c3aed, #13b8cf);
+  background: linear-gradient(90deg, #B4B79B, #969A78);
 }
 
 .trafficLeadSwatch {
-  background: #13b8cf;
+  background: #969A78;
 }
 
 .trafficChartScroller {
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  border: 1px solid rgba(24, 185, 212, .14);
+  border: 1px solid rgba(150, 154, 120, .14);
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(241, 249, 252, .74)),
-    repeating-linear-gradient(90deg, rgba(24, 185, 212, .05) 0 1px, transparent 1px 58px);
+    repeating-linear-gradient(90deg, rgba(150, 154, 120, .05) 0 1px, transparent 1px 58px);
 }
 
 .trafficDailySvg {
@@ -2138,7 +2162,7 @@ button.danger {
 
 .trafficLeadLine {
   fill: none;
-  stroke: #13b8cf;
+  stroke: #969A78;
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -2146,8 +2170,8 @@ button.danger {
 }
 
 .trafficLeadPoint {
-  fill: #fff;
-  stroke: #13b8cf;
+  fill: #FFFFFF;
+  stroke: #969A78;
   stroke-width: 3.2;
   filter: drop-shadow(0 4px 10px rgba(19, 184, 207, .25));
 }
@@ -2168,7 +2192,7 @@ button.danger {
   gap: 12px;
   align-items: center;
   padding: 14px;
-  border: 1px solid rgba(204, 230, 242, .86);
+  border: 1px solid rgba(226, 226, 222, .86);
   border-radius: 10px;
   background: rgba(255, 255, 255, .74);
 }
@@ -2187,7 +2211,7 @@ button.danger {
 .trafficCampaignRow strong {
   display: block;
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: 15px;
   font-weight: 950;
   text-overflow: ellipsis;
@@ -2231,7 +2255,7 @@ button.danger {
 .expenseDailyStats span {
   display: grid;
   gap: 5px;
-  border: 1px solid rgba(204, 230, 242, .86);
+  border: 1px solid rgba(226, 226, 222, .86);
   border-radius: 10px;
   padding: 12px;
   background: rgba(255, 255, 255, .68);
@@ -2244,7 +2268,7 @@ button.danger {
 
 .expenseDailyStats b {
   overflow: hidden;
-  color: #12213a;
+  color: #20201E;
   font-size: 18px;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -2258,11 +2282,11 @@ button.danger {
   grid-template-columns: repeat(var(--expense-days, 31), minmax(22px, 1fr));
   gap: 9px;
   align-items: end;
-  border: 1px solid rgba(204, 230, 242, .88);
+  border: 1px solid rgba(226, 226, 222, .88);
   border-radius: 10px;
   padding: 16px 14px 0;
   background:
-    repeating-linear-gradient(0deg, transparent 0 55px, rgba(92, 116, 145, .10) 56px 57px),
+    repeating-linear-gradient(0deg, transparent 0 55px, rgba(129, 129, 124, .10) 56px 57px),
     linear-gradient(180deg, rgba(255, 255, 255, .84), rgba(238, 247, 252, .58));
 }
 
@@ -2283,7 +2307,7 @@ button.danger {
   width: 100%;
   min-height: 3px;
   border-radius: 8px 8px 0 0;
-  background: linear-gradient(180deg, #ef6a73, #18b9d4);
+  background: linear-gradient(180deg, #B95656, #969A78);
   box-shadow: 0 12px 24px rgba(239, 106, 115, .18);
 }
 
@@ -2301,9 +2325,9 @@ button.danger {
   max-width: 280px;
   transform: translateX(-50%);
   border-radius: 8px;
-  background: #12213a;
+  background: #20201E;
   padding: 9px 11px;
-  color: #fff;
+  color: #FFFFFF;
   font-size: 12px;
   font-weight: 850;
   line-height: 1.3;
@@ -2313,7 +2337,7 @@ button.danger {
 }
 
 .generalMicroStats {
-  border-top-color: rgba(204, 230, 242, .78);
+  border-top-color: rgba(226, 226, 222, .78);
 }
 
 .generalTopItem,
@@ -2327,7 +2351,7 @@ button.danger {
 
 .generalTopItem strong,
 .generalRangeItem strong {
-  color: #12213a;
+  color: #20201E;
   white-space: nowrap;
 }
 
@@ -2339,7 +2363,7 @@ button.danger {
   border-radius: 8px;
   background: rgba(255, 249, 227, .78);
   padding: 12px 14px;
-  color: #7a5b05;
+  color: #B58A45;
 }
 
 .notice.visible {
@@ -2361,7 +2385,7 @@ button.danger {
   inset: -1px;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(24, 185, 212, .28), transparent 34%, rgba(228, 182, 76, .18));
+  background: linear-gradient(135deg, rgba(150, 154, 120, .28), transparent 34%, rgba(181, 138, 69, .18));
   opacity: .75;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
@@ -2374,7 +2398,7 @@ button.danger {
   padding: 16px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, .94), rgba(240, 249, 252, .88)),
-    linear-gradient(90deg, rgba(21, 27, 75, .08), transparent);
+    linear-gradient(90deg, rgba(16, 43, 37, .08), transparent);
 }
 
 .generalMode .filterPanel {
@@ -2413,7 +2437,7 @@ button.danger {
 
 input, select {
   height: 40px;
-  border: 1px solid rgba(24, 185, 212, .22);
+  border: 1px solid rgba(150, 154, 120, .22);
   border-radius: 8px;
   padding: 0 12px;
   background: rgba(255, 255, 255, .86);
@@ -2425,7 +2449,7 @@ input, select {
 
 input:focus, select:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(26, 167, 201, .12);
+  box-shadow: 0 0 0 3px rgba(150, 154, 120, .12);
 }
 
 input {
@@ -2454,7 +2478,7 @@ select {
   align-items: center;
   gap: 10px;
   height: 40px;
-  border: 1px solid rgba(24, 185, 212, .22);
+  border: 1px solid rgba(150, 154, 120, .22);
   border-radius: 8px;
   padding: 0 10px 0 12px;
   background: rgba(255, 255, 255, .86);
@@ -2470,7 +2494,7 @@ select {
 .pipelineSelect summary b {
   min-width: 0;
   overflow: hidden;
-  color: #26374b;
+  color: #20201E;
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2485,7 +2509,7 @@ select {
 
 .pipelineSelect details[open] summary {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(26, 167, 201, .12);
+  box-shadow: 0 0 0 3px rgba(150, 154, 120, .12);
 }
 
 .pipelineSelect details[open] .pipelineChoices {
@@ -2528,13 +2552,13 @@ select {
 .pipelineChip span {
   min-width: 0;
   overflow: hidden;
-  color: #26374b;
+  color: #20201E;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pipelineChip strong {
-  color: #087f5b;
+  color: #387A5A;
   font-size: 13px;
 }
 
@@ -2553,7 +2577,7 @@ select {
   overflow: hidden;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .94), rgba(239, 248, 252, .86)),
-    linear-gradient(135deg, rgba(24, 185, 212, .16), transparent 56%);
+    linear-gradient(135deg, rgba(150, 154, 120, .16), transparent 56%);
 }
 
 .metrics article::after {
@@ -2563,7 +2587,7 @@ select {
   bottom: -34px;
   width: 92px;
   height: 92px;
-  border: 1px solid rgba(24, 185, 212, .18);
+  border: 1px solid rgba(150, 154, 120, .18);
   border-radius: 50%;
 }
 
@@ -2571,7 +2595,7 @@ select {
   display: block;
   min-height: 36px;
   margin-bottom: 8px;
-  color: #62728a;
+  color: #81817C;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: .035em;
@@ -2580,7 +2604,7 @@ select {
 
 .metrics strong {
   display: block;
-  color: #111b36;
+  color: #071C18;
   font-size: 34px;
   line-height: 1;
 }
@@ -2595,11 +2619,11 @@ select {
 .clinicaGrid article {
   min-height: 98px;
   padding: 14px;
-  border: 1px solid rgba(24, 185, 212, .12);
+  border: 1px solid rgba(150, 154, 120, .12);
   border-radius: 8px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .86), rgba(235, 247, 251, .66)),
-    linear-gradient(90deg, rgba(22, 199, 132, .10), transparent);
+    linear-gradient(90deg, rgba(56, 122, 90, .10), transparent);
 }
 
 .clinicaGrid span {
@@ -2631,11 +2655,11 @@ select {
   min-height: 118px;
   padding: 16px;
   overflow: hidden;
-  border: 1px solid rgba(24, 185, 212, .14);
+  border: 1px solid rgba(150, 154, 120, .14);
   border-radius: 9px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .92), rgba(238, 248, 252, .76)),
-    linear-gradient(135deg, rgba(24, 185, 212, .14), transparent 56%);
+    linear-gradient(135deg, rgba(150, 154, 120, .14), transparent 56%);
 }
 
 .financeGrid article::after {
@@ -2645,7 +2669,7 @@ select {
   bottom: -30px;
   width: 92px;
   height: 92px;
-  border: 1px solid rgba(24, 185, 212, .16);
+  border: 1px solid rgba(150, 154, 120, .16);
   border-radius: 50%;
 }
 
@@ -2661,17 +2685,17 @@ select {
 
 .financeGrid strong {
   display: block;
-  color: #13243a;
+  color: #20201E;
   font-size: clamp(27px, 3vw, 36px);
   line-height: 1;
 }
 
 .financeGrid .income strong {
-  color: #078766;
+  color: #387A5A;
 }
 
 .financeGrid .expense strong {
-  color: #b34855;
+  color: #B95656;
 }
 
 .financeDailyChart {
@@ -2718,14 +2742,14 @@ select {
 }
 
 .financeDailyRow {
-  border: 1px solid rgba(24, 185, 212, .12);
+  border: 1px solid rgba(150, 154, 120, .12);
   border-radius: 8px;
   background: rgba(255, 255, 255, .72);
 }
 
 .financeDailyRow:hover {
-  border-color: rgba(24, 185, 212, .34);
-  box-shadow: 0 12px 28px rgba(24, 185, 212, .08);
+  border-color: rgba(150, 154, 120, .34);
+  box-shadow: 0 12px 28px rgba(150, 154, 120, .08);
 }
 
 .financeDailyRow summary {
@@ -2757,7 +2781,7 @@ select {
 }
 
 .financeDailyRow summary > strong {
-  color: #172338;
+  color: #20201E;
   font-size: 14px;
 }
 
@@ -2770,7 +2794,7 @@ select {
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(142, 164, 189, .15);
+  background: rgba(129, 129, 124, .15);
 }
 
 .financeDailyBars i {
@@ -2785,7 +2809,7 @@ select {
 }
 
 .expenseBarLine {
-  background: linear-gradient(90deg, var(--coral), #d74f63);
+  background: linear-gradient(90deg, var(--coral), #B95656);
 }
 
 .financeDailyValues {
@@ -2796,17 +2820,17 @@ select {
 }
 
 .financeDailyValues b {
-  color: #172338;
+  color: #20201E;
   font-size: 13px;
   white-space: nowrap;
 }
 
 .financeDailyValues .in {
-  color: #078766;
+  color: #387A5A;
 }
 
 .financeDailyValues .out {
-  color: #b34855;
+  color: #B95656;
 }
 
 .financeLaunchList {
@@ -2814,7 +2838,7 @@ select {
   gap: 0;
   margin: 0 12px 12px;
   overflow: hidden;
-  border: 1px solid rgba(83, 113, 145, .12);
+  border: 1px solid rgba(129, 129, 124, .12);
   border-radius: 8px;
   background: rgba(255, 255, 255, .68);
 }
@@ -2825,7 +2849,7 @@ select {
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(83, 113, 145, .10);
+  border-bottom: 1px solid rgba(129, 129, 124, .10);
 }
 
 .financeLaunchList article:last-child {
@@ -2835,7 +2859,7 @@ select {
 .financeLaunchList strong {
   display: block;
   margin-bottom: 3px;
-  color: #172338;
+  color: #20201E;
   font-size: 13px;
 }
 
@@ -2852,11 +2876,11 @@ select {
 }
 
 .financeLaunchList .in b {
-  color: #078766;
+  color: #387A5A;
 }
 
 .financeLaunchList .out b {
-  color: #b34855;
+  color: #B95656;
 }
 
 .financeList, .financeRecent {
@@ -2871,7 +2895,7 @@ select {
   align-items: center;
   gap: 14px;
   padding: 13px 0;
-  border-bottom: 1px solid rgba(83, 113, 145, .12);
+  border-bottom: 1px solid rgba(129, 129, 124, .12);
 }
 
 .financeItem:last-child, .financeRecent article:last-child {
@@ -2881,7 +2905,7 @@ select {
 .financeItem strong, .financeRecent strong {
   display: block;
   margin-bottom: 4px;
-  color: #172338;
+  color: #20201E;
   font-size: 15px;
 }
 
@@ -2907,7 +2931,7 @@ select {
 }
 
 .financeAmount small {
-  color: #66778f;
+  color: #81817C;
   font-size: 11px;
   font-weight: 900;
   text-align: right;
@@ -2915,11 +2939,11 @@ select {
 }
 
 .financeRecent .in b {
-  color: #078766;
+  color: #387A5A;
 }
 
 .financeRecent .out b {
-  color: #b34855;
+  color: #B95656;
 }
 
 .insightGrid {
@@ -2936,7 +2960,7 @@ select {
   align-items: center;
   min-height: 106px;
   padding: 18px;
-  border-bottom: 1px solid rgba(24, 185, 212, .13);
+  border-bottom: 1px solid rgba(150, 154, 120, .13);
 }
 
 .rankHead > span {
@@ -2950,30 +2974,30 @@ select {
 }
 
 .rankHead.patient > span {
-  background: #efe1ff;
-  color: #8a45ff;
+  background: #E8E3D9;
+  color: #B4B79B;
 }
 
 .rankHead.procedure > span {
-  background: #ffe4eb;
-  color: #ff4167;
+  background: #FBECEC;
+  color: #B95656;
 }
 
 .rankHead.category > span {
-  background: #e0f8ff;
+  background: #EBF2F5;
   color: var(--brand-dark);
 }
 
 .rankHead h2 {
   margin-bottom: 4px;
-  color: #172338;
+  color: #20201E;
   font-size: 18px;
   letter-spacing: 0;
   text-transform: none;
 }
 
 .rankHead small {
-  color: #8a45ff;
+  color: #B4B79B;
   font-size: 14px;
   font-weight: 900;
 }
@@ -3009,8 +3033,8 @@ select {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  background: #eef1f5;
-  color: #7a879b;
+  background: #F5F5F3;
+  color: #A3A39E;
 }
 
 .rankPosition b {
@@ -3026,33 +3050,33 @@ select {
   width: 25px;
   height: 25px;
   border-radius: 50%;
-  background: #8a93a6;
-  color: #ffffff;
+  background: #A3A39E;
+  color: #FFFFFF;
   font-size: 13px;
   font-style: normal;
 }
 
 .rankItem.gold .rankPosition {
-  background: #fff2d5;
-  color: #ffad28;
+  background: #FAF2E4;
+  color: #B58A45;
 }
 
 .rankItem.gold .rankPosition i {
-  background: #ffad28;
+  background: #B58A45;
 }
 
 .rankItem.silver .rankPosition {
-  background: #eef0f4;
-  color: #8a93a6;
+  background: #F5F5F3;
+  color: #A3A39E;
 }
 
 .rankItem.bronze .rankPosition {
-  background: #ffe7df;
-  color: #f07c4b;
+  background: #FAF2E4;
+  color: #B58A45;
 }
 
 .rankItem.bronze .rankPosition i {
-  background: #f07c4b;
+  background: #B58A45;
 }
 
 .rankText {
@@ -3062,7 +3086,7 @@ select {
 .rankText strong {
   display: block;
   overflow: hidden;
-  color: #26314a;
+  color: #20201E;
   font-size: 16px;
   font-weight: 900;
   text-overflow: ellipsis;
@@ -3070,13 +3094,13 @@ select {
 }
 
 .rankText span {
-  color: #657287;
+  color: #81817C;
   font-size: 13px;
   font-weight: 800;
 }
 
 .rankItem em {
-  color: #4b556c;
+  color: #81817C;
   font-size: 17px;
   font-style: normal;
   font-weight: 900;
@@ -3086,7 +3110,7 @@ select {
 .rankMore {
   margin-top: 10px;
   padding: 11px 12px;
-  border: 1px solid rgba(24, 185, 212, .24);
+  border: 1px solid rgba(150, 154, 120, .24);
   border-radius: 8px;
   background: rgba(248, 253, 255, .92);
   color: var(--brand-dark);
@@ -3112,7 +3136,7 @@ select {
   gap: 18px;
   justify-content: flex-end;
   margin-bottom: 8px;
-  color: #5f6d83;
+  color: #81817C;
   font-size: 13px;
   font-weight: 900;
 }
@@ -3130,15 +3154,15 @@ select {
 }
 
 .revenueLine {
-  background: #8a45ff;
+  background: #B4B79B;
 }
 
 .salesLine {
-  background: #2e86ff;
+  background: #55788F;
 }
 
 .quotedLine {
-  background: #20d66b;
+  background: #387A5A;
 }
 
 .performanceSvg {
@@ -3148,7 +3172,7 @@ select {
 }
 
 .chartAxis {
-  fill: #62728a;
+  fill: #81817C;
   font-size: 12px;
   font-weight: 800;
 }
@@ -3170,36 +3194,36 @@ select {
   stroke-width: 3.5;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 8px 12px rgba(31, 64, 100, .12));
+  filter: drop-shadow(0 8px 12px rgba(16, 43, 37, .12));
 }
 
 .revenueStroke {
-  stroke: #8a45ff;
+  stroke: #B4B79B;
 }
 
 .salesStroke {
-  stroke: #2e86ff;
+  stroke: #55788F;
 }
 
 .quotedStroke {
-  stroke: #20d66b;
+  stroke: #387A5A;
 }
 
 .chartPoint {
-  fill: #ffffff;
+  fill: #FFFFFF;
   stroke-width: 3;
 }
 
 .chartPoint.revenue {
-  stroke: #8a45ff;
+  stroke: #B4B79B;
 }
 
 .chartPoint.sales {
-  stroke: #2e86ff;
+  stroke: #55788F;
 }
 
 .chartPoint.quoted {
-  stroke: #20d66b;
+  stroke: #387A5A;
 }
 
 .chartHitZone {
@@ -3219,7 +3243,7 @@ select {
   border-radius: 18px;
   background: rgba(255, 255, 255, .96);
   box-shadow: 0 24px 60px rgba(23, 35, 56, .18);
-  color: #202a40;
+  color: #20201E;
   pointer-events: none;
 }
 
@@ -3238,7 +3262,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #4e5b72;
+  color: #81817C;
   font-size: 15px;
   font-weight: 900;
 }
@@ -3247,7 +3271,7 @@ select {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  box-shadow: 0 0 0 5px rgba(24, 185, 212, .10);
+  box-shadow: 0 0 0 5px rgba(150, 154, 120, .10);
 }
 
 .tooltipDivider {
@@ -3265,28 +3289,28 @@ select {
 }
 
 .tooltipSplit b {
-  color: #0d7891;
+  color: #102B25;
   font-size: 16px;
 }
 
 .dailyTotalDot {
-  background: #7167e8;
+  background: #B4B79B;
 }
 
 .dailyLeadDot {
-  background: linear-gradient(135deg, #18b9d4, #14c782);
+  background: linear-gradient(135deg, #969A78, #387A5A);
 }
 
 .revenueDot {
-  background: #8a45ff;
+  background: #B4B79B;
 }
 
 .salesDot {
-  background: #2e86ff;
+  background: #55788F;
 }
 
 .quotedDot {
-  background: #20d66b;
+  background: #387A5A;
 }
 
 .pointDate.tilted {
@@ -3333,7 +3357,7 @@ select {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(240, 249, 252, .96)),
     radial-gradient(circle at top right, rgba(138, 69, 255, .14), transparent 42%);
-  box-shadow: 0 32px 90px rgba(18, 33, 55, .30);
+  box-shadow: 0 32px 90px rgba(16, 43, 37, .30);
 }
 
 .rankModalPanel header {
@@ -3342,12 +3366,12 @@ select {
   justify-content: space-between;
   gap: 18px;
   padding: 22px 24px;
-  border-bottom: 1px solid rgba(24, 185, 212, .14);
+  border-bottom: 1px solid rgba(150, 154, 120, .14);
 }
 
 .rankModalPanel h2 {
   margin: 2px 0 0;
-  color: #172338;
+  color: #20201E;
   font-size: 24px;
   letter-spacing: 0;
   text-transform: none;
@@ -3362,7 +3386,7 @@ select {
 
 .rankModalBody .rankItem {
   min-height: 72px;
-  border-bottom: 1px solid rgba(83, 113, 145, .10);
+  border-bottom: 1px solid rgba(129, 129, 124, .10);
 }
 
 .rankModalBody .rankItem:hover {
@@ -3396,7 +3420,7 @@ select {
   gap: 12px;
   align-items: end;
   padding: 18px 24px 12px;
-  border-bottom: 1px solid rgba(24, 185, 212, .10);
+  border-bottom: 1px solid rgba(150, 154, 120, .10);
 }
 
 .goalsModalControls label {
@@ -3409,11 +3433,11 @@ select {
   border: 0;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--green), var(--brand));
-  color: #102136;
+  color: #20201E;
   font-size: 15px;
   font-weight: 950;
   cursor: pointer;
-  box-shadow: 0 12px 22px rgba(24, 185, 212, .2);
+  box-shadow: 0 12px 22px rgba(150, 154, 120, .2);
 }
 
 .goalsModalPanel .monthlyGoalsList {
@@ -3423,7 +3447,7 @@ select {
 
 .goalsModalPanel .monthlyGoalRow {
   padding: 12px;
-  border: 1px solid rgba(204, 230, 242, .88);
+  border: 1px solid rgba(226, 226, 222, .88);
   border-radius: 10px;
   background: rgba(255, 255, 255, .72);
 }
@@ -3439,16 +3463,16 @@ select {
   display: grid;
   gap: 14px;
   padding: 16px;
-  border: 1px solid rgba(24, 185, 212, .15);
+  border: 1px solid rgba(150, 154, 120, .15);
   border-radius: 8px;
   background:
     linear-gradient(150deg, rgba(255, 255, 255, .92), rgba(237, 247, 252, .72)),
-    linear-gradient(120deg, rgba(109, 99, 219, .10), transparent 54%);
+    linear-gradient(120deg, rgba(180, 183, 155, .10), transparent 54%);
 }
 
 .doctorCard h3 {
   margin: 0 0 6px;
-  color: #13243a;
+  color: #20201E;
   font-size: 17px;
 }
 
@@ -3486,7 +3510,7 @@ select {
   height: 9px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(142, 164, 189, .16);
+  background: rgba(129, 129, 124, .16);
 }
 
 .conversionLine i {
@@ -3506,7 +3530,7 @@ select {
 }
 
 .doctorCard footer strong {
-  color: #13243a;
+  color: #20201E;
   font-size: 18px;
 }
 
@@ -3520,11 +3544,11 @@ select {
   gap: 8px;
   margin-bottom: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(24, 185, 212, .12);
+  border: 1px solid rgba(150, 154, 120, .12);
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(232, 247, 251, .88), rgba(246, 250, 255, .74)),
-    linear-gradient(90deg, rgba(22, 199, 132, .12), transparent);
+    linear-gradient(90deg, rgba(56, 122, 90, .12), transparent);
 }
 
 .statusRankSummary strong {
@@ -3554,7 +3578,7 @@ select {
   gap: 14px;
   min-height: 56px;
   padding: 10px 12px;
-  border: 1px solid rgba(24, 185, 212, .10);
+  border: 1px solid rgba(150, 154, 120, .10);
   border-radius: 8px;
   background: rgba(255, 255, 255, .72);
   box-shadow: 0 10px 26px rgba(25, 52, 88, .04);
@@ -3567,7 +3591,7 @@ select {
 .statusRankText strong {
   display: block;
   overflow: hidden;
-  color: #172338;
+  color: #20201E;
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3587,7 +3611,7 @@ select {
   border-radius: 999px;
   background:
     linear-gradient(90deg, rgba(226, 236, 247, .9), rgba(241, 247, 252, .65)),
-    repeating-linear-gradient(90deg, transparent 0 48px, rgba(92, 116, 145, .10) 49px);
+    repeating-linear-gradient(90deg, transparent 0 48px, rgba(129, 129, 124, .10) 49px);
 }
 
 .statusRankBar i {
@@ -3595,7 +3619,7 @@ select {
   height: 100%;
   min-width: 6px;
   border-radius: inherit;
-  background: linear-gradient(90deg, #16c784 0%, #24bad7 58%, #6d63db 100%);
+  background: linear-gradient(90deg, #387A5A 0%, #969A78 58%, #B4B79B 100%);
   box-shadow: 0 8px 22px rgba(36, 186, 215, .20);
 }
 
@@ -3626,7 +3650,7 @@ select {
 .supportGrid span {
   display: block;
   min-height: 42px;
-  color: #26374b;
+  color: #20201E;
   font-weight: 900;
   letter-spacing: .05em;
   text-transform: uppercase;
@@ -3650,7 +3674,7 @@ select {
 }
 
 .sourcePanel .panelHead {
-  border-bottom-color: rgba(26, 167, 201, .12);
+  border-bottom-color: rgba(150, 154, 120, .12);
 }
 
 .sourceBody {
@@ -3667,16 +3691,16 @@ select {
   margin: 0 auto;
   border-radius: 50%;
   position: relative;
-  box-shadow: 0 18px 44px rgba(26, 167, 201, .11);
+  box-shadow: 0 18px 44px rgba(150, 154, 120, .11);
 }
 
 .sourceDonut::after {
   content: "";
   position: absolute;
   inset: 20%;
-  border: 1px solid rgba(26, 167, 201, .12);
+  border: 1px solid rgba(150, 154, 120, .12);
   border-radius: inherit;
-  background: #f7fbff;
+  background: #F8F8F5;
 }
 
 .sourceLegend {
@@ -3689,7 +3713,7 @@ select {
   grid-template-columns: 12px 1fr auto;
   align-items: center;
   gap: 8px;
-  color: #31465c;
+  color: #81817C;
   font-weight: 800;
 }
 
@@ -3790,14 +3814,14 @@ select {
 }
 
 .settingsCopy strong {
-  color: #172338;
+  color: #20201E;
 }
 
 .notice.error {
-  border-color: rgba(240, 117, 109, .32);
+  border-color: rgba(185, 86, 86, .32);
   border-left-color: var(--coral);
   background: rgba(255, 237, 237, .86);
-  color: #9d3644;
+  color: #B95656;
 }
 
 .printStamp {
@@ -3816,8 +3840,8 @@ select {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(24, 185, 212, .13);
-  background: linear-gradient(90deg, rgba(21, 27, 75, .035), transparent);
+  border-bottom: 1px solid rgba(150, 154, 120, .13);
+  background: linear-gradient(90deg, rgba(16, 43, 37, .035), transparent);
 }
 
 .panelHeadControls {
@@ -3870,7 +3894,7 @@ select {
   grid-template-columns: 1fr auto;
   gap: 10px;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(57, 112, 160, .09);
+  border-bottom: 1px solid rgba(150, 154, 120, .09);
 }
 
 .numberItem:last-child {
@@ -3878,7 +3902,7 @@ select {
 }
 
 .numberItem strong {
-  color: #172338;
+  color: #20201E;
 }
 
 .numberItem span {
@@ -3899,7 +3923,7 @@ select {
   margin-top: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(142, 164, 189, .16);
+  background: rgba(129, 129, 124, .16);
 }
 
 .bar i {
@@ -3918,11 +3942,11 @@ select {
 .lineChartScroller {
   overflow-x: auto;
   overflow-y: hidden;
-  border: 1px solid rgba(24, 185, 212, .11);
+  border: 1px solid rgba(150, 154, 120, .11);
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, .82), rgba(241, 248, 252, .62)),
-    repeating-linear-gradient(90deg, rgba(24, 185, 212, .05) 0 1px, transparent 1px 56px);
+    repeating-linear-gradient(90deg, rgba(150, 154, 120, .05) 0 1px, transparent 1px 56px);
 }
 
 .lineChart {
@@ -3932,7 +3956,7 @@ select {
 }
 
 .lineGrid {
-  stroke: rgba(92, 116, 145, .16);
+  stroke: rgba(129, 129, 124, .16);
   stroke-width: 1;
 }
 
@@ -3949,17 +3973,17 @@ select {
 }
 
 .linePoint circle {
-  fill: #fff;
-  stroke: #18b9d4;
+  fill: #FFFFFF;
+  stroke: #969A78;
   stroke-width: 3;
 }
 
 .linePoint:nth-of-type(odd) circle {
-  stroke: #7167e8;
+  stroke: #B4B79B;
 }
 
 .pointValue {
-  fill: #13243a;
+  fill: #20201E;
   font-size: 13px;
   font-weight: 900;
   text-anchor: middle;
@@ -3987,11 +4011,11 @@ select {
 
 .followupMetric {
   min-height: 150px;
-  border: 1px solid rgba(183, 225, 239, .85);
+  border: 1px solid rgba(226, 226, 222, .85);
   border-radius: 8px;
   padding: 22px;
   background:
-    radial-gradient(circle at 86% 18%, rgba(39, 191, 202, .22), transparent 30%),
+    radial-gradient(circle at 86% 18%, rgba(150, 154, 120, .22), transparent 30%),
     rgba(255, 255, 255, .78);
   box-shadow: 0 16px 34px rgba(14, 76, 101, .09);
   display: flex;
@@ -4030,25 +4054,25 @@ select {
 .followupMetric.attention span,
 .followupMetric.attention strong,
 .followupMetric.attention small {
-  color: #fff;
+  color: #FFFFFF;
 }
 
 .followupMetric.danger {
   background:
-    radial-gradient(circle at 86% 18%, rgba(255, 113, 113, .22), transparent 32%),
+    radial-gradient(circle at 86% 18%, rgba(185, 86, 86, .22), transparent 32%),
     rgba(255, 255, 255, .88);
 }
 
 .followupMetric.danger strong {
-  color: #c84756;
+  color: #B95656;
 }
 
 .followupMetric.attention {
-  background: linear-gradient(135deg, #16b9d1, #18c88d);
+  background: linear-gradient(135deg, #969A78, #387A5A);
 }
 
 .followupMetric.done strong {
-  color: #07805b;
+  color: #387A5A;
 }
 
 .followupFilteredCount {
@@ -4091,7 +4115,7 @@ select {
 .followupLostForm select,
 .followupLostForm textarea {
   min-height: 42px;
-  border: 1px solid rgba(183, 225, 239, .95);
+  border: 1px solid rgba(226, 226, 222, .95);
   border-radius: 8px;
   background: rgba(255, 255, 255, .82);
   color: var(--ink);
@@ -4109,11 +4133,11 @@ select {
 
 .followupCard {
   position: relative;
-  border: 1px solid rgba(183, 225, 239, .95);
+  border: 1px solid rgba(226, 226, 222, .95);
   border-radius: 10px;
   padding: 14px;
   background: rgba(255, 255, 255, .82);
-  box-shadow: 0 14px 30px rgba(12, 72, 96, .08);
+  box-shadow: 0 14px 30px rgba(16, 43, 37, .08);
   overflow: hidden;
 }
 
@@ -4123,29 +4147,29 @@ select {
   inset: 0 auto 0 0;
   width: 5px;
   border-radius: 10px 0 0 10px;
-  background: #18b8d5;
+  background: #969A78;
 }
 
 .followupCard.red::before {
-  background: #df5263;
+  background: #B95656;
 }
 
 .followupCard.lost {
   opacity: .78;
-  border-color: rgba(223, 82, 99, .38);
+  border-color: rgba(185, 86, 86, .38);
 }
 
 .followupCard.lost::before {
-  background: #9c3f4d;
+  background: #B95656;
 }
 
 .followupCard.won::before {
-  background: #18c88d;
+  background: #387A5A;
 }
 
 .followupCard.due::before,
 .followupCard.warn::before {
-  background: #f3b23f;
+  background: #B58A45;
 }
 
 .followupCardTop {
@@ -4192,8 +4216,8 @@ select {
   min-height: 24px;
   border-radius: 999px;
   padding: 4px 9px;
-  background: rgba(22, 185, 209, .14);
-  color: #087997;
+  background: rgba(150, 154, 120, .14);
+  color: #102B25;
   font-size: .64rem;
   font-weight: 900;
   letter-spacing: .08em;
@@ -4201,24 +4225,24 @@ select {
 }
 
 .followupCard.red .followupBadge {
-  background: rgba(223, 82, 99, .13);
-  color: #b93649;
+  background: rgba(185, 86, 86, .13);
+  color: #B95656;
 }
 
 .followupCard.lost .followupBadge {
   background: rgba(156, 63, 77, .13);
-  color: #8d3140;
+  color: #B95656;
 }
 
 .followupCard.won .followupBadge {
   background: rgba(24, 200, 141, .14);
-  color: #0c8466;
+  color: #387A5A;
 }
 
 .followupCard.due .followupBadge,
 .followupCard.warn .followupBadge {
   background: rgba(243, 178, 63, .16);
-  color: #a46a12;
+  color: #B58A45;
 }
 
 .followupFacts {
@@ -4277,10 +4301,10 @@ select {
 .followupContactLine .followupActionIcon {
   align-items: center;
   aspect-ratio: 1;
-  background: #fff !important;
+  background: #FFFFFF !important;
   border: 1px solid rgba(189, 220, 232, .95);
   border-radius: 999px;
-  box-shadow: 0 10px 24px rgba(8, 58, 107, .14);
+  box-shadow: 0 10px 24px rgba(16, 43, 37, .14);
   display: inline-flex;
   flex: 0 0 36px;
   height: 36px;
@@ -4300,8 +4324,8 @@ select {
 }
 
 .followupContactLine .followupActionIcon:hover {
-  border-color: rgba(20, 184, 205, .7);
-  box-shadow: 0 12px 26px rgba(8, 58, 107, .2);
+  border-color: rgba(150, 154, 120, .7);
+  box-shadow: 0 12px 26px rgba(16, 43, 37, .2);
   transform: translateY(-1px);
 }
 
@@ -4315,8 +4339,8 @@ select {
   gap: 4px;
   margin: 10px 0;
   border-radius: 8px;
-  background: rgba(223, 82, 99, .08);
-  color: #7b2a37;
+  background: rgba(185, 86, 86, .08);
+  color: #B95656;
   padding: 10px;
   font-size: .82rem;
   font-weight: 800;
@@ -4324,7 +4348,7 @@ select {
 
 .followupStatusNote.won {
   background: rgba(24, 200, 141, .1);
-  color: #0c705d;
+  color: #387A5A;
 }
 
 .followupStatusNote b,
@@ -4338,7 +4362,7 @@ select {
   border: 1px solid rgba(156, 63, 77, .25);
   border-radius: 999px;
   background: rgba(255, 255, 255, .75);
-  color: #8d3140;
+  color: #B95656;
   cursor: pointer;
   font-weight: 900;
   padding: 0 12px;
@@ -4346,7 +4370,7 @@ select {
 
 .followupDetails summary {
   cursor: pointer;
-  color: #087997;
+  color: #102B25;
   font-size: .82rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -4384,20 +4408,20 @@ select {
   align-self: start;
   border: 0;
   border-radius: 8px;
-  background: linear-gradient(135deg, #16b9d1, #18c88d);
-  color: #072438;
+  background: linear-gradient(135deg, #969A78, #387A5A);
+  color: #20201E;
   font-weight: 950;
   padding: 0 16px;
 }
 
 .followupLostForm button {
-  background: linear-gradient(135deg, #df5263, #f3b23f);
-  color: #fff;
+  background: linear-gradient(135deg, #B95656, #B58A45);
+  color: #FFFFFF;
 }
 
 .followupWonDetails .followupStatusForm button {
-  background: linear-gradient(135deg, #18c88d, #16b9d1);
-  color: #072438;
+  background: linear-gradient(135deg, #387A5A, #969A78);
+  color: #20201E;
 }
 
 .followupHistory {
@@ -4430,14 +4454,14 @@ select {
 
 .followupMore button {
   min-height: 40px;
-  border: 1px solid rgba(183, 225, 239, .95);
+  border: 1px solid rgba(226, 226, 222, .95);
   border-radius: 999px;
   background: rgba(255, 255, 255, .86);
-  color: #087997;
+  color: #102B25;
   cursor: pointer;
   font-weight: 950;
   padding: 0 18px;
-  box-shadow: 0 10px 22px rgba(12, 72, 96, .08);
+  box-shadow: 0 10px 22px rgba(16, 43, 37, .08);
 }
 
 .followupMore button:hover {
@@ -4566,6 +4590,220 @@ select {
   input, select, .filterGrid label, .pipelineSelect {
     width: 100%;
   }
+}
+
+/* DOC4DOCS identity layer */
+.clinicLanding,
+.shell,
+.settingsPage {
+  color: var(--doc-text-primary);
+}
+
+.landingHero,
+.clinicAccessCard,
+.authBox,
+.accessModal,
+.viewTabs,
+.filters,
+.panel,
+.metric,
+.generalSummaryHero,
+.generalControls,
+.generalMetric,
+.doctorCard,
+.followupCard,
+.trafficMetric,
+.settingsPanel,
+.modalCard {
+  border-color: rgba(16, 43, 37, .12) !important;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .94), rgba(245, 245, 243, .88)) !important;
+  box-shadow: 0 18px 44px rgba(16, 43, 37, .09) !important;
+}
+
+.topbar {
+  border-color: rgba(232, 227, 217, .18);
+  background:
+    radial-gradient(circle at 82% 8%, rgba(180, 183, 155, .18), transparent 36%),
+    linear-gradient(110deg, var(--doc-primary-dark), var(--doc-primary) 58%, var(--doc-primary-hover));
+  box-shadow: 0 24px 54px rgba(16, 43, 37, .22);
+}
+
+.topbarBrand img,
+.systemLogo {
+  background: rgba(255, 255, 255, .96);
+}
+
+.eyebrow,
+.topbar .eyebrow {
+  color: var(--doc-beige);
+}
+
+button,
+.buttonLink,
+.viewTabs button.active,
+.clinicAccessCard button,
+.pipelineSelect.active,
+.statusBadge.active,
+.generalControls button,
+.settingsActions button {
+  border-color: rgba(16, 43, 37, .16) !important;
+  background: linear-gradient(135deg, var(--doc-primary), var(--doc-olive)) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 12px 26px rgba(16, 43, 37, .16) !important;
+}
+
+button.secondary,
+.buttonLink.secondary,
+.viewTabs button,
+.topbar button.secondary,
+.topbar .buttonLink.secondary {
+  border-color: rgba(232, 227, 217, .24) !important;
+  background: rgba(255, 255, 255, .12) !important;
+  color: #FFFFFF !important;
+}
+
+.filters button.secondary,
+.panel button.secondary,
+.followupCard button.secondary,
+.settingsPanel button.secondary,
+.modalCard button.secondary {
+  background: rgba(255, 255, 255, .82) !important;
+  color: var(--doc-primary) !important;
+}
+
+button.danger,
+.danger,
+.statusLost,
+.followupCard.redFlag,
+.quoteCard.urgent {
+  border-color: rgba(185, 86, 86, .28) !important;
+}
+
+button.danger {
+  background: linear-gradient(135deg, var(--doc-danger), #8E3F3F) !important;
+}
+
+input,
+select,
+textarea,
+.pipelineSelect,
+.dateInput,
+.fieldControl {
+  border-color: rgba(16, 43, 37, .14) !important;
+  background: rgba(255, 255, 255, .88) !important;
+  color: var(--doc-text-primary) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.pipelineSelect:focus {
+  border-color: var(--doc-olive) !important;
+  box-shadow: 0 0 0 4px rgba(150, 154, 120, .16) !important;
+}
+
+.panelHead,
+.filterHead,
+.settingsHeader,
+.modalHead {
+  border-color: rgba(16, 43, 37, .10) !important;
+  background: linear-gradient(90deg, rgba(16, 43, 37, .035), rgba(232, 227, 217, .18)) !important;
+}
+
+h1,
+h2,
+.panelHead h2,
+.metric strong,
+.generalMetric strong,
+.doctorCard h3,
+.followupCard h3,
+.trafficMetric strong {
+  color: var(--doc-text-primary);
+}
+
+.metric.featured,
+.generalMetric.featured,
+.generalMetric.emphasisRevenue,
+.generalMetric.emphasisMargin,
+.metric.emphasis,
+.followupHeroMetric.primary {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(180, 183, 155, .20), transparent 34%),
+    linear-gradient(135deg, var(--doc-primary-dark), var(--doc-primary-hover)) !important;
+  color: #FFFFFF !important;
+}
+
+.metric.featured *,
+.generalMetric.featured *,
+.generalMetric.emphasisRevenue *,
+.generalMetric.emphasisMargin *,
+.metric.emphasis *,
+.followupHeroMetric.primary * {
+  color: #FFFFFF !important;
+}
+
+.accentNumber,
+.metricNumber,
+.doctorCard strong,
+.followupCard strong,
+.trafficMetric strong,
+.summaryValue,
+.rankValue {
+  color: var(--doc-primary) !important;
+}
+
+.barFill,
+.progressFill,
+.statusRankFill,
+.generalBarDay i,
+.miniBar i,
+.followupProgress,
+.categoryBar i {
+  background: linear-gradient(90deg, var(--doc-primary), var(--doc-olive)) !important;
+}
+
+.tag,
+.chip,
+.pill,
+.statusBadge,
+.contactChip,
+.sourceChip {
+  border-color: rgba(16, 43, 37, .10) !important;
+  background: var(--doc-info-bg) !important;
+  color: var(--doc-text-secondary) !important;
+}
+
+.tag.warning,
+.statusBadge.warning,
+.followupTag.monitor,
+.quoteBadge.urgent {
+  background: var(--doc-warning-bg) !important;
+  color: var(--doc-warning) !important;
+}
+
+.tag.success,
+.statusBadge.success,
+.followupTag.active,
+.quoteBadge.won {
+  background: var(--doc-success-bg) !important;
+  color: var(--doc-success) !important;
+}
+
+.tag.danger,
+.statusBadge.danger,
+.followupTag.red,
+.quoteBadge.lost {
+  background: var(--doc-danger-bg) !important;
+  color: var(--doc-danger) !important;
+}
+
+.chartPoint,
+.chartLine,
+.sparkline,
+.generalAccumulatedLine,
+.trafficTrendLine {
+  stroke: var(--doc-primary) !important;
 }
 
 @media print {

@@ -749,7 +749,7 @@ function renderGeneralPaymentDonut(items, total) {
     el.innerHTML = `<div class="empty">Sem entradas por forma de pagamento.</div>`;
     return;
   }
-  const colors = ["#173f31", "#a56739", "#c9b8a4", "#6d63db", "#18b9d4"];
+  const colors = ["#102B25", "#969A78", "#B4B79B", "#B58A45", "#55788F"];
   let offset = 0;
   const circles = sortedItems.slice(0, 5).map((item, index) => {
     const share = Math.max(0, Number(item.amount || 0) / total);
@@ -761,7 +761,7 @@ function renderGeneralPaymentDonut(items, total) {
   el.innerHTML = `
     <div class="generalDonut">
       <svg viewBox="0 0 40 40" role="img" aria-label="Formas de pagamento">
-        <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#efe8df" stroke-width="7"></circle>
+        <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#E8E3D9" stroke-width="7"></circle>
         ${circles}
       </svg>
       <strong>${brl.format(total)}</strong>
@@ -805,8 +805,8 @@ function renderGeneralAccumulatedChart(items) {
     <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento acumulado">
       <defs>
         <linearGradient id="generalAccumulatedArea" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#173f31" stop-opacity=".22"></stop>
-          <stop offset="100%" stop-color="#173f31" stop-opacity="0"></stop>
+          <stop offset="0%" stop-color="#102B25" stop-opacity=".22"></stop>
+          <stop offset="100%" stop-color="#102B25" stop-opacity="0"></stop>
         </linearGradient>
       </defs>
       <line class="lineGrid" x1="${pad.left}" y1="${pad.top + chartH}" x2="${width - pad.right}" y2="${pad.top + chartH}"></line>
@@ -874,8 +874,8 @@ function renderGeneralSalesTicketChart(items) {
     secondKey: "average_ticket",
     firstLabel: "Faturamento",
     secondLabel: "Ticket médio",
-    firstColor: "#7167e8",
-    secondColor: "#18b9d4",
+    firstColor: "#102B25",
+    secondColor: "#969A78",
     independentScale: true,
     firstFormatter: value => brl.format(value || 0),
     secondFormatter: value => brl.format(value || 0),
@@ -897,8 +897,8 @@ function renderGeneralLeadBookingChart(leads, bookings) {
     secondKey: "bookings",
     firstLabel: "Leads",
     secondLabel: "Agendamentos",
-    firstColor: "#7167e8",
-    secondColor: "#18b9d4",
+    firstColor: "#102B25",
+    secondColor: "#969A78",
     firstFormatter: value => `${Math.round(value || 0)}`,
     secondFormatter: value => `${Math.round(value || 0)}`,
   });
@@ -914,7 +914,7 @@ function renderGeneralExpenseCategories(items, total) {
     el.innerHTML = `<div class="empty">Sem saídas por categoria no mês selecionado.</div>`;
     return;
   }
-  const colors = ["#0b7f9b", "#18b9d4", "#7167e8", "#16c784", "#ef6a73", "#f3b34c", "#66819e"];
+  const colors = ["#102B25", "#969A78", "#B4B79B", "#B58A45", "#55788F", "#387A5A", "#B95656"];
   let offset = 0;
   const slices = sortedItems.slice(0, 7).map((item, index) => {
     const share = Number(item.amount || 0) / total;
@@ -928,7 +928,7 @@ function renderGeneralExpenseCategories(items, total) {
     <div class="expenseDonutBlock">
       <div class="expenseDonut">
         <svg viewBox="0 0 40 40" role="img" aria-label="Distribuição de saídas por categoria">
-          <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#e9f2f7" stroke-width="8"></circle>
+          <circle r="15.9155" cx="20" cy="20" fill="transparent" stroke="#F5F5F3" stroke-width="8"></circle>
           ${slices}
         </svg>
         <strong>${brl.format(total)}</strong>
@@ -1085,8 +1085,8 @@ function renderDualAxisChart(id, items, config) {
   const points = active.map((item, index) => {
     const x = xFor(index);
     return `
-      <circle class="chartPoint" style="stroke:${config.leftColor};fill:#fff" cx="${x}" cy="${yLeft(item[config.leftKey])}" r="4.5"></circle>
-      <circle class="chartPoint" style="stroke:${config.rightColor};fill:#fff" cx="${x}" cy="${yRight(item[config.rightKey])}" r="4.5"></circle>
+      <circle class="chartPoint" style="stroke:${config.leftColor};fill:#FFFFFF" cx="${x}" cy="${yLeft(item[config.leftKey])}" r="4.5"></circle>
+      <circle class="chartPoint" style="stroke:${config.rightColor};fill:#FFFFFF" cx="${x}" cy="${yRight(item[config.rightKey])}" r="4.5"></circle>
     `;
   }).join("");
   const zones = active.map((item, index) => {
@@ -1304,12 +1304,12 @@ function renderSalesPerformanceChart(items) {
       <svg class="performanceSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento, vendas e orçado dia a dia">
         <defs>
           <linearGradient id="revenueArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#8a45ff" stop-opacity=".26"></stop>
-            <stop offset="100%" stop-color="#8a45ff" stop-opacity="0"></stop>
+            <stop offset="0%" stop-color="#102B25" stop-opacity=".24"></stop>
+            <stop offset="100%" stop-color="#102B25" stop-opacity="0"></stop>
           </linearGradient>
           <linearGradient id="quotedArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#16c784" stop-opacity=".22"></stop>
-            <stop offset="100%" stop-color="#16c784" stop-opacity="0"></stop>
+            <stop offset="0%" stop-color="#969A78" stop-opacity=".22"></stop>
+            <stop offset="100%" stop-color="#969A78" stop-opacity="0"></stop>
           </linearGradient>
         </defs>
         ${moneyTicks}
@@ -2165,12 +2165,12 @@ function renderTrafficDailyChart(items) {
       <svg class="trafficDailySvg" viewBox="0 0 ${width} ${height}" role="img">
         <defs>
           <linearGradient id="trafficSpendGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#7c3aed"></stop>
-            <stop offset="100%" stop-color="#13b8cf"></stop>
+            <stop offset="0%" stop-color="#102B25"></stop>
+            <stop offset="100%" stop-color="#969A78"></stop>
           </linearGradient>
           <linearGradient id="trafficAreaGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#13b8cf" stop-opacity=".22"></stop>
-            <stop offset="100%" stop-color="#13b8cf" stop-opacity="0"></stop>
+            <stop offset="0%" stop-color="#102B25" stop-opacity=".22"></stop>
+            <stop offset="100%" stop-color="#969A78" stop-opacity="0"></stop>
           </linearGradient>
         </defs>
         ${ticks}
@@ -2190,10 +2190,10 @@ function renderTrafficDailyChart(items) {
     const show = event => {
       const tooltipHtml = `
         <strong>${formatDay(item.day)}</strong>
-        <span><i style="background:#7c3aed"></i>Investimento: ${brl.format(item.spend || 0)}</span>
-        <span><i style="background:#13b8cf"></i>Leads: ${integerFormat(item.leads || 0)}</span>
-        <span><i style="background:#2e86ff"></i>Cliques: ${integerFormat(item.clicks || 0)}</span>
-        <span><i style="background:#20c997"></i>CPC: ${formatNullableMoney(item.cpc)} · CPL: ${formatNullableMoney(item.cpl)}</span>
+        <span><i style="background:#102B25"></i>Investimento: ${brl.format(item.spend || 0)}</span>
+        <span><i style="background:#969A78"></i>Leads: ${integerFormat(item.leads || 0)}</span>
+        <span><i style="background:#55788F"></i>Cliques: ${integerFormat(item.clicks || 0)}</span>
+        <span><i style="background:#387A5A"></i>CPC: ${formatNullableMoney(item.cpc)} · CPL: ${formatNullableMoney(item.cpl)}</span>
       `;
       showGeneralTooltip(event, item, tooltip, el, { tooltip: () => tooltipHtml });
     };
@@ -2433,13 +2433,13 @@ function renderDailyChart(items, targetId = "dailyChart", options = {}) {
       <svg class="lineChart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafico dia a dia">
         <defs>
           <linearGradient id="${targetId}Stroke" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0%" stop-color="#13a8c8"></stop>
-            <stop offset="55%" stop-color="#39c6e2"></stop>
-            <stop offset="100%" stop-color="#7167e8"></stop>
+            <stop offset="0%" stop-color="#969A78"></stop>
+            <stop offset="55%" stop-color="#B4B79B"></stop>
+            <stop offset="100%" stop-color="#B4B79B"></stop>
           </linearGradient>
           <linearGradient id="${targetId}Area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#13a8c8" stop-opacity=".22"></stop>
-            <stop offset="100%" stop-color="#7167e8" stop-opacity=".03"></stop>
+            <stop offset="0%" stop-color="#969A78" stop-opacity=".22"></stop>
+            <stop offset="100%" stop-color="#B4B79B" stop-opacity=".03"></stop>
           </linearGradient>
         </defs>
         ${grid}
@@ -2521,10 +2521,10 @@ function formatMinutes(value) {
 function renderSources(items) {
   const donut = document.getElementById("sourceDonut");
   const legend = document.getElementById("sourceLegend");
-  const colors = ["#f4c83f", "#0f766e", "#7c6df2", "#e06f5f", "#4a90b8", "#9b7f4a", "#4f9b62", "#c45aa0"];
+  const colors = ["#102B25", "#969A78", "#B4B79B", "#B58A45", "#55788F", "#387A5A", "#B95656", "#E8E3D9"];
   const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
   if (!items.length || !total) {
-    donut.style.background = "#edf1f6";
+    donut.style.background = "#F5F5F3";
     legend.innerHTML = `<div class="empty">Sem fontes no período.</div>`;
     return;
   }
