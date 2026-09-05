@@ -591,7 +591,7 @@ button.secondary:hover {
   align-items: center;
   margin: 0;
   padding: 0 14px;
-  border-left: 1px solid rgba(232, 227, 217, .28);
+  border-right: 1px solid rgba(232, 227, 217, .28);
   color: rgba(245, 241, 233, .92);
   font-size: 12px;
   font-weight: 950;
@@ -4566,7 +4566,7 @@ select {
   .clinicHeaderName {
     justify-content: center;
     width: 100%;
-    border-left: 0;
+    border-right: 0;
     border-top: 1px solid rgba(232, 227, 217, .22);
     padding-top: 10px;
   }
