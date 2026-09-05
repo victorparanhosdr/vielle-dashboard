@@ -98,6 +98,12 @@ function kommoFollowupUrl(item) {
   return `https://${subdomain}.kommo.com/leads/list/?term=${encodeURIComponent(term)}`;
 }
 
+function clinicaPatientUrl(item) {
+  const patientUuid = String(item?.patient_uuid || "").trim();
+  if (!patientUuid || patientUuid === "-") return "";
+  return `https://app.clinicaexperts.com.br/clinica/contatos/listagem/paciente/${encodeURIComponent(patientUuid)}`;
+}
+
 function buildQuery() {
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
@@ -1593,9 +1599,13 @@ function renderPatientFollowupList() {
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
     const kommoHref = kommoFollowupUrl(item);
-    const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
+    const kommoLabel = item.kommo_lead_url ? "Abrir lead no Kommo" : "Buscar telefone no Kommo";
     const kommoLink = kommoHref
-      ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
+      ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
+      : "";
+    const clinicaHref = clinicaPatientUrl(item);
+    const clinicaLink = clinicaHref
+      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="Abrir ficha no Clínica Experts" aria-label="Abrir ficha no Clínica Experts"><img src="clinica-icon.png" alt=""></a>`
       : "";
     const statusInfo = item.status_info || item.lost_info || {};
     const walletStatus = item.wallet_status || (item.lost ? "lost" : "active");
@@ -1636,6 +1646,7 @@ function renderPatientFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
           ${kommoLink}
+          ${clinicaLink}
         </div>
         ${statusNote}
         <details class="followupDetails">
@@ -1855,9 +1866,13 @@ function renderQuoteFollowupList() {
     const phone = item.patient_phone ? `<a href="tel:${escapeHtml(item.patient_phone)}">${escapeHtml(item.patient_phone)}</a>` : "<span>-</span>";
     const email = item.patient_email ? `<a href="mailto:${escapeHtml(item.patient_email)}">${escapeHtml(item.patient_email)}</a>` : "<span>-</span>";
     const kommoHref = kommoFollowupUrl(item);
-    const kommoLabel = item.kommo_lead_url ? "Abrir no Kommo" : "Buscar no Kommo";
+    const kommoLabel = item.kommo_lead_url ? "Abrir lead no Kommo" : "Buscar telefone no Kommo";
     const kommoLink = kommoHref
-      ? `<a class="followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener">${escapeHtml(kommoLabel)}</a>`
+      ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
+      : "";
+    const clinicaHref = clinicaPatientUrl(item);
+    const clinicaLink = clinicaHref
+      ? `<a class="followupActionIcon followupClinicaLink" href="${escapeHtml(clinicaHref)}" target="_blank" rel="noopener" title="Abrir ficha no Clínica Experts" aria-label="Abrir ficha no Clínica Experts"><img src="clinica-icon.png" alt=""></a>`
       : "";
     const statusInfo = item.status_info || {};
     const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));
@@ -1897,6 +1912,7 @@ function renderQuoteFollowupList() {
           <span>${email}</span>
           <span>${contactText}</span>
           ${kommoLink}
+          ${clinicaLink}
         </div>
         ${statusNote}
         <details class="followupDetails">

@@ -4245,22 +4245,34 @@ select {
   white-space: nowrap;
 }
 
-.followupContactLine .followupKommoLink {
+.followupContactLine .followupActionIcon {
   align-items: center;
-  background: linear-gradient(135deg, #083a6b 0%, #07809c 52%, #1fc7bd 100%) !important;
-  border: 1px solid rgba(20, 184, 205, .55);
-  box-shadow: 0 10px 24px rgba(8, 58, 107, .18);
-  color: #fff !important;
+  aspect-ratio: 1;
+  background: #fff !important;
+  border: 1px solid rgba(189, 220, 232, .95);
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(8, 58, 107, .14);
   display: inline-flex;
-  font-weight: 900;
+  flex: 0 0 36px;
+  height: 36px;
   justify-content: center;
-  letter-spacing: .04em;
-  min-width: 132px;
-  text-transform: uppercase;
+  min-width: 36px;
+  padding: 3px;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  width: 36px;
 }
 
-.followupContactLine .followupKommoLink:hover {
-  filter: brightness(1.05);
+.followupContactLine .followupActionIcon img {
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.followupContactLine .followupActionIcon:hover {
+  border-color: rgba(20, 184, 205, .7);
+  box-shadow: 0 12px 26px rgba(8, 58, 107, .2);
   transform: translateY(-1px);
 }
 
