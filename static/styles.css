@@ -4246,11 +4246,22 @@ select {
 }
 
 .followupContactLine .followupKommoLink {
-  background: linear-gradient(135deg, var(--navy), var(--cyan));
-  color: #fff;
+  align-items: center;
+  background: linear-gradient(135deg, #083a6b 0%, #07809c 52%, #1fc7bd 100%) !important;
+  border: 1px solid rgba(20, 184, 205, .55);
+  box-shadow: 0 10px 24px rgba(8, 58, 107, .18);
+  color: #fff !important;
+  display: inline-flex;
   font-weight: 900;
+  justify-content: center;
   letter-spacing: .04em;
+  min-width: 132px;
   text-transform: uppercase;
+}
+
+.followupContactLine .followupKommoLink:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 .followupDetails {
