@@ -4546,7 +4546,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             )
         paid_traffic = paid_traffic_report(conn, date_from, date_to)
         patient_followup = build_patient_followup(conn, date_to, effective_professional_uuids) if include_followup else None
-        quote_followup = build_quote_followup(conn, date_from, date_to, effective_professional_uuids) if include_quote_followup else None
+        quote_followup = None
+        if include_quote_followup:
+            quote_reference_date = parse_iso_date(date_to) or datetime.now().date()
+            quote_year_start = quote_reference_date.replace(month=1, day=1).strftime("%Y-%m-%d")
+            quote_followup = build_quote_followup(conn, quote_year_start, date_to, effective_professional_uuids)
         log = conn.execute("select * from sync_log order by id desc limit 1").fetchone()
         clinica_log = conn.execute("select * from clinica_sync_log order by id desc limit 1").fetchone()
         if current_clinic_id() == "victor":
