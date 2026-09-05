@@ -644,6 +644,10 @@ button.danger {
   box-shadow: 0 12px 24px rgba(16, 43, 37, .18);
 }
 
+.mobileTabsToggle {
+  display: none;
+}
+
 .viewPanel {
   display: none;
 }
@@ -4584,6 +4588,44 @@ select {
   .actions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .mobileTabsToggle {
+    display: flex;
+    width: 100%;
+    min-height: 50px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 10px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-size: 18px;
+  }
+
+  .viewTabs {
+    display: none;
+    position: absolute;
+    z-index: 40;
+    left: 16px;
+    right: 16px;
+    margin-top: -4px;
+    padding: 8px;
+    border-radius: 12px;
+    flex-direction: column;
+    background: rgba(245, 245, 243, .98) !important;
+    box-shadow: 0 22px 44px rgba(16, 43, 37, .22) !important;
+  }
+
+  .viewTabs.open {
+    display: flex;
+  }
+
+  .viewTabs button {
+    width: 100%;
+    justify-content: flex-start;
+    min-height: 44px;
+    padding: 0 14px;
+    text-align: left;
   }
 
   .clinicHeaderName {

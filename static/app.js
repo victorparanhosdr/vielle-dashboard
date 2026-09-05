@@ -305,6 +305,15 @@ function showDashboard() {
   applyActiveViewState();
 }
 
+function updateMobileTabsToggle() {
+  const toggle = document.getElementById("mobileTabsToggle");
+  if (!toggle) return;
+  const activeTab = document.querySelector(`.tabBtn[data-view="${state.activeView}"]`);
+  const label = activeTab ? activeTab.textContent.trim() : "Painel geral";
+  const labelEl = toggle.querySelector("span:first-child");
+  if (labelEl) labelEl.textContent = label;
+}
+
 function applyActiveViewState() {
   const supportsFollowup = clinicSupportsFollowup();
   if (!supportsFollowup && state.followupOnlyMode) {
@@ -331,6 +340,7 @@ function applyActiveViewState() {
   if (dateFrom) dateFrom.disabled = monthMode;
   if (dateTo) dateTo.disabled = monthMode;
   if (monthMode) normalizeGeneralMonth();
+  updateMobileTabsToggle();
 }
 
 function accessModeKey() {
@@ -2836,6 +2846,8 @@ document.addEventListener("keydown", event => {
 document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view || "commercialView";
+    document.querySelector(".viewTabs")?.classList.remove("open");
+    document.getElementById("mobileTabsToggle")?.setAttribute("aria-expanded", "false");
     applyActiveViewState();
     if (state.activeView === "generalView" || state.activeView === "patientFollowupView" || state.activeView === "quoteFollowupView") {
       loadReport();
@@ -2843,6 +2855,22 @@ document.querySelectorAll(".tabBtn").forEach(button => {
       render();
     }
   });
+});
+document.getElementById("mobileTabsToggle")?.addEventListener("click", event => {
+  event.stopPropagation();
+  const tabs = document.querySelector(".viewTabs");
+  if (!tabs) return;
+  const willOpen = !tabs.classList.contains("open");
+  tabs.classList.toggle("open", willOpen);
+  event.currentTarget.setAttribute("aria-expanded", String(willOpen));
+});
+document.addEventListener("click", event => {
+  const tabs = document.querySelector(".viewTabs");
+  const toggle = document.getElementById("mobileTabsToggle");
+  if (!tabs || !toggle || !tabs.classList.contains("open")) return;
+  if (tabs.contains(event.target) || toggle.contains(event.target)) return;
+  tabs.classList.remove("open");
+  toggle.setAttribute("aria-expanded", "false");
 });
 document.getElementById("generalMonth").addEventListener("change", event => {
   state.selectedMonth = event.target.value || currentMonthValue();
