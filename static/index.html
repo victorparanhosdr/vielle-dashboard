@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DOC4DOCS | Sistema operacional para clínicas</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+    <section id="clinicLanding" class="clinicLanding">
+      <div class="landingShell">
+        <header class="landingHero">
+          <img class="systemLogo" src="/doc4docs-logo-white.png" alt="DOC4DOCS">
+          <p class="eyebrow">Criado por doutores. Para doutores.</p>
+        </header>
+
+        <div class="clinicCards">
+          <article class="clinicAccessCard primary">
+            <div>
+              <span>VC</span>
+              <small>Ativo</small>
+            </div>
+            <h2>Vielle Clinic</h2>
+            <p>Relatório atual com Kommo, Clínica Experts, comercial e financeiro.</p>
+            <div class="clinicActionRow">
+              <button type="button" data-clinic-select="vielle" data-access-mode="dashboard">Acessar dashboard</button>
+              <button class="secondary" type="button" data-clinic-select="vielle" data-access-mode="team">Modo equipe</button>
+            </div>
+          </article>
+
+          <article class="clinicAccessCard inspire">
+            <div>
+              <span>IN</span>
+              <small>Nova clínica</small>
+            </div>
+            <h2>Clínica Inspire</h2>
+            <p>Área separada para configurarmos as integrações e relatórios da Inspire.</p>
+            <button type="button" data-clinic-select="inspire">Acessar Inspire</button>
+          </article>
+
+          <article class="clinicAccessCard carla">
+            <div>
+              <span>CF</span>
+              <small>Nova clínica</small>
+            </div>
+            <h2>Dr. Carla Ferreira</h2>
+            <p>Dashboard separado para configurar Kommo, Clínica Experts, comercial e financeiro.</p>
+            <button type="button" data-clinic-select="carla">Acessar Carla</button>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <section id="clinicAccessModal" class="clinicAccessModal hidden" aria-hidden="true">
+      <form id="clinicAccessForm" class="clinicAccessBox">
+        <button id="clinicAccessClose" class="modalClose" type="button" aria-label="Fechar">×</button>
+        <p class="eyebrow">Acesso restrito</p>
+        <h2 id="clinicAccessTitle">Código da clínica</h2>
+        <span id="clinicAccessSubtitle">Digite o código de acesso para continuar.</span>
+        <label>
+          <span>Código de acesso</span>
+          <input id="clinicAccessCode" type="password" autocomplete="off" inputmode="text" placeholder="Digite o código">
+        </label>
+        <small id="clinicAccessError"></small>
+        <button type="submit">Entrar no dashboard</button>
+      </form>
+    </section>
+
+    <main id="dashboardShell" class="shell dashboardHidden">
+      <header class="topbar">
+        <div class="topbarBrand">
+          <img src="/doc4docs-logo-white.png" alt="DOC4DOCS">
+          <div>
+            <h1 id="dashboardTitle">DOC4DOCS</h1>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="changeClinicBtn" class="secondary" type="button">Trocar clínica</button>
+          <button id="exportPdfBtn" class="secondary" type="button">Exportar PDF</button>
+          <a id="settingsLink" class="buttonLink secondary" href="/settings.html">Configurações</a>
+          <button id="connectBtn" class="secondary">Conectar Kommo</button>
+          <button id="syncBtn">Atualizar</button>
+          <button id="syncClinicaBtn" class="secondary">Atualizar Clínica Experts</button>
+          <p id="clinicEyebrow" class="eyebrow clinicHeaderName">Vielle Clinic</p>
+        </div>
+      </header>
+      <section id="printStamp" class="printStamp"></section>
+
+      <button id="mobileTabsToggle" class="mobileTabsToggle" type="button" aria-expanded="false" aria-controls="viewTabs">
+        <span>Painel geral</span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+      <nav class="viewTabs" aria-label="Áreas do dashboard">
+        <button class="tabBtn active" type="button" data-view="generalView">Painel geral</button>
+        <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
+        <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>
+        <button class="tabBtn" type="button" data-view="patientFollowupView">Acompanhamento de Paciente</button>
+        <button class="tabBtn" type="button" data-view="quoteFollowupView">Acompanhamento de Orçamentos</button>
+        <button class="tabBtn" type="button" data-view="whatsappAuditView">Avaliação WhatsApp</button>
+        <button class="tabBtn" type="button" data-view="trafficView">Tráfego pago</button>
+      </nav>
+
+      <section class="filterPanel" aria-label="Filtros">
+        <div class="filterHead">
+          <h2>Filtros</h2>
+          <button id="selectAllBtn" class="secondary" type="button">Todos considerados</button>
+        </div>
+        <div class="filterGrid">
+          <label>
+            <span>Doutor(a)</span>
+            <select id="doctorFilter">
+              <option value="">Todos considerados</option>
+            </select>
+          </label>
+          <label>
+            <span>Vendedor</span>
+            <select id="sellerFilter">
+              <option value="">Todos considerados</option>
+            </select>
+          </label>
+          <label>
+            <span>De</span>
+            <input id="dateFrom" type="date">
+          </label>
+          <label>
+            <span>Ate</span>
+            <input id="dateTo" type="date">
+          </label>
+          <div class="pipelineSelect">
+            <span>Funis</span>
+            <details id="pipelineDropdown">
+              <summary>
+                <b id="pipelineSummary">Todos considerados</b>
+                <i>Selecionar</i>
+              </summary>
+              <div id="pipelineChoices" class="pipelineChoices"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="status" class="notice"></section>
+
+      <div id="commercialView" class="viewPanel">
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Leads x Agendamentos por doutor(a)</h2>
+            <span class="metaText">Funis considerados + Clínica Experts</span>
+          </div>
+          <div id="doctorCross" class="doctorCross"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Clínica Experts</h2>
+            <span id="clinicaStatus" class="metaText">-</span>
+          </div>
+          <div class="clinicaGrid">
+            <article>
+              <span>Pacientes</span>
+              <strong id="clinicaPatients">0</strong>
+            </article>
+            <article>
+              <span>Agendamentos</span>
+              <strong id="clinicaBookings">0</strong>
+            </article>
+            <article>
+              <span>Vendas</span>
+              <strong id="clinicaSales">0</strong>
+            </article>
+            <article>
+              <span>Total vendido</span>
+              <strong id="clinicaSalesTotal">R$ 0</strong>
+            </article>
+          </div>
+          <div id="clinicaBookingStatus" class="numberList"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Vendas e orçamentos</h2>
+            <span id="salesIntelligenceBasis" class="metaText">Clínica Experts</span>
+          </div>
+          <div id="salesPerformanceChart" class="salesPerformanceChart"></div>
+        </section>
+
+        <section class="insightGrid">
+          <div class="panel">
+            <div class="rankHead patient">
+              <span>♙</span>
+              <div>
+                <h2>Ranking de pacientes</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="topPatients" class="rankList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="rankHead procedure">
+              <span>✦</span>
+              <div>
+                <h2>Ranking de procedimentos</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="topProcedures" class="rankList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="rankHead category">
+              <span>◈</span>
+              <div>
+                <h2>Categorias de procedimento</h2>
+                <small>Clique para ver completo</small>
+              </div>
+            </div>
+            <div id="procedureCategories" class="rankList"></div>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Resumo">
+          <article>
+            <span>Novos leads</span>
+            <strong id="totalLeads">0</strong>
+          </article>
+          <article>
+            <span>Leads com última interação</span>
+            <strong id="interactedLeads">0</strong>
+          </article>
+          <article>
+            <span>Funis selecionados</span>
+            <strong id="totalPipelines">0</strong>
+          </article>
+          <article>
+            <span>Fases com leads</span>
+            <strong id="totalStatuses">0</strong>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Entrada de novos leads dia a dia</h2>
+            <span id="lastSync" class="metaText">-</span>
+          </div>
+          <div id="dailyChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Agendamentos dia a dia</h2>
+            <div class="panelHeadControls">
+              <span class="metaText">Base: Clínica Experts</span>
+              <label class="miniFilter">
+                <span>Usuário do registro</span>
+                <select id="bookingRegistryUserFilter">
+                  <option value="">Todos</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="bookingChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Última interação dia a dia</h2>
+            <span class="metaText">Base: Última modificação</span>
+          </div>
+          <div id="interactionChart" class="dailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Fases atuais de todos os leads</h2>
+            <span class="metaText">Base: fase atual no Kommo, fases iguais somadas</span>
+          </div>
+          <div id="statusColumnChart" class="statusRankChart"></div>
+        </section>
+
+      </div>
+
+      <div id="financialView" class="viewPanel">
+        <section class="financeHero panel">
+          <div class="panelHead">
+            <h2>Financeiro</h2>
+            <span id="financeBasis" class="metaText">Clínica Experts</span>
+          </div>
+          <div class="financeGrid">
+            <article class="income">
+              <span>Faturamento</span>
+              <strong id="financeIncome">R$ 0</strong>
+            </article>
+            <article class="income">
+              <span>Recebido</span>
+              <strong id="financeReceived">R$ 0</strong>
+            </article>
+            <article>
+              <span>A receber</span>
+              <strong id="financeReceivable">R$ 0</strong>
+            </article>
+            <article class="expense">
+              <span>Despesas</span>
+              <strong id="financeExpenses">R$ 0</strong>
+            </article>
+            <article class="expense">
+              <span>Pagas</span>
+              <strong id="financePaidExpenses">R$ 0</strong>
+            </article>
+            <article>
+              <span>Em aberto</span>
+              <strong id="financeOpenExpenses">R$ 0</strong>
+            </article>
+            <article>
+              <span>Saldo de caixa</span>
+              <strong id="financeCashBalance">R$ 0</strong>
+            </article>
+            <article>
+              <span>Resultado</span>
+              <strong id="financeBalance">R$ 0</strong>
+            </article>
+            <article>
+              <span>Ticket médio</span>
+              <strong id="financeAverageTicket">R$ 0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Entradas x saídas dia a dia</h2>
+            <span class="metaText">Por data financeira no Clínica Experts</span>
+          </div>
+          <div id="financeDailyChart" class="financeDailyChart"></div>
+        </section>
+
+        <section class="split financeSplit">
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Entradas por tipo</h2>
+            </div>
+            <div id="financeIncomeTypes" class="financeList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Saídas por categoria</h2>
+            </div>
+            <div id="financeExpenseTypes" class="financeList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panelHead">
+              <h2>Últimos lançamentos</h2>
+            </div>
+            <div id="financeRecent" class="financeRecent"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="generalView" class="viewPanel active">
+        <section class="generalExecutive">
+          <div class="generalBoard">
+            <section class="generalExecutiveHeader">
+              <div>
+                <span>Painel geral</span>
+                <h2 id="generalBoardTitle">Resumo mensal</h2>
+                <small id="generalGoalMonth">-</small>
+              </div>
+              <div class="generalControls">
+                <label>
+                  <span>Profissional</span>
+                  <select id="generalDoctorFilter">
+                    <option value="">Todos os profissionais</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Mês</span>
+                  <input id="generalMonth" type="month">
+                </label>
+                <button id="openGoalsModalBtn" type="button">Configurar metas</button>
+              </div>
+            </section>
+
+            <section class="generalHeroGrid">
+              <article class="generalMetric featured emphasisRevenue">
+                <span>Faturamento total</span>
+                <strong id="generalRevenue">R$ 0</strong>
+                <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
+                <div class="featuredFinanceSplit">
+                  <div>
+                    <span>Total de saídas</span>
+                    <b id="generalFeaturedExpenses">R$ 0</b>
+                  </div>
+                  <div>
+                    <span>Saldo</span>
+                    <b id="generalFeaturedBalance">R$ 0</b>
+                  </div>
+                </div>
+              </article>
+              <article class="generalMetric emphasisMargin">
+                <span>Margem 1</span>
+                <strong id="generalMarginOne">-</strong>
+                <small id="generalMarginOneProfit">Sem Pró-labore e Cursos</small>
+              </article>
+              <article class="generalMetric compact emphasisLeads">
+                <span>Leads</span>
+                <strong id="generalTotalLeads">0</strong>
+                <small>Entrada no mês</small>
+              </article>
+              <article class="generalMetric compact emphasisBookings">
+                <span>Agendamentos</span>
+                <strong id="generalTotalBookings">0</strong>
+                <small id="generalBookingConversion">Conversão: -</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Meta mensal</span>
+                <strong id="generalGoal">R$ 0</strong>
+                <small>Objetivo do mês</small>
+              </article>
+              <article class="generalMetric mediumMetric marginMetric">
+                <span>Margem 2</span>
+                <strong id="generalMarginTwo">-</strong>
+                <small id="generalMarginTwoProfit">Todas as saídas</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>% da meta</span>
+                <strong id="generalGoalRate">-</strong>
+                <small>Realizado até agora</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Projeção</span>
+                <strong id="generalProjection">R$ 0</strong>
+                <small id="generalProjectionHint">-</small>
+              </article>
+              <article class="generalMetric mediumMetric">
+                <span>Ticket médio</span>
+                <strong id="generalAverageTicket">R$ 0</strong>
+                <small>Por venda</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Pacientes diferentes</span>
+                <strong id="generalDistinctPatients">0</strong>
+                <small>Com vendas</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Quantidade de vendas</span>
+                <strong id="generalSalesCount">0</strong>
+                <small>Lançamentos</small>
+              </article>
+              <article class="generalMetric compact">
+                <span>Dias com faturamento</span>
+                <strong id="generalActiveDays">0</strong>
+                <small id="generalActiveDaysHint">No mês</small>
+              </article>
+            </section>
+
+            <section class="generalDashboardGrid">
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Evolução do faturamento diário</h2>
+                  <span class="metaText">Clínica Experts</span>
+                </div>
+                <div id="generalRevenueBarChart" class="generalRevenueChart"></div>
+                <div class="generalMicroStats">
+                  <span><b id="generalAverageActiveDay">R$ 0</b>Média por dia ativo</span>
+                  <span><b id="generalDailyAverage">R$ 0</b>Média diária geral</span>
+                  <span><b id="generalStrongDay">-</b>Dia mais forte</span>
+                  <span><b id="generalWeakDay">-</b>Dia mais fraco</span>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Faturamento acumulado</h2>
+                </div>
+                <div id="generalAccumulatedChart" class="generalSmallChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Vendas e ticket médio por dia</h2>
+                </div>
+                <div id="generalSalesTicketChart" class="generalComboChart"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Distribuição por faixa de valor</h2>
+                  <span class="metaText">Vendas</span>
+                </div>
+                <div id="generalValueRanges" class="generalValueRanges"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panelHead">
+                  <h2>Top pacientes</h2>
+                  <span class="metaText">Por faturamento</span>
+                </div>
+                <div id="generalTopPatients" class="generalTopList"></div>
+              </article>
+
+              <article class="panel generalWide">
+                <div class="panelHead">
+                  <h2>Leads x agendamentos por dia</h2>
+                  <span class="metaText">Kommo + Clínica Experts</span>
+                </div>
+                <div id="generalLeadBookingChart" class="generalComboChart"></div>
+              </article>
+
+              <section class="generalExpenseDashboard generalWide" aria-label="Painel de saídas">
+                <article class="panel generalFinanceSummary">
+                  <div class="panelHead">
+                    <h2>Painel de saídas</h2>
+                    <span class="metaText">Clínica Experts</span>
+                  </div>
+                  <div class="generalFinanceTotals">
+                    <div class="expenseHeroValue">
+                      <span>Total de saídas</span>
+                      <strong id="generalExpensesTotal">R$ 0</strong>
+                    </div>
+                    <div class="expenseMiniGrid">
+                      <span>Pago/recebido <b id="generalExpensesPaid">R$ 0</b></span>
+                      <span>Em aberto <b id="generalExpensesPending">R$ 0</b></span>
+                      <span>Saldo do período <b id="generalBalance">R$ 0</b></span>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="panel generalExpenseCategoryPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por categoria</h2>
+                    <span class="metaText">Valor + participação</span>
+                  </div>
+                  <div id="generalExpenseCategories" class="generalExpenseCategories"></div>
+                </article>
+
+                <article class="panel generalIncomePanel">
+                  <div class="panelHead">
+                    <h2>Entradas por tipo</h2>
+                    <span class="metaText">Receitas</span>
+                  </div>
+                  <div id="generalIncomeTypes" class="generalIncomeTypes"></div>
+                </article>
+
+                <article class="panel generalExpenseDailyPanel">
+                  <div class="panelHead">
+                    <h2>Saídas por dia</h2>
+                    <span class="metaText">Passe o mouse para detalhar</span>
+                  </div>
+                  <div id="generalExpenseDailyChart" class="generalExpenseBars"></div>
+                </article>
+              </section>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <div id="patientFollowupView" class="viewPanel">
+        <section class="patientFollowupHero panel">
+          <div class="panelHead">
+            <div>
+              <h2>Acompanhamento de Paciente</h2>
+              <span class="metaText">Recorrência por categoria de procedimento</span>
+            </div>
+            <span id="followupReferenceDate" class="metaText">Base: -</span>
+          </div>
+          <div class="followupMetricGrid">
+            <article class="followupMetric total">
+              <span>Pacientes monitorados</span>
+              <strong id="followupTotal">0</strong>
+              <small>Último procedimento por categoria</small>
+            </article>
+            <article class="followupMetric danger">
+              <span>RED flag</span>
+              <strong id="followupRed">0</strong>
+              <small>Passou do ponto ideal</small>
+            </article>
+            <article class="followupMetric attention">
+              <span>Contato agora</span>
+              <strong id="followupDue">0</strong>
+              <small>Dentro da janela comercial</small>
+            </article>
+            <article class="followupMetric done">
+              <span>Já contatados</span>
+              <strong id="followupContacted">0</strong>
+              <small>Com histórico registrado</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead patientFollowupHead">
+            <div>
+              <h2>Carteira de recorrência</h2>
+              <span class="metaText">Toxina Botulínica: 3º mês e RED no 5º · Preenchimento: 8, 10 e 12 meses</span>
+              <strong id="followupFilteredCount" class="followupFilteredCount">0 pacientes no filtro</strong>
+            </div>
+            <div class="followupControls">
+              <label>
+                <span>Carteira</span>
+                <select id="followupLostFilter">
+                  <option value="active">Ativos</option>
+                  <option value="won">Ganhos</option>
+                  <option value="lost">Perdidos</option>
+                  <option value="all">Todos</option>
+                </select>
+              </label>
+              <label>
+                <span>Contato</span>
+                <select id="followupContactFilter">
+                  <option value="">Todos</option>
+                  <option value="contacted">Já contatados</option>
+                  <option value="not_contacted">Não contatados</option>
+                </select>
+              </label>
+              <label>
+                <span>Categoria</span>
+                <select id="followupCategoryFilter">
+                  <option value="">Todas</option>
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="followupStatusFilter">
+                  <option value="">Todos</option>
+                  <option value="red">RED flag</option>
+                  <option value="due">Contato agora</option>
+                  <option value="warn">Reforço</option>
+                  <option value="monitor">Monitorar</option>
+                </select>
+              </label>
+              <label>
+                <span>Último procedimento de</span>
+                <input id="followupLastFrom" type="date">
+              </label>
+              <label>
+                <span>Até</span>
+                <input id="followupLastTo" type="date">
+              </label>
+            </div>
+          </div>
+          <div id="patientFollowupList" class="patientFollowupList"></div>
+        </section>
+      </div>
+
+      <div id="quoteFollowupView" class="viewPanel">
+        <section class="patientFollowupHero panel">
+          <div class="panelHead">
+            <div>
+              <h2>Acompanhamento de Orçamentos</h2>
+              <span class="metaText">Carteira comercial de orçamentos em aberto</span>
+            </div>
+            <span id="quoteFollowupReferenceDate" class="metaText">Base: -</span>
+          </div>
+          <div class="followupMetricGrid">
+            <article class="followupMetric total">
+              <span>Orçamentos em aberto</span>
+              <strong id="quoteFollowupTotal">0</strong>
+              <small id="quoteFollowupAmount">R$ 0 em carteira</small>
+            </article>
+            <article class="followupMetric danger">
+              <span>Urgentes</span>
+              <strong id="quoteFollowupRed">0</strong>
+              <small>14 dias ou mais em aberto</small>
+            </article>
+            <article class="followupMetric attention">
+              <span>Contato agora</span>
+              <strong id="quoteFollowupDue">0</strong>
+              <small>7 a 13 dias em aberto</small>
+            </article>
+            <article class="followupMetric done">
+              <span>Já contatados</span>
+              <strong id="quoteFollowupContacted">0</strong>
+              <small>Com histórico registrado</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead patientFollowupHead">
+            <div>
+              <h2>Carteira de orçamentos</h2>
+              <span class="metaText">Orçamentos fechados somem automaticamente quando a venda aparece no Clínica Experts</span>
+              <strong id="quoteFollowupFilteredCount" class="followupFilteredCount">0 orçamentos no filtro</strong>
+            </div>
+            <div class="followupControls">
+              <label>
+                <span>Carteira</span>
+                <select id="quoteFollowupStatusWallet">
+                  <option value="active">Ativos</option>
+                  <option value="won">Ganhos</option>
+                  <option value="lost">Perdidos</option>
+                  <option value="all">Todos</option>
+                </select>
+              </label>
+              <label>
+                <span>Contato</span>
+                <select id="quoteFollowupContactFilter">
+                  <option value="">Todos</option>
+                  <option value="contacted">Já contatados</option>
+                  <option value="not_contacted">Não contatados</option>
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select id="quoteFollowupStatusFilter">
+                  <option value="">Todos</option>
+                  <option value="red">Urgentes</option>
+                  <option value="due">Contato agora</option>
+                  <option value="monitor">Monitorar</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="quoteFollowupList" class="patientFollowupList"></div>
+        </section>
+      </div>
+
+      <div id="whatsappAuditView" class="viewPanel">
+        <section class="patientFollowupHero panel whatsappAuditHero">
+          <div class="panelHead">
+            <div>
+              <h2>Avaliação WhatsApp</h2>
+              <span class="metaText">Auditoria comercial dos atendimentos do Kommo</span>
+            </div>
+            <span id="whatsappAuditReferenceDate" class="metaText">Base: Kommo + Clínica Experts</span>
+          </div>
+          <div class="followupMetricGrid">
+            <article class="followupMetric total">
+              <span>Atendimentos no filtro</span>
+              <strong id="whatsappAuditTotal">0</strong>
+              <small>Leads com interação</small>
+            </article>
+            <article class="followupMetric done">
+              <span>Avaliados</span>
+              <strong id="whatsappAuditReviewed">0</strong>
+              <small>Salvos no banco</small>
+            </article>
+            <article class="followupMetric attention">
+              <span>Nota média</span>
+              <strong id="whatsappAuditAverage">-</strong>
+              <small>Escala de 0 a 100</small>
+            </article>
+            <article class="followupMetric danger">
+              <span>Críticos</span>
+              <strong id="whatsappAuditCritical">0</strong>
+              <small>Falha grave ou gravíssima</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel whatsappRubricPanel">
+          <div class="panelHead">
+            <div>
+              <h2>Critérios de pontuação</h2>
+              <span class="metaText">Começa em 100 pontos e perde conforme os desvios marcados</span>
+            </div>
+          </div>
+          <div id="whatsappAuditRubric" class="whatsappAuditRubric"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead patientFollowupHead">
+            <div>
+              <h2>Carteira de conversas</h2>
+              <span class="metaText">Cruzamento por telefone entre Kommo e Clínica Experts</span>
+              <strong id="whatsappAuditFilteredCount" class="followupFilteredCount">0 atendimentos no filtro</strong>
+            </div>
+            <div class="followupControls">
+              <label>
+                <span>Avaliação</span>
+                <select id="whatsappAuditReviewFilter">
+                  <option value="">Todos</option>
+                  <option value="pending">Pendentes</option>
+                  <option value="reviewed">Avaliados</option>
+                  <option value="critical">Críticos</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="whatsappAuditMessageNotice" class="auditMessageNotice"></div>
+          <div id="whatsappAuditList" class="patientFollowupList whatsappAuditList"></div>
+        </section>
+      </div>
+
+      <div id="trafficView" class="viewPanel">
+        <section class="trafficHero panel">
+          <div class="panelHead">
+            <h2>Tráfego pago</h2>
+            <span id="trafficBasis" class="metaText">Meta Ads</span>
+          </div>
+          <div class="trafficActions">
+            <div>
+              <strong id="trafficAccount">Conta de anúncios</strong>
+              <span id="trafficLastSync">Aguardando sincronização</span>
+            </div>
+            <button id="syncTrafficBtn" type="button">Atualizar Tráfego Pago</button>
+          </div>
+          <div class="trafficMetricGrid">
+            <article class="trafficMetric emphasisRevenue">
+              <span>Investimento</span>
+              <strong id="trafficSpend">R$ 0</strong>
+              <small>Valor gasto no período</small>
+            </article>
+            <article class="trafficMetric emphasisLeads">
+              <span>Leads Meta</span>
+              <strong id="trafficLeads">0</strong>
+              <small>Resultados de lead</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Impressões</span>
+              <strong id="trafficImpressions">0</strong>
+              <small>Exibições</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Alcance</span>
+              <strong id="trafficReach">0</strong>
+              <small>Pessoas alcançadas</small>
+            </article>
+            <article class="trafficMetric">
+              <span>Cliques</span>
+              <strong id="trafficClicks">0</strong>
+              <small>Cliques totais</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CTR</span>
+              <strong id="trafficCtr">-</strong>
+              <small>Cliques / impressões</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CPC</span>
+              <strong id="trafficCpc">-</strong>
+              <small>Custo por clique</small>
+            </article>
+            <article class="trafficMetric">
+              <span>CPL</span>
+              <strong id="trafficCpl">-</strong>
+              <small>Custo por lead</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Investimento e leads dia a dia</h2>
+            <span class="metaText">Passe o mouse para detalhar</span>
+          </div>
+          <div id="trafficDailyChart" class="trafficDailyChart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHead">
+            <h2>Campanhas</h2>
+            <span class="metaText">Ordenado por investimento</span>
+          </div>
+          <div id="trafficCampaigns" class="trafficCampaigns"></div>
+        </section>
+      </div>
+
+      <div id="rankModal" class="rankModal" hidden>
+        <button class="rankModalBackdrop" type="button" data-rank-close aria-label="Fechar ranking"></button>
+        <section class="rankModalPanel" role="dialog" aria-modal="true" aria-labelledby="rankModalTitle">
+          <header>
+            <div>
+              <p class="eyebrow">Vielle Clinic</p>
+              <h2 id="rankModalTitle">Ranking completo</h2>
+            </div>
+            <button id="rankModalClose" class="secondary" type="button" data-rank-close>Fechar</button>
+          </header>
+          <div id="rankModalBody" class="rankModalBody"></div>
+        </section>
+      </div>
+
+      <div id="goalsModal" class="rankModal" hidden>
+        <button class="rankModalBackdrop" type="button" data-goals-close aria-label="Fechar metas"></button>
+        <section class="rankModalPanel goalsModalPanel" role="dialog" aria-modal="true" aria-labelledby="goalsModalTitle">
+          <header>
+            <div>
+              <span>Configuração</span>
+              <h2 id="goalsModalTitle">Metas mensais por doutor(a)</h2>
+              <small id="goalsModalMonth">-</small>
+            </div>
+            <button class="secondary" type="button" data-goals-close>Fechar</button>
+          </header>
+          <div class="goalsModalControls">
+            <label>
+              <span>Mês</span>
+              <input id="goalsModalMonthInput" type="month">
+            </label>
+            <button id="saveMonthlyGoalBtn" type="button">Salvar metas</button>
+          </div>
+          <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
+        </section>
+      </div>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+.env
+*.sqlite3
+data.db
+.git.broken-*/
+__pycache__/
+*.pyc
+.DS_Store
