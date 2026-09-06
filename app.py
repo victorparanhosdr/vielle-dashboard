@@ -65,6 +65,46 @@ CLINIC_SCOPED_CONFIG_KEYS = {
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
 }
+SQLITE_BUSY_TIMEOUT_MS = 60000
+SQLITE_RETRY_ATTEMPTS = 8
+SQLITE_RETRY_INITIAL_DELAY = 0.12
+
+
+def sqlite_is_locked_error(exc):
+    message = str(exc).lower()
+    return isinstance(exc, sqlite3.OperationalError) and (
+        "database is locked" in message or "database is busy" in message
+    )
+
+
+def sqlite_retry(operation):
+    delay = SQLITE_RETRY_INITIAL_DELAY
+    for attempt in range(SQLITE_RETRY_ATTEMPTS):
+        try:
+            return operation()
+        except sqlite3.OperationalError as exc:
+            if not sqlite_is_locked_error(exc) or attempt >= SQLITE_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 1.8, 2.0)
+
+
+class RetryingSQLiteConnection(sqlite3.Connection):
+    def execute(self, *args, **kwargs):
+        execute = super().execute
+        return sqlite_retry(lambda: execute(*args, **kwargs))
+
+    def executemany(self, *args, **kwargs):
+        executemany = super().executemany
+        return sqlite_retry(lambda: executemany(*args, **kwargs))
+
+    def executescript(self, *args, **kwargs):
+        executescript = super().executescript
+        return sqlite_retry(lambda: executescript(*args, **kwargs))
+
+    def commit(self):
+        commit = super().commit
+        return sqlite_retry(commit)
 
 
 def load_env():
@@ -703,8 +743,16 @@ def clinic_env_value(key):
 
 
 def db():
-    conn = sqlite3.connect(clinic_db_path())
+    conn = sqlite3.connect(
+        clinic_db_path(),
+        timeout=SQLITE_BUSY_TIMEOUT_MS / 1000,
+        factory=RetryingSQLiteConnection,
+    )
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
