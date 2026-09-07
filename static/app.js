@@ -858,6 +858,21 @@ function renderGeneralAccumulatedChart(items) {
   const yFor = value => pad.top + chartH - (value / max) * chartH;
   const path = prepared.map((item, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFor(item.total).toFixed(1)}`).join(" ");
   const area = `${path} L ${xFor(prepared.length - 1).toFixed(1)} ${pad.top + chartH} L ${xFor(0).toFixed(1)} ${pad.top + chartH} Z`;
+  const tooltipFor = (item, index) => {
+    const label = `${formatDay(item.day)} · ${brl.format(item.total || 0)}`;
+    const tooltipWidth = Math.max(108, Math.min(158, label.length * 6.7));
+    const tooltipHeight = 26;
+    const pointX = xFor(index);
+    const pointY = yFor(item.total);
+    const tooltipX = Math.max(6, Math.min(width - tooltipWidth - 6, pointX - tooltipWidth / 2));
+    const tooltipY = Math.max(6, pointY - tooltipHeight - 12);
+    return `
+      <g class="generalAccumulatedTooltip" transform="translate(${tooltipX.toFixed(1)} ${tooltipY.toFixed(1)})">
+        <rect width="${tooltipWidth.toFixed(1)}" height="${tooltipHeight}" rx="9"></rect>
+        <text x="${(tooltipWidth / 2).toFixed(1)}" y="17">${label}</text>
+      </g>
+    `;
+  };
   el.innerHTML = `
     <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento acumulado">
       <defs>
@@ -870,10 +885,11 @@ function renderGeneralAccumulatedChart(items) {
       <path class="generalAccumulatedArea" d="${area}"></path>
       <path class="generalAccumulatedLine" d="${path}"></path>
       ${prepared.map((item, index) => `
-        <g class="generalAccumulatedPoint">
+        <g class="generalAccumulatedPoint" tabindex="0">
           <circle cx="${xFor(index).toFixed(1)}" cy="${yFor(item.total).toFixed(1)}" r="5"></circle>
           <rect x="${(xFor(index) - 10).toFixed(1)}" y="${pad.top}" width="20" height="${chartH}" rx="8"></rect>
           <title>${formatDay(item.day)} · acumulado ${brl.format(item.total || 0)}</title>
+          ${tooltipFor(item, index)}
         </g>
       `).join("")}
       ${prepared.map((item, index) => index % Math.ceil(prepared.length / 5) ? "" : `<text class="pointDate" x="${xFor(index)}" y="${height - 8}">${formatShortDay(item.day)}</text>`).join("")}

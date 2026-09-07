@@ -1249,7 +1249,38 @@ button.danger {
   fill: transparent;
 }
 
-.generalAccumulatedPoint:hover circle {
+.generalAccumulatedPoint {
+  outline: none;
+}
+
+.generalAccumulatedPoint:hover circle,
+.generalAccumulatedPoint:focus circle {
+  opacity: 1;
+}
+
+.generalAccumulatedTooltip {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.generalAccumulatedTooltip rect {
+  fill: rgba(9, 45, 37, .94);
+  stroke: rgba(221, 213, 199, .45);
+  stroke-width: 1;
+  filter: drop-shadow(0 8px 16px rgba(9, 31, 26, .22));
+}
+
+.generalAccumulatedTooltip text {
+  fill: #FFFFFF;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-anchor: middle;
+}
+
+.generalAccumulatedPoint:hover .generalAccumulatedTooltip,
+.generalAccumulatedPoint:focus .generalAccumulatedTooltip {
   opacity: 1;
 }
 
