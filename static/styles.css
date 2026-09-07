@@ -1873,6 +1873,20 @@ button.danger {
   white-space: nowrap;
 }
 
+@media (max-width: 1100px) {
+  .generalExpenseDashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .generalExpenseCategoryPanel {
+    grid-row: auto;
+  }
+
+  .generalExpenseCategories {
+    grid-template-columns: minmax(210px, .46fr) minmax(0, 1fr);
+  }
+}
+
 .generalQuickCard {
   grid-row: auto;
 }
@@ -4542,8 +4556,75 @@ select {
   .generalDashboardGrid,
   .generalHeroGrid,
   .generalDonutWrap,
-  .generalMicroStats {
+  .generalMicroStats,
+  .generalExpenseDashboard {
     grid-template-columns: 1fr;
+  }
+
+  .generalExpenseCategoryPanel {
+    grid-row: auto;
+  }
+
+  .generalExpenseCategories {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .expenseDonutBlock {
+    min-width: 0;
+  }
+
+  .expenseDonut {
+    width: min(238px, 72vw);
+    margin: 0 auto;
+  }
+
+  .expenseDonut svg {
+    max-width: 100%;
+  }
+
+  .expenseCategoryRows {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .expenseCategoryRow {
+    grid-template-columns: 10px minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 0 12px;
+  }
+
+  .expenseCategoryRow b {
+    grid-column: 2;
+    width: max-content;
+    max-width: 100%;
+    margin-top: -4px;
+    font-size: 13px;
+  }
+
+  .expenseCategoryRow strong,
+  .expenseCategoryRow small {
+    white-space: normal;
+  }
+
+  .expenseCategoryRow span {
+    width: 100%;
+  }
+
+  .expenseMiniGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .expenseMiniGrid span:last-child {
+    grid-column: auto;
+  }
+
+  .expenseMiniGrid b {
+    font-size: clamp(18px, 7vw, 25px);
+    white-space: normal;
+    word-break: break-word;
   }
 
   .generalMetric.featured,
