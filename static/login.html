@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Entrar | DOC4DOCS</title>
+    <link rel="stylesheet" href="/login.css">
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <main class="loginShell">
+      <header class="loginBrand">
+        <img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="280" height="130">
+        <p>Criado por doutores. Para doutores.</p>
+      </header>
+      <section class="loginPanel" aria-labelledby="loginTitle">
+        <h1 id="loginTitle">Acessar conta</h1>
+        <form id="loginForm">
+          <label for="login">Login</label>
+          <input id="login" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
+          <label for="password">Senha</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <p id="loginError" class="loginError" role="alert" aria-live="polite"></p>
+          <button id="loginSubmit" type="submit">Entrar</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

@@ -25,6 +25,10 @@ from http.cookies import SimpleCookie
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
+from auth_store import AuthStore, auth_database_path
+from auth_http import LoginLimiter, SessionAuthMixin
+from master_api import MasterApiMixin
+
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 DATA_DIR = Path(
@@ -41,7 +45,8 @@ DB_PATH = DATA_DIR / "kommo_report.sqlite3"
 CLINICA_HISTORY_START_DEFAULT = "2025-01-01"
 CLINICA_FOLLOWUP_START_DEFAULT = "2025-01-01"
 CURRENT_CLINIC_ID = contextvars.ContextVar("CURRENT_CLINIC_ID", default="vielle")
-SUPPORTED_CLINICS = ("vielle", "inspire", "carla")
+from clinic_catalog import SUPPORTED_CLINICS, CLINIC_DISPLAY_NAMES
+from access_policy import MODULES, ACTION_LABELS, project_report
 CLINICA_BACKGROUND_SYNC_LOCK = threading.Lock()
 CLINICA_BACKGROUND_SYNC_STATE = {}
 FOLLOWUP_CALLERS = ("Emerson", "Mariana", "Ayrton", "Victor")
@@ -257,12 +262,6 @@ CLINIC_DOCTOR_CROSS_HIDDEN = {
 
 CLINIC_FORCED_PROFESSIONAL_MATCHES = {
     "victor": (("victor",), ("paranhos", "andrade")),
-}
-
-CLINIC_DISPLAY_NAMES = {
-    "vielle": "Vielle Clinic",
-    "inspire": "Clínica Inspire",
-    "carla": "Dr. Carla Ferreira",
 }
 
 PROCEDURE_CATEGORY_RULES = [
@@ -6788,12 +6787,9 @@ def render_kommo_widget(report, clinic_id, period):
 </html>"""
 
 
-class Handler(SimpleHTTPRequestHandler):
+class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
-
-    def require_dashboard_auth(self):
-        return True
 
     def request_clinic_id(self, parsed):
         params = urllib.parse.parse_qs(parsed.query)
@@ -6804,15 +6800,8 @@ class Handler(SimpleHTTPRequestHandler):
         return normalize_access_mode(params.get("modo", params.get("mode", ["dashboard"]))[0])
 
     def has_clinic_access(self, clinic_id, access_mode="dashboard"):
-        mode = normalize_access_mode(access_mode)
-        if mode == "team" and self.has_clinic_access(clinic_id, "dashboard"):
-            return True
-        expected_code = clinic_access_code(clinic_id, mode)
-        if not expected_code:
-            return False
-        cookie = SimpleCookie(self.headers.get("Cookie", ""))
-        morsel = cookie.get(clinic_access_cookie_name(clinic_id, mode))
-        return bool(morsel) and hmac.compare_digest(morsel.value, clinic_access_signature(clinic_id, mode))
+        user = getattr(self, "current_user", None)
+        return bool(user and self.server.auth_store.user_can_access_clinic(user["id"], clinic_id))
 
     def require_clinic_access(self, parsed):
         clinic_id = self.request_clinic_id(parsed)
@@ -6821,28 +6810,9 @@ class Handler(SimpleHTTPRequestHandler):
             return True
         return json_response(
             self,
-            {"ok": False, "error": "Código de acesso obrigatório para esta clínica."},
-            HTTPStatus.UNAUTHORIZED,
+            {"ok": False, "code": "clinic_forbidden", "error": "Você não possui acesso a esta clínica."},
+            HTTPStatus.FORBIDDEN,
         )
-
-    def require_master_auth(self):
-        expected_user = config_value("MASTER_USER", "master") or "master"
-        expected_password = (
-            config_value("MASTER_PASSWORD", "")
-            or config_value("DASHBOARD_PASSWORD", "")
-        )
-        username = self.headers.get("X-Master-User", "")
-        password = self.headers.get("X-Master-Password", "")
-        if not expected_password:
-            return hmac.compare_digest(username, expected_user)
-        if hmac.compare_digest(username, expected_user) and hmac.compare_digest(password, expected_password):
-            return True
-        json_response(
-            self,
-            {"ok": False, "error": "Acesso master inválido."},
-            HTTPStatus.UNAUTHORIZED,
-        )
-        return False
 
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -6855,6 +6825,22 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if self.handle_master_api(parsed):
+            return
+        if parsed.path == "/api/export-authorize":
+            return self.auth_json({"ok": True})
+        if parsed.path == "/api/auth/me":
+            keys = self.server.auth_store.allowed_clinics(self.current_user["id"])
+            return self.auth_json({"ok": True, "user": self.current_user,
+                                   "clinics": [{"key": key, "name": CLINIC_DISPLAY_NAMES[key]} for key in keys],
+                                   "permissions": {key: self.server.auth_store.user_permissions(self.current_user["id"], key) for key in keys},
+                                   "modules": MODULES, "actions": ACTION_LABELS})
+        if parsed.path in ("/master", "/master/"):
+            self.path = "/master.html"
+            return super().do_GET()
+        if parsed.path == "/login":
+            self.path = "/login.html"
+            return super().do_GET()
         if parsed.path.startswith("/static/"):
             self.path = "/" + parsed.path.removeprefix("/static/")
             if parsed.query:
@@ -6884,10 +6870,12 @@ class Handler(SimpleHTTPRequestHandler):
                 params = urllib.parse.parse_qs(parsed.query)
                 try:
                     args = query_report_args(params)
+                    module = self.report_module
+                    args.update(include_followup=module == "patient_followup", include_quote_followup=module == "budget_followup", include_whatsapp_audit=module == "whatsapp_review")
                 except ValueError:
                     return json_response(self, {"ok": False, "error": "pipeline_ids invalido"}, HTTPStatus.BAD_REQUEST)
                 try:
-                    return json_response(self, report_data(**args))
+                    return json_response(self, project_report(report_data(**args), module))
                 except ValueError as exc:
                     return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         if parsed.path == "/api/export-pdf":
@@ -7000,14 +6988,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return redirect(self, f"/?error={urllib.parse.quote(str(exc))}")
         if parsed.path == "/webhooks/revoked":
             params = urllib.parse.parse_qs(parsed.query)
+            if not sign_revoke_query(params):
+                return json_response(self, {"ok": False, "error": "Assinatura inválida."}, HTTPStatus.UNAUTHORIZED)
             with db() as conn:
                 conn.execute("delete from oauth_tokens where id = 1")
-            ok = sign_revoke_query(params)
-            return json_response(self, {"ok": ok, "message": "Integracao marcada como desconectada."})
+            return json_response(self, {"ok": True, "message": "Integracao marcada como desconectada."})
         return super().do_GET()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+        if self.handle_session_post(parsed.path):
+            return
         if parsed.path == "/api/clinica-webhook":
             params = urllib.parse.parse_qs(parsed.query)
             with clinic_context(self.request_clinic_id(parsed)):
@@ -7032,27 +7023,22 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
         if not self.require_dashboard_auth():
             return
+        if self.handle_master_api(parsed):
+            return
         if parsed.path == "/api/clinic-access":
             try:
                 payload = self.read_json_body()
             except Exception:
                 return json_response(self, {"ok": False, "error": "JSON inválido."}, HTTPStatus.BAD_REQUEST)
-            clinic_id = normalize_clinic_id(payload.get("clinic_id", "vielle"))
+            if not isinstance(payload, dict):
+                return self.auth_json({"ok": False, "error": "JSON inválido."}, 400)
+            clinic_id = payload.get("clinic_id", "vielle")
+            if not self.require_user_clinic(clinic_id):
+                return
             access_mode = normalize_access_mode(payload.get("access_mode", "dashboard"))
-            expected_code = clinic_access_code(clinic_id, access_mode)
-            received_code = str(payload.get("access_code", "")).strip()
-            if not expected_code:
-                return json_response(
-                    self,
-                    {"ok": False, "error": "Código desta clínica ainda não foi configurado no servidor."},
-                    HTTPStatus.BAD_REQUEST,
-                )
-            if not hmac.compare_digest(received_code, expected_code):
-                return json_response(self, {"ok": False, "error": "Código incorreto. Confira e tente novamente."}, HTTPStatus.UNAUTHORIZED)
             return json_response(
                 self,
                 {"ok": True, "clinic_id": clinic_id, "access_mode": access_mode},
-                headers={"Set-Cookie": clinic_access_cookie(clinic_id, access_mode)},
             )
         if parsed.path == "/api/settings":
             if not self.require_master_auth():
@@ -7250,11 +7236,15 @@ def background_sync():
 
 
 if __name__ == "__main__":
+    auth_store = AuthStore(auth_database_path(BASE_DIR))
+    auth_store.initialize()
     for clinic_id in SUPPORTED_CLINICS:
         with clinic_context(clinic_id):
             apply_kommo_reset_if_needed()
     thread = threading.Thread(target=background_sync, daemon=True)
     thread.start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    server.auth_store = auth_store
+    server.login_limiter = LoginLimiter()
     print(f"Relatorio Kommo rodando em http://localhost:{PORT}")
     server.serve_forever()

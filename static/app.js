@@ -163,8 +163,8 @@ function clinicaPatientUrl(item) {
 function buildQuery() {
   const params = new URLSearchParams();
   if (state.selectedClinic) params.set("clinic", state.selectedClinic);
+  params.set("view", state.activeView);
   if (state.followupOnlyMode) {
-    params.set("view", "patientFollowupView");
     params.set("modo", "equipe");
   }
   if (state.activeView === "generalView") {
@@ -294,6 +294,7 @@ function render() {
   renderStatusColumnChart(report.all_current_status || []);
 
   applyClinicHeader();
+  applyActionPermissions();
   const clinic = clinics[state.selectedClinic] || clinics.vielle;
   const lastSync = report.last_sync;
   const clinicaBackgroundSync = report.clinica_experts?.background_sync || {};
@@ -362,18 +363,10 @@ function updateMobileTabsToggle() {
 }
 
 function applyActiveViewState() {
-  const supportsFollowup = clinicSupportsFollowup();
-  if (!supportsFollowup && state.followupOnlyMode) {
-    state.followupOnlyMode = false;
-    state.activeView = "generalView";
-  }
-  if (state.followupOnlyMode) state.activeView = "patientFollowupView";
-  if (!supportsFollowup && state.activeView === "patientFollowupView") {
-    state.activeView = "generalView";
-  }
+  const views = permittedViews();
+  if (!views.includes(state.activeView)) state.activeView = views[0] || "";
   document.querySelectorAll(".tabBtn").forEach(tab => {
-    const isFollowupTab = tab.dataset.view === "patientFollowupView";
-    tab.hidden = isFollowupTab && !supportsFollowup;
+    tab.hidden = !views.includes(tab.dataset.view);
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
   document.querySelectorAll(".viewPanel").forEach(panel => {
@@ -381,13 +374,14 @@ function applyActiveViewState() {
   });
   const monthMode = state.activeView === "generalView";
   document.body.classList.toggle("generalMode", monthMode);
-  document.body.classList.toggle("followupOnlyMode", state.followupOnlyMode);
+  document.body.classList.remove("followupOnlyMode");
   const dateFrom = document.getElementById("dateFrom");
   const dateTo = document.getElementById("dateTo");
   if (dateFrom) dateFrom.disabled = monthMode;
   if (dateTo) dateTo.disabled = monthMode;
   if (monthMode) normalizeGeneralMonth();
   updateMobileTabsToggle();
+  applyActionPermissions();
 }
 
 function accessModeKey() {
@@ -422,38 +416,103 @@ function closeClinicAccessModal() {
   modal.dataset.accessMode = "";
 }
 
-function requestClinicAccess(clinicId, updateUrl = true, mode = accessModeKey()) {
-  const validClinicId = clinics[clinicId] ? clinicId : "vielle";
-  state.followupOnlyMode = mode === "team";
-  if (state.followupOnlyMode) state.activeView = "patientFollowupView";
-  const hasCurrentModeAccess = sessionStorage.getItem(clinicAccessKey(validClinicId, mode)) === "ok";
-  const hasDashboardAccess = mode === "team" && sessionStorage.getItem(clinicAccessKey(validClinicId, "dashboard")) === "ok";
-  if (hasCurrentModeAccess || hasDashboardAccess) {
-    selectClinic(validClinicId, updateUrl);
-    return;
+let allowedClinics = null, accessPermissions = {}, accessModules = {}, sessionMaster = false, unavailableClinic = "";
+
+function canAccess(permission, clinic = state.selectedClinic) {
+  return Boolean(accessPermissions[clinic]?.includes(permission));
+}
+function activeModule() { return Object.keys(accessModules).find(key => accessModules[key].view === state.activeView); }
+function permittedViews(clinic = state.selectedClinic) {
+  return Object.entries(accessModules).filter(([key]) => canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
+}
+function applyActionPermissions() {
+  const controls = {openGoalsModalBtn:"dashboard.edit", saveMonthlyGoalBtn:"dashboard.edit", syncTrafficBtn:"paid_traffic.edit", exportPdfBtn:`${activeModule()}.export`};
+  Object.entries(controls).forEach(([id,key]) => { const element=document.getElementById(id);if(element)element.hidden=!canAccess(key); });
+  ["syncBtn", "syncClinicaBtn", "connectBtn"].forEach(id=>{const element=document.getElementById(id);if(element)element.hidden=!sessionMaster;});
+  document.querySelectorAll(".followupForm").forEach(form=>{
+    const allowed=canAccess(form.classList.contains("quoteFollowupForm")?"budget_followup.create":"patient_followup.create");
+    form.hidden=!allowed;const summary=form.closest("details")?.querySelector("summary");if(summary)summary.textContent=allowed?"Registrar novo contato":"Histórico de contatos";
+  });
+  document.querySelectorAll(".followupStatusForm").forEach(form=>{form.closest("details").hidden=!canAccess(form.classList.contains("quoteFollowupStatusForm")?"budget_followup.edit":"patient_followup.edit");});
+  document.querySelectorAll(".followupRestoreBtn").forEach(button=>{button.hidden=!canAccess("patient_followup.edit");});
+  document.querySelectorAll(".quoteFollowupRestoreBtn").forEach(button=>{button.hidden=!canAccess("budget_followup.edit");});
+  document.querySelectorAll("[data-whatsapp-ai]").forEach(button=>{button.hidden=!canAccess("whatsapp_review.edit");});
+  document.querySelectorAll(".auditReviewForm input,.auditReviewForm select,.auditReviewForm textarea,.auditReviewForm button").forEach(element=>{element.disabled=!canAccess("whatsapp_review.edit");});
+}
+
+function clearClinicSelection(message) {
+  state.selectedClinic = "";
+  state.report = null;
+  localStorage.removeItem("selectedClinic");
+  closeClinicAccessModal();
+  showClinicLanding();
+  document.getElementById("clinicAccessState").textContent = message;
+}
+
+function updateAllowedClinics(data) {
+  const previous = JSON.stringify(accessPermissions);
+  accessPermissions = data.permissions || {};
+  accessModules = data.modules || {};
+  sessionMaster = Boolean(data.user?.is_master);
+  allowedClinics = new Set((data.clinics || []).map(clinic => clinic.key).filter(key => clinics[key]));
+  document.querySelectorAll("[data-clinic-card]").forEach(card => { card.hidden = !allowedClinics.has(card.dataset.clinicCard); });
+  document.querySelectorAll('[data-access-mode="team"]').forEach(button=>{button.hidden=!canAccess("patient_followup.view",button.dataset.clinicSelect);});
+  document.getElementById("clinicAccessState").textContent = !allowedClinics.size ? "Você não possui acesso liberado a nenhuma clínica. Entre em contato com o Master." : [...allowedClinics].some(clinic=>permittedViews(clinic).length) ? "" : "Nenhuma aba liberada nesta clínica. Entre em contato com o Master.";
+  if (unavailableClinic && allowedClinics.has(unavailableClinic) && !permittedViews(unavailableClinic).length) document.getElementById("clinicAccessState").textContent = "Nenhuma aba liberada nesta clínica. Entre em contato com o Master.";
+  if (state.selectedClinic && !allowedClinics.has(state.selectedClinic)) {
+    clearClinicSelection("O acesso a esta clínica foi removido. Selecione uma clínica permitida ou fale com o Master.");
   }
-  state.selectedClinic = validClinicId;
-  state.report = emptyReportForClinic(validClinicId);
-  state.allPipelines = [];
-  state.allDoctors = [];
-  state.allGeneralDoctors = [];
-  state.allSellers = [];
-  state.allBookingRegistryUsers = [];
-  state.selectedPipelines.clear();
-  state.selectedDoctor = "";
-  state.selectedGeneralDoctor = "";
-  state.selectedSeller = "";
-  state.selectedBookingRegistryUser = "";
-  state.dateFrom = "";
-  state.dateTo = "";
-  localStorage.setItem("selectedClinic", state.selectedClinic);
-  showDashboard();
-  render();
-  openClinicAccessModal(validClinicId, mode);
+  if (state.selectedClinic && allowedClinics.has(state.selectedClinic) && previous !== JSON.stringify(accessPermissions)) {
+    state.report = null;
+    if (!permittedViews().length) clearClinicSelection("Nenhuma aba liberada nesta clínica. Entre em contato com o Master.");
+    else { applyActiveViewState(); render(); loadReport(); }
+  }
+}
+
+async function initializeClinicAccess() {
+  document.getElementById("retryClinicAccess").hidden = true;
+  try {
+    const response = await fetch("/api/auth/me");
+    if (!response.ok) throw new Error("Não foi possível consultar suas clínicas. Tente novamente.");
+    updateAllowedClinics(await response.json());
+    const requested = new URLSearchParams(window.location.search).get("clinic");
+    if (requested && !allowedClinics.has(requested)) {
+      clearClinicSelection("Você não possui acesso a esta clínica. Selecione uma das clínicas liberadas.");
+    } else if (requested || allowedClinics.size === 1) {
+      requestClinicAccess(requested || [...allowedClinics][0], !requested, accessModeKey());
+    } else {
+      showClinicLanding();
+    }
+  } catch (error) {
+    allowedClinics = null;
+    document.querySelectorAll("[data-clinic-card]").forEach(card => { card.hidden = true; });
+    clearClinicSelection(error.message);
+    document.getElementById("retryClinicAccess").hidden = false;
+  }
+}
+
+window.addEventListener("doc4docs-session", event => { if (allowedClinics) updateAllowedClinics(event.detail); });
+window.addEventListener("doc4docs-clinic-forbidden", () => {
+  clearClinicSelection("Você não possui mais acesso a esta clínica.");
+  initializeClinicAccess();
+});
+window.addEventListener("doc4docs-permission-denied", () => {
+  clearClinicSelection("Suas permissões foram alteradas. Atualizando acesso...");
+  initializeClinicAccess();
+});
+
+function requestClinicAccess(clinicId, updateUrl = true, mode = accessModeKey()) {
+  if (!allowedClinics?.has(clinicId)) return;
+  if (!permittedViews(clinicId).length) { unavailableClinic=clinicId;clearClinicSelection("Nenhuma aba liberada nesta clínica. Entre em contato com o Master.");return; }
+  unavailableClinic="";
+  state.followupOnlyMode = mode === "team" && clinicId === "vielle";
+  if (state.followupOnlyMode && canAccess("patient_followup.view",clinicId)) state.activeView = "patientFollowupView";
+  selectClinic(clinicId, updateUrl);
 }
 
 function selectClinic(clinicId, updateUrl = true) {
-  state.selectedClinic = clinics[clinicId] ? clinicId : "vielle";
+  if (!allowedClinics?.has(clinicId)) return;
+  state.selectedClinic = clinicId;
   state.report = null;
   state.allPipelines = [];
   state.allDoctors = [];
@@ -473,8 +532,9 @@ function selectClinic(clinicId, updateUrl = true) {
   if (updateUrl) {
     const params = new URLSearchParams(window.location.search);
     params.set("clinic", state.selectedClinic);
+    params.delete("view");
     if (state.followupOnlyMode) {
-      params.set("view", "patientFollowupView");
+      params.set("view", state.activeView);
       params.set("modo", "equipe");
     }
     history.pushState(null, "", `${window.location.pathname}?${params.toString()}`);
@@ -1769,6 +1829,7 @@ function renderPatientFollowupList() {
     ? `<div class="followupMore"><button type="button" id="followupShowMore">Mostrar mais ${integerFormat(Math.min(24, remaining))} de ${integerFormat(remaining)} pacientes</button></div>`
     : "";
   container.innerHTML = `${cardsHtml}${moreHtml}`;
+  applyActionPermissions();
 }
 
 async function savePatientFollowupContact(event) {
@@ -2030,6 +2091,7 @@ function renderQuoteFollowupList() {
     ? `<div class="followupMore"><button type="button" id="quoteFollowupShowMore">Mostrar mais ${integerFormat(Math.min(24, remaining))} de ${integerFormat(remaining)} orçamentos</button></div>`
     : "";
   container.innerHTML = `${cardsHtml}${moreHtml}`;
+  applyActionPermissions();
 }
 
 async function saveQuoteFollowupContact(event) {
@@ -2324,6 +2386,7 @@ function renderWhatsappAuditList() {
       <button type="button" id="whatsappAuditShowMore" data-whatsapp-audit-more>Mostrar mais ${integerFormat(items.length - visible.length)}</button>
     </div>
   ` : "");
+  applyActionPermissions();
 }
 
 async function saveWhatsappAuditReview(event) {
@@ -2921,18 +2984,19 @@ function formatFullDay(day) {
 }
 
 async function loadReport() {
+  if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
     showClinicLanding();
     return;
   }
+  const requestedClinic = state.selectedClinic;
+  const requestedView = state.activeView;
   try {
     const res = await fetch(`/api/report${buildQuery()}`);
     const payload = await res.json();
+    if (state.selectedClinic !== requestedClinic || state.activeView !== requestedView || !allowedClinics?.has(requestedClinic)) return;
     if (res.status === 401) {
-      sessionStorage.removeItem(clinicAccessKey(state.selectedClinic));
-      showDashboard();
-      openClinicAccessModal(state.selectedClinic);
-      showNotice(payload.error || "Digite o código de acesso para continuar.");
+      showNotice(payload.error || "Entre novamente para continuar.");
       return;
     }
     if (!res.ok || payload.ok === false) {
@@ -3055,30 +3119,34 @@ function friendlyError(message) {
   return text;
 }
 
-function exportPdf() {
+async function exportPdf() {
+  if (!canAccess(`${activeModule()}.export`)) return;
   const btn = document.getElementById("exportPdfBtn");
   const original = btn.textContent;
   btn.disabled = true;
   btn.textContent = "Abrindo PDF...";
-  requestAnimationFrame(() => {
+  try {
+    const response = await fetch(`/api/export-authorize?${new URLSearchParams({clinic:state.selectedClinic,view:state.activeView})}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Exportação não autorizada.");
     window.print();
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
     btn.disabled = false;
     btn.textContent = original;
-  });
-  setTimeout(() => {
-    btn.disabled = false;
-    btn.textContent = original;
-  }, 2400);
+  }
 }
 
 function scheduleAutoPrint() {
+  if (!canAccess(`${activeModule()}.export`)) return;
   if (!pendingAutoPrint) return;
   pendingAutoPrint = false;
   const cleanParams = new URLSearchParams(window.location.search);
   cleanParams.delete("print");
   const cleanQuery = cleanParams.toString();
   history.replaceState(null, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}`);
-  setTimeout(() => window.print(), 700);
+  setTimeout(exportPdf, 700);
 }
 
 document.getElementById("connectBtn").addEventListener("click", () => {
@@ -3198,15 +3266,14 @@ document.addEventListener("keydown", event => {
 });
 document.querySelectorAll(".tabBtn").forEach(button => {
   button.addEventListener("click", () => {
+    if (!permittedViews().includes(button.dataset.view)) return;
     state.activeView = button.dataset.view || "commercialView";
     document.querySelector(".viewTabs")?.classList.remove("open");
     document.getElementById("mobileTabsToggle")?.setAttribute("aria-expanded", "false");
     applyActiveViewState();
-    if (state.activeView === "generalView" || state.activeView === "patientFollowupView" || state.activeView === "quoteFollowupView" || state.activeView === "whatsappAuditView") {
-      loadReport();
-    } else {
-      render();
-    }
+    state.report = null;
+    render();
+    loadReport();
   });
 });
 document.getElementById("mobileTabsToggle")?.addEventListener("click", event => {
@@ -3328,12 +3395,9 @@ document.getElementById("changeClinicBtn").addEventListener("click", () => {
 
 state.followupOnlyMode = params.get("modo") === "equipe" || params.get("mode") === "team" || params.get("staff") === "1";
 if (state.followupOnlyMode) state.activeView = "patientFollowupView";
-const initialClinic = params.get("clinic");
-if (initialClinic && clinics[initialClinic]) {
-  requestClinicAccess(initialClinic, false, accessModeKey());
-} else {
-  showClinicLanding();
-}
+document.getElementById("retryClinicAccess").addEventListener("click", initializeClinicAccess);
+showClinicLanding();
+initializeClinicAccess();
 setInterval(() => {
   if (state.selectedClinic) loadReport();
 }, 60_000);

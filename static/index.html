@@ -5,8 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/session.js"></script>
   </head>
   <body>
+    <div class="sessionToolbar" aria-label="Conta">
+      <span id="sessionStatus" role="status"></span>
+      <span data-session-user>Conta</span>
+      <a href="/master" data-master-only hidden>Master</a>
+      <button type="button" data-logout>Sair</button>
+    </div>
     <div class="ambient" aria-hidden="true"></div>
     <section id="clinicLanding" class="clinicLanding">
       <div class="landingShell">
@@ -15,8 +22,10 @@
           <p class="eyebrow">Criado por doutores. Para doutores.</p>
         </header>
 
+        <p id="clinicAccessState" role="status">Carregando clínicas permitidas...</p>
+        <button id="retryClinicAccess" class="secondary" type="button" hidden>Tentar novamente</button>
         <div class="clinicCards">
-          <article class="clinicAccessCard primary">
+          <article class="clinicAccessCard primary" data-clinic-card="vielle" hidden>
             <div>
               <span>VC</span>
               <small>Ativo</small>
@@ -29,7 +38,7 @@
             </div>
           </article>
 
-          <article class="clinicAccessCard inspire">
+          <article class="clinicAccessCard inspire" data-clinic-card="inspire" hidden>
             <div>
               <span>IN</span>
               <small>Nova clínica</small>
@@ -39,7 +48,7 @@
             <button type="button" data-clinic-select="inspire">Acessar Inspire</button>
           </article>
 
-          <article class="clinicAccessCard carla">
+          <article class="clinicAccessCard carla" data-clinic-card="carla" hidden>
             <div>
               <span>CF</span>
               <small>Nova clínica</small>
@@ -79,7 +88,7 @@
         <div class="actions">
           <button id="changeClinicBtn" class="secondary" type="button">Trocar clínica</button>
           <button id="exportPdfBtn" class="secondary" type="button">Exportar PDF</button>
-          <a id="settingsLink" class="buttonLink secondary" href="/settings.html">Configurações</a>
+          <a id="settingsLink" class="buttonLink secondary" href="/settings.html" data-master-only hidden>Configurações</a>
           <button id="connectBtn" class="secondary">Conectar Kommo</button>
           <button id="syncBtn">Atualizar</button>
           <button id="syncClinicaBtn" class="secondary">Atualizar Clínica Experts</button>
@@ -92,7 +101,7 @@
         <span>Painel geral</span>
         <span aria-hidden="true">⌄</span>
       </button>
-      <nav class="viewTabs" aria-label="Áreas do dashboard">
+      <nav id="viewTabs" class="viewTabs" aria-label="Áreas do dashboard">
         <button class="tabBtn active" type="button" data-view="generalView">Painel geral</button>
         <button class="tabBtn" type="button" data-view="commercialView">Comercial</button>
         <button class="tabBtn" type="button" data-view="financialView">Financeiro</button>

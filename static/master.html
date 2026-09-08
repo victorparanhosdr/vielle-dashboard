@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gerenciamento de Usuários | DOC4DOCS</title>
+    <link rel="stylesheet" href="/master.css">
+    <script src="/session.js"></script>
+    <script src="/master-icons.js" defer></script>
+    <script src="/master.js" defer></script>
+    <script src="/master-access.js" defer></script>
+  </head>
+  <body>
+    <header class="masterHeader">
+      <a class="brand" href="/" aria-label="DOC4DOCS - voltar ao sistema"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="148" height="68"></a>
+      <div class="accountActions"><span class="masterBadge">Master</span><span data-session-user></span><a href="/">Voltar ao sistema</a><button type="button" data-logout>Sair</button></div>
+    </header>
+    <main class="masterMain">
+      <div class="pageHeading"><div><p class="eyebrow">Administração</p><h1>Gerenciamento de Usuários</h1></div><button id="newUser" type="button"><span data-icon="UserPlus"></span>Novo usuário</button></div>
+      <p id="sessionStatus" role="status"></p>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <nav class="masterSections" aria-label="Administração">
+        <button type="button" data-master-section="users" aria-pressed="true">Usuários</button>
+        <button type="button" data-master-section="profiles" aria-pressed="false">Perfis de acesso</button>
+        <button type="button" data-master-section="audit" aria-pressed="false">Auditoria</button>
+      </nav>
+      <section id="usersSection">
+      <div class="userFilters">
+        <label class="searchField"><span>Buscar usuário</span><input id="searchUsers" type="search" placeholder="Nome ou login" maxlength="254"></label>
+        <label><span>Status</span><select id="statusFilter"><option value="">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></label>
+        <span id="userCount" class="userCount" aria-live="polite"></span>
+        <button id="reloadUsers" class="secondary iconButton" type="button" title="Atualizar lista" aria-label="Atualizar lista"><span data-icon="RefreshCw"></span></button>
+      </div>
+      <section aria-label="Usuários cadastrados" class="userList">
+        <table><thead><tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfil</th><th scope="col">Status</th><th scope="col">Criação</th><th scope="col">Último acesso</th><th scope="col" class="actionsHeading">Ações</th></tr></thead><tbody id="userRows"><tr><td colspan="7">Carregando usuários...</td></tr></tbody></table>
+        <div class="pagination"><span id="pageLabel"></span><button id="prevPage" class="secondary iconButton" type="button" title="Página anterior" aria-label="Página anterior" disabled><span data-icon="ChevronLeft"></span></button><button id="nextPage" class="secondary iconButton" type="button" title="Próxima página" aria-label="Próxima página" disabled><span data-icon="ChevronRight"></span></button></div>
+      </section>
+      </section>
+      <section id="profilesSection" hidden aria-label="Perfis de acesso">
+        <div class="sectionHeading"><h2>Perfis de acesso</h2><button id="newProfile" type="button">Novo perfil</button></div>
+        <div id="profileList" class="profileList"></div>
+      </section>
+      <section id="auditSection" hidden aria-label="Logs de auditoria">
+        <div class="sectionHeading"><h2>Auditoria</h2><button id="reloadAudit" type="button" class="secondary">Atualizar</button></div>
+        <label><span>Ação</span><select id="auditAction"><option value="">Todas</option></select></label>
+        <ol id="auditList" class="auditList"></ol>
+        <div class="pagination"><span id="auditPageLabel"></span><button id="auditPrev" type="button" class="secondary" aria-label="Página anterior de logs">Anterior</button><button id="auditNext" type="button" class="secondary">Próxima</button></div>
+      </section>
+    </main>
+    <dialog id="userDialog" aria-labelledby="userDialogTitle">
+      <form id="userForm">
+        <div class="dialogHeading"><h2 id="userDialogTitle">Novo usuário</h2><button type="button" data-close="userDialog" class="secondary iconButton" title="Fechar" aria-label="Fechar"><span data-icon="X"></span></button></div>
+        <label><span>Nome</span><input id="userName" name="nome" maxlength="200" autocomplete="off" required></label>
+        <label><span>Login</span><input id="userLogin" name="login" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
+        <label id="initialPasswordField"><span>Senha (mínimo de 12 caracteres)</span><input id="initialPassword" name="password" type="password" autocomplete="new-password" minlength="12"></label>
+        <label id="initialStatusField" class="checkboxLabel"><input id="initialActive" type="checkbox" checked><span>Usuário ativo</span></label>
+        <fieldset id="clinicMemberships"><legend>Clínicas permitidas</legend><div id="clinicChoices"></div></fieldset>
+        <p id="masterClinicNotice" hidden>Master: acesso a todas as clínicas.</p>
+        <p id="userFormError" class="formError" role="alert"></p>
+        <div class="dialogFooter"><button type="button" data-close="userDialog" class="secondary">Cancelar</button><button id="saveUser" type="submit">Criar usuário</button></div>
+      </form>
+    </dialog>
+    <dialog id="passwordDialog" aria-labelledby="passwordTitle">
+      <form id="passwordForm">
+        <div class="dialogHeading"><h2 id="passwordTitle">Definir nova senha</h2><button type="button" data-close="passwordDialog" class="secondary iconButton" title="Fechar" aria-label="Fechar"><span data-icon="X"></span></button></div>
+        <p id="passwordTarget" class="dialogTarget"></p>
+        <label><span>Nova senha (mínimo de 12 caracteres)</span><input id="newPassword" type="password" minlength="12" autocomplete="new-password" required></label>
+        <label><span>Confirmar nova senha</span><input id="confirmPassword" type="password" minlength="12" autocomplete="new-password" required></label>
+        <p id="passwordError" class="formError" role="alert"></p>
+        <div class="dialogFooter"><button type="button" data-close="passwordDialog" class="secondary">Cancelar</button><button id="savePassword" type="submit">Salvar senha</button></div>
+      </form>
+    </dialog>
+    <dialog id="statusDialog" aria-labelledby="statusTitle">
+      <form id="statusForm">
+        <h2 id="statusTitle">Alterar status</h2><p id="statusTarget" class="dialogTarget"></p><p id="statusMessage"></p>
+        <p id="statusError" class="formError" role="alert"></p>
+        <div class="dialogFooter"><button type="button" data-close="statusDialog" class="secondary">Cancelar</button><button id="saveStatus" type="submit">Confirmar</button></div>
+      </form>
+    </dialog>
+    <dialog id="profileDialog" aria-labelledby="profileTitle">
+      <form id="profileForm">
+        <h2 id="profileTitle">Perfil de acesso</h2>
+        <label><span>Nome do perfil</span><input id="profileName" maxlength="100" required></label>
+        <div id="profilePermissions"></div>
+        <p id="profileError" class="formError" role="alert"></p>
+        <div class="dialogFooter"><button type="button" id="closeProfile" class="secondary">Cancelar</button><button id="saveProfile" type="submit">Salvar perfil</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>

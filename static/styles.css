@@ -5431,3 +5431,31 @@ h2,
     font-size: 1.12rem;
   }
 }
+
+.sessionToolbar {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px auto;
+  padding: 0 20px;
+  width: min(100%, 1600px);
+  box-sizing: border-box;
+  color: var(--doc-primary);
+  font-size: 14px;
+}
+.sessionToolbar [data-session-user] { min-width: 0; overflow-wrap: anywhere; }
+.sessionToolbar button { flex: 0 0 auto; width: auto; min-width: 0; min-height: 40px; padding: 8px 16px; font-size: 14px; border-radius: 6px; }
+#sessionStatus { color: var(--doc-danger); }
+[data-master-only][hidden] { display: none !important; }
+[data-clinic-card][hidden], #retryClinicAccess[hidden] { display: none !important; }
+#clinicAccessState { color:var(--text, #102b25); overflow-wrap:anywhere; }
+#clinicAccessState:empty { display:none; }
+.clinicLanding .landingShell, .clinicLanding .landingHero { min-width:0; max-width:100%; }
+.clinicLanding .systemLogo { max-width:100%; }
+.clinicAccessBox { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+[hidden] { display:none !important; }
+.sessionToolbar a { color: var(--doc-primary); font-weight: 600; }
+@media print { .sessionToolbar { display: none; } }

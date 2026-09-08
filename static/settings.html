@@ -5,8 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configurações | DOC4DOCS</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/session.js"></script>
   </head>
   <body>
+    <div class="sessionToolbar" aria-label="Conta">
+      <span id="sessionStatus" role="status"></span>
+      <span data-session-user>Conta</span>
+      <button type="button" data-logout>Sair</button>
+    </div>
     <div class="ambient" aria-hidden="true"></div>
     <main class="shell settingsShell">
       <header class="topbar">
@@ -23,24 +29,6 @@
       </header>
 
       <section id="settingsStatus" class="notice"></section>
-
-      <section class="panel settingsGate">
-        <div class="panelHead">
-          <h2>Acesso master</h2>
-          <span class="metaText">Necessário para alterar APIs e senhas</span>
-        </div>
-        <div class="settingsForm compactSettings">
-          <label>
-            <span>Usuário master</span>
-            <input id="masterUser" autocomplete="username" value="master">
-          </label>
-          <label>
-            <span>Senha master</span>
-            <input id="masterPassword" type="password" autocomplete="current-password">
-          </label>
-          <button id="unlockSettings" type="button">Entrar</button>
-        </div>
-      </section>
 
       <div id="settingsArea" class="settingsArea" hidden>
         <section class="panel settingsIntro">

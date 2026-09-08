@@ -1,7 +1,3 @@
-const master = {
-  user: localStorage.getItem("vielle_master_user") || "master",
-  password: "",
-};
 const settingsParams = new URLSearchParams(window.location.search);
 const selectedClinic = settingsParams.get("clinic") || "vielle";
 const clinicLabels = {
@@ -14,8 +10,6 @@ document.querySelectorAll("[data-clinic-label]").forEach(element => {
   element.textContent = clinicLabels[selectedClinic] || clinicLabels.vielle;
 });
 
-document.getElementById("masterUser").value = master.user;
-
 function showSettingsStatus(message, isError = false) {
   const el = document.getElementById("settingsStatus");
   el.textContent = message;
@@ -26,8 +20,6 @@ function showSettingsStatus(message, isError = false) {
 function headers() {
   return {
     "Content-Type": "application/json",
-    "X-Master-User": master.user,
-    "X-Master-Password": master.password,
   };
 }
 
@@ -74,14 +66,11 @@ function collectSettings() {
 }
 
 async function unlock() {
-  master.user = document.getElementById("masterUser").value.trim() || "master";
-  master.password = document.getElementById("masterPassword").value;
-  localStorage.setItem("vielle_master_user", master.user);
-  showSettingsStatus("Validando acesso master...");
+  showSettingsStatus("Carregando configurações...");
   const data = await api("/api/settings");
   fillSettings(data);
   document.getElementById("settingsArea").hidden = false;
-  showSettingsStatus("Acesso liberado. Você já pode alterar integrações e senhas.");
+  showSettingsStatus("");
 }
 
 async function saveSettings() {
@@ -114,10 +103,6 @@ async function loadEverything(reset = false) {
   showSettingsStatus(`${commercial}. ${clinica}.`);
 }
 
-document.getElementById("unlockSettings").addEventListener("click", () => {
-  unlock().catch(error => showSettingsStatus(error.message, true));
-});
-
 document.getElementById("saveSettings").addEventListener("click", () => {
   saveSettings().catch(error => showSettingsStatus(error.message, true));
 });
@@ -132,8 +117,4 @@ document.getElementById("switchAccount").addEventListener("click", () => {
   loadEverything(true).catch(error => showSettingsStatus(error.message, true));
 });
 
-document.getElementById("masterPassword").addEventListener("keydown", event => {
-  if (event.key === "Enter") {
-    unlock().catch(error => showSettingsStatus(error.message, true));
-  }
-});
+unlock().catch(error => showSettingsStatus(error.message, true));
