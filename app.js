@@ -892,15 +892,16 @@ function renderGeneralLeadBookingChart(leads, bookings) {
     bookings: bookingLookup[day] || 0,
   }));
   renderHorizontalComparisonChart("generalLeadBookingChart", prepared, {
-    empty: "Sem leads ou agendamentos no mês selecionado.",
+    empty: "Sem leads ou agendamentos criados no mês selecionado.",
     firstKey: "leads",
     secondKey: "bookings",
     firstLabel: "Leads",
-    secondLabel: "Agendamentos",
+    secondLabel: "Agendamentos criados",
     firstColor: "#7167e8",
     secondColor: "#18b9d4",
     firstFormatter: value => `${Math.round(value || 0)}`,
     secondFormatter: value => `${Math.round(value || 0)}`,
+    detail: () => "base: data de inclusão no Clínica Experts",
   });
 }
 

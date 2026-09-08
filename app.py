@@ -1134,6 +1134,7 @@ def init_db():
                 professional_uuid text,
                 procedure_uuid text,
                 status text,
+                registered_at text,
                 starts_at text,
                 ends_at text,
                 registry_user_name text,
@@ -1341,6 +1342,7 @@ def init_db():
         )
         for statement in (
             "alter table clinica_bookings add column registry_user_name text",
+            "alter table clinica_bookings add column registered_at text",
             "alter table whatsapp_audit_reviews add column ai_generated integer not null default 0",
             "alter table whatsapp_audit_reviews add column ai_summary text",
             "alter table whatsapp_audit_reviews add column ai_recommendation text",
@@ -1831,6 +1833,29 @@ def parse_any_timestamp(value):
     return None
 
 
+BOOKING_CREATED_DAY_SQL = """
+coalesce(
+  case
+    when registered_at is not null
+      and trim(registered_at) != ''
+      and trim(registered_at) not glob '*[^0-9]*'
+      and length(trim(registered_at)) >= 9
+      then date(cast(trim(registered_at) as integer), 'unixepoch', 'localtime')
+    else nullif(substr(registered_at, 1, 10), '')
+  end,
+  case
+    when json_extract(raw_json, '$.created_at') is not null
+      and trim(cast(json_extract(raw_json, '$.created_at') as text)) != ''
+      and trim(cast(json_extract(raw_json, '$.created_at') as text)) not glob '*[^0-9]*'
+      and length(trim(cast(json_extract(raw_json, '$.created_at') as text))) >= 9
+      then date(cast(trim(cast(json_extract(raw_json, '$.created_at') as text)) as integer), 'unixepoch', 'localtime')
+    else nullif(substr(json_extract(raw_json, '$.created_at'), 1, 10), '')
+  end,
+  nullif(substr(starts_at, 1, 10), '')
+)
+"""
+
+
 def nested_name(data, key):
     value = first_value(data, [key])
     if isinstance(value, dict):
@@ -2150,16 +2175,21 @@ def save_clinica_booking(conn, booking, synced_at):
     professional = first_value(booking, ["professional", "professional_uuid"])
     procedure = first_value(booking, ["procedure", "procedure_uuid"])
     registry_user_name = booking_registry_user_name(json.dumps(booking, ensure_ascii=False))
+    registered_at = first_value(
+        booking,
+        ["created_at", "createdAt", "registered_at", "registeredAt", "date_added", "dateAdded"],
+    )
     conn.execute(
         """
         insert into clinica_bookings
-        (uuid, patient_uuid, professional_uuid, procedure_uuid, status, starts_at, ends_at, registry_user_name, raw_json, synced_at)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (uuid, patient_uuid, professional_uuid, procedure_uuid, status, registered_at, starts_at, ends_at, registry_user_name, raw_json, synced_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict(uuid) do update set
             patient_uuid=excluded.patient_uuid,
             professional_uuid=excluded.professional_uuid,
             procedure_uuid=excluded.procedure_uuid,
             status=excluded.status,
+            registered_at=coalesce(excluded.registered_at, clinica_bookings.registered_at),
             starts_at=excluded.starts_at,
             ends_at=excluded.ends_at,
             registry_user_name=coalesce(excluded.registry_user_name, clinica_bookings.registry_user_name),
@@ -2172,6 +2202,7 @@ def save_clinica_booking(conn, booking, synced_at):
             str(professional.get("uuid") or professional.get("id")) if isinstance(professional, dict) else str(professional) if professional else None,
             str(procedure.get("uuid") or procedure.get("id")) if isinstance(procedure, dict) else str(procedure) if procedure else None,
             first_value(booking, ["status"]),
+            str(registered_at) if registered_at not in (None, "") else None,
             first_value(booking, ["starts_at", "start_at", "scheduled_at"]),
             first_value(booking, ["ends_at", "end_at"]),
             registry_user_name or None,
@@ -2649,14 +2680,30 @@ def month_ranges(date_from, date_to):
         current = next_month
 
 
-def sync_clinica_period(date_from, date_to):
+def sync_clinica_bookings_period(date_from, date_to):
     starts_at = f"{date_from}T00:00:00-03:00"
     ends_at = f"{date_to}T23:59:59-03:00"
-    bookings = sync_clinica_list(
-        f"/bookings?starts_at={starts_at}&ends_at={ends_at}&per_page=100",
-        ["data", "bookings"],
-        save_clinica_booking,
-    )
+    paths = []
+    for sort_column in ("starts_at", "created_at", "updated_at"):
+        paths.append(
+            f"/bookings?starts_at={starts_at}&ends_at={ends_at}"
+            f"&sort_column={sort_column}&per_page=100"
+        )
+    for start_key, end_key in (
+        ("created_at_start", "created_at_end"),
+        ("created_at_from", "created_at_to"),
+        ("created_from", "created_to"),
+        ("created_start", "created_end"),
+    ):
+        paths.append(
+            f"/bookings?{start_key}={starts_at}&{end_key}={ends_at}"
+            f"&sort_column=created_at&per_page=100"
+        )
+    return sync_clinica_list_variants(paths, ["data", "bookings"], save_clinica_booking)
+
+
+def sync_clinica_period(date_from, date_to):
+    bookings = sync_clinica_bookings_period(date_from, date_to)
     sales = sync_clinica_sales_period(date_from, date_to)
     sale_quote_warnings = []
     try:
@@ -3704,7 +3751,8 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             """,
             params,
         ).fetchall()
-        booking_scope = "substr(starts_at, 1, 10) >= ? and substr(starts_at, 1, 10) <= ?"
+        booking_day_expr = BOOKING_CREATED_DAY_SQL
+        booking_scope = f"{booking_day_expr} >= ? and {booking_day_expr} <= ?"
         booking_params = [date_from, date_to]
         sales_scope = "substr(sale_date, 1, 10) >= ? and substr(sale_date, 1, 10) <= ?"
         sales_params = [date_from, date_to]
@@ -3736,7 +3784,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         ).fetchall()
         clinica_daily_bookings = conn.execute(
             f"""
-            select substr(starts_at, 1, 10) as day, count(*) as total
+            select {booking_day_expr} as day, count(*) as total
             from clinica_bookings
             where {booking_scope}
             group by day
@@ -3747,7 +3795,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         clinica_daily_bookings_by_doctor = conn.execute(
             f"""
             select
-              substr(starts_at, 1, 10) as day,
+              {booking_day_expr} as day,
               professional_uuid,
               count(*) as total
             from clinica_bookings
@@ -3760,7 +3808,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         clinica_daily_booking_registry_rows = conn.execute(
             f"""
             select
-              substr(starts_at, 1, 10) as day,
+              {booking_day_expr} as day,
               professional_uuid,
               registry_user_name
             from clinica_bookings
