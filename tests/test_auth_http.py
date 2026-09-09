@@ -94,6 +94,11 @@ class HttpAuthTests(unittest.TestCase):
     def test_public_login_and_assets(self):
         for path in ("/login", "/login.html", "/static/login.html", "/login.css", "/login.js", "/doc4docs-logo-white.png"):
             self.assertEqual(self.request("GET", path)[0], 200, path)
+        for path in ("/doc4docs-favicon.png?v=20260908", "/static/doc4docs-favicon.png?v=20260908"):
+            status, headers, body = self.request("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual({key.lower(): value for key, value in headers}["content-type"], "image/png")
+            self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_login_cookie_and_existing_clinic_gate(self):
         cookie, headers = self.login()

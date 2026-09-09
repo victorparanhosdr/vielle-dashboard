@@ -15,7 +15,7 @@ from access_policy import VIEW_MODULES, clinic_modules
 
 
 SESSION_COOKIE = "doc4docs_session"
-PUBLIC_FILES = {"/login.html", "/login.css", "/login.js", "/session.js", "/doc4docs-logo-white.png"}
+PUBLIC_FILES = {"/login.html", "/login.css", "/login.js", "/session.js", "/doc4docs-logo-white.png", "/doc4docs-favicon.png"}
 INTEGRATION_CALLBACKS = {"/auth/callback", "/webhooks/revoked"}
 ADMIN_API_PATHS = {"/api/settings", "/api/sync-all", "/api/clear-data", "/api/reset-kommo", "/api/sync", "/api/sync-clinica", "/auth/start"}
 
