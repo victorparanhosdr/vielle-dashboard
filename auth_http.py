@@ -155,6 +155,9 @@ class SessionAuthMixin:
         clinic = query.get("clinic", ["vielle"])[0]
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
             return True
+        if path == "/api/export-chart":
+            return (self.require_permission(clinic, "dashboard.view")
+                    and self.require_permission(clinic, "dashboard.export"))
         actions = {
             "/api/monthly-goal": "dashboard.edit" if self.command == "POST" else "dashboard.view",
             "/api/patient-followup-contact": "patient_followup.create",

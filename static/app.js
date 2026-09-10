@@ -426,6 +426,11 @@ function permittedViews(clinic = state.selectedClinic) {
   return Object.entries(accessModules).filter(([key]) => canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
 }
 function applyActionPermissions() {
+  installChartExports();
+  document.querySelectorAll(".chartExportButton").forEach(button => {
+    button.hidden = !canAccess("dashboard.export");
+    button.disabled = !chartReportQuery || button.dataset.busy === "1";
+  });
   const controls = {openGoalsModalBtn:"dashboard.edit", saveMonthlyGoalBtn:"dashboard.edit", syncTrafficBtn:"paid_traffic.edit", exportPdfBtn:`${activeModule()}.export`};
   Object.entries(controls).forEach(([id,key]) => { const element=document.getElementById(id);if(element)element.hidden=!canAccess(key); });
   ["syncBtn", "syncClinicaBtn", "connectBtn"].forEach(id=>{const element=document.getElementById(id);if(element)element.hidden=!sessionMaster;});
@@ -2983,6 +2988,69 @@ function formatFullDay(day) {
   return `${date}/${month}/${year}`;
 }
 
+let chartReportQuery = null;
+let reportRequestId = 0;
+
+function installChartExports() {
+  const charts = {
+    generalRevenueBarChart: "revenue_daily", generalSalesTicketChart: "sales_ticket",
+    generalAccumulatedChart: "accumulated", generalTopPatients: "top_patients",
+    generalValueRanges: "value_ranges", generalLeadBookingChart: "leads_bookings",
+    generalExpenseCategories: "expense_categories", generalExpenseDailyChart: "expense_daily",
+  };
+  Object.entries(charts).forEach(([id, chart]) => {
+    const header = document.getElementById(id)?.closest("article")?.querySelector(".panelHead");
+    if (!header || header.querySelector(".chartExportButton")) return;
+    header.classList.add("chartExportHeader");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chartExportButton";
+    button.dataset.exportChart = chart;
+    button.title = "Baixar detalhamento";
+    button.setAttribute("aria-label", `Baixar detalhamento: ${header.querySelector("h2").textContent}`);
+    const icon = document.createElement("img");
+    icon.src = "/static/excel-icon.png?v=round-20260910";
+    icon.alt = "";
+    const frame = document.createElement("span");
+    frame.className = "chartExportIcon";
+    frame.append(icon);
+    button.append(frame);
+    button.addEventListener("click", () => exportChart(button));
+    header.append(button);
+  });
+}
+
+async function exportChart(button) {
+  if (!chartReportQuery || !canAccess("dashboard.export")) return;
+  const query = new URLSearchParams(chartReportQuery);
+  if (query.get("clinic") !== state.selectedClinic) return;
+  query.set("chart", button.dataset.exportChart);
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(`/api/export-chart?${query}`);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Não foi possível exportar.");
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `doc4docs-${query.get("clinic")}-${button.dataset.exportChart}.xlsx`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    showNotice(error.message || "Não foi possível exportar a planilha.");
+  } finally {
+    delete button.dataset.busy;
+    button.removeAttribute("aria-busy");
+    applyActionPermissions();
+  }
+}
+
 async function loadReport() {
   if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
@@ -2991,10 +3059,14 @@ async function loadReport() {
   }
   const requestedClinic = state.selectedClinic;
   const requestedView = state.activeView;
+  const requestedQuery = buildQuery();
+  const requestId = ++reportRequestId;
+  chartReportQuery = null;
+  applyActionPermissions();
   try {
-    const res = await fetch(`/api/report${buildQuery()}`);
+    const res = await fetch(`/api/report${requestedQuery}`);
     const payload = await res.json();
-    if (state.selectedClinic !== requestedClinic || state.activeView !== requestedView || !allowedClinics?.has(requestedClinic)) return;
+    if (requestId !== reportRequestId || state.selectedClinic !== requestedClinic || state.activeView !== requestedView || !allowedClinics?.has(requestedClinic)) return;
     if (res.status === 401) {
       showNotice(payload.error || "Entre novamente para continuar.");
       return;
@@ -3003,6 +3075,7 @@ async function loadReport() {
       throw new Error(payload.error || "Não foi possível carregar o relatório.");
     }
     state.report = payload;
+    chartReportQuery = requestedView === "generalView" ? requestedQuery : null;
     render();
     scheduleAutoPrint();
   } catch (error) {

@@ -5459,3 +5459,22 @@ h2,
 [hidden] { display:none !important; }
 .sessionToolbar a { color: var(--doc-primary); font-weight: 600; }
 @media print { .sessionToolbar { display: none; } }
+/* Fixed export control leaves long chart headings room to wrap on mobile. */
+.panelHead.chartExportHeader { position: relative; padding-right: 64px; min-height: 56px; }
+.panelHead.chartExportHeader h2 { min-width: 0; overflow-wrap: anywhere; }
+.panelHead .chartExportButton {
+  position: absolute; right: 10px; top: 6px; width: 44px; height: 44px;
+  min-width: 44px; min-height: 44px; padding: 0; border-radius: 50%;
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+  display: grid; place-items: center; cursor: pointer;
+}
+.chartExportIcon { position: relative; display: block; width: 36px; height: 36px; overflow: hidden; border-radius: 50%; }
+/* Frame only the circular mark, excluding the supplied image's transparent margins. */
+.panelHead .chartExportButton img {
+  position: absolute; width: 218.3333%; height: 200%; max-width: none;
+  left: -58%; top: -52%; object-fit: fill;
+}
+.panelHead .chartExportButton[hidden] { display: none; }
+.panelHead .chartExportButton:disabled { opacity: .45; cursor: wait; }
+.panelHead .chartExportButton:focus-visible { outline: 3px solid #338461; outline-offset: 2px; }
+@media print { .panelHead .chartExportButton { display: none; } }

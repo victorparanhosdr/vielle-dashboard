@@ -3456,7 +3456,7 @@ def build_filters(pipeline_ids, start_ts, end_ts, prefix="leads", date_column="c
     return ("where " + " and ".join(clauses)) if clauses else "", params
 
 
-def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None, include_followup=False, include_quote_followup=False, include_whatsapp_audit=False):
+def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, seller=None, include_followup=False, include_quote_followup=False, include_whatsapp_audit=False, export_chart=None):
     pipeline_ids = pipeline_ids or []
     clinic_id = current_clinic_id()
     pipeline_doctor_map = clinic_pipeline_doctor_map()
@@ -4158,10 +4158,13 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             """,
             [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
+        export_columns = "uuid, type, status, category_name, account_name, due_date, paid_at, raw_json, "
+        export_bill_columns = export_columns + "emission_date, " if export_chart else ""
+        export_parcel_columns = export_columns + "bill_uuid, " if export_chart else ""
         financial_detail_sales = conn.execute(
             f"""
             select
-              'entrada' as direction,
+              {export_bill_columns} 'entrada' as direction,
               {bill_date_expr} as date,
               coalesce(description, category_name, type, 'Venda') as description,
               coalesce(category_name, type, 'Clínica Experts') as detail,
@@ -4180,7 +4183,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         financial_detail_manual_income = conn.execute(
             f"""
             select
-              'entrada' as direction,
+              {export_parcel_columns} 'entrada' as direction,
               {parcel_date_expr} as date,
               coalesce(description, category_name, type, 'Receita') as description,
               coalesce(category_name, account_name, status, 'Clínica Experts') as detail,
@@ -4200,7 +4203,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         financial_detail_expenses = conn.execute(
             f"""
             select
-              'saida' as direction,
+              {export_parcel_columns} 'saida' as direction,
               {parcel_date_expr} as date,
               coalesce(description, category_name, type, 'Saída') as description,
               coalesce(category_name, account_name, status, 'Clínica Experts') as detail,
@@ -4283,12 +4286,14 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         }
         sales_rows = conn.execute(
             f"""
-            select patient_uuid, sale_date, total, raw_json
+            select uuid, patient_uuid, sale_date, total, raw_json
             from clinica_sales
             where {sales_scope}
             """,
             sales_params,
         ).fetchall()
+        export_sales = []
+        export_details = {}
         top_patient_lookup = {}
         procedure_lookup = {}
         category_lookup = {}
@@ -4324,6 +4329,8 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 )
                 patient_bucket["sales"] += 1
                 patient_bucket["amount"] += final_amount
+                if export_chart:
+                    export_sales.append({**dict(sale_row), "patient": patient_name, "amount": final_amount})
                 for procedure in first_value(sale, ["procedures"]) or []:
                     if not isinstance(procedure, dict):
                         continue
@@ -4490,6 +4497,32 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             daily_doctors.setdefault(day, {})
             daily_doctors[day][doctor_name] = daily_doctors[day].get(doctor_name, 0) + 1
         daily_new_leads = fill_daily_series([dict(row) for row in daily], date_from, date_to)
+        if export_chart:
+            # Reuse the exact chart scopes; exports must not have UI row limits.
+            export_details = {
+                "income": [{**dict(row), "source": source} for source, rows in (
+                    ("clinica_bills", financial_detail_sales),
+                    ("clinica_parcels", financial_detail_manual_income)) for row in rows],
+                "expenses": [dict(row) for row in financial_detail_expenses],
+                "sales": export_sales,
+            }
+            if export_chart == "leads_bookings":
+                export_details["leads"] = [dict(row) for row in conn.execute(f"""
+                    select leads.*, date(leads.created_at, 'unixepoch', 'localtime') as day,
+                           pipelines.name as pipeline_name, pipeline_statuses.name as status_name
+                    from leads left join pipelines on pipelines.id = leads.pipeline_id
+                    left join pipeline_statuses on pipeline_statuses.id = leads.status_id
+                         and pipeline_statuses.pipeline_id = leads.pipeline_id
+                    {pipeline_filter} order by leads.created_at, leads.id
+                """, params)]
+                export_details["bookings"] = [
+                    {**dict(row), "patient": patient_lookup.get(row["patient_uuid"], "Paciente sem nome"),
+                     "professional": next((name for name, uuid in doctor_professionals.items()
+                                           if uuid == row["professional_uuid"]), row["professional_uuid"])}
+                    for row in conn.execute(f"""
+                        select *, {booking_day_expr} as day from clinica_bookings
+                        where {booking_scope} order by day, uuid
+                    """, booking_params)]
         for row in daily_new_leads:
             breakdown = daily_doctors.get(row["day"], {})
             row["by_doctor"] = [
@@ -4785,6 +4818,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         "quote_followup": quote_followup,
         "whatsapp_audit": whatsapp_audit,
         "general_panel": {
+            **({"export_details": export_details} if export_chart else {}),
             "month": month_key,
             "goal": month_goal,
             "goal_entries": month_goal_entries,
@@ -6829,6 +6863,40 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/export-authorize":
             return self.auth_json({"ok": True})
+        if parsed.path == "/api/export-chart":
+            from chart_export import CHARTS, build_workbook
+            params = urllib.parse.parse_qs(parsed.query)
+            chart = params.get("chart", [""])[0]
+            if chart not in CHARTS:
+                return self.auth_json({"ok": False, "error": "Gráfico inválido."}, 400)
+            with clinic_context(self.request_clinic_id(parsed)):
+                if not self.require_clinic_access(parsed):
+                    return
+                try:
+                    args = query_report_args(params)
+                    args.update(include_followup=False, include_quote_followup=False, include_whatsapp_audit=False)
+                    report = report_data(**args, export_chart=chart)
+                    filters = report.get("filters", args)
+                    content = build_workbook(chart, report["general_panel"], {
+                        "Clínica": CLINIC_DISPLAY_NAMES[self.request_clinic_id(parsed)],
+                        "De": filters.get("date_from"), "Até": filters.get("date_to"),
+                        "Profissional": filters.get("doctor") or "Todos considerados",
+                        "Vendedor": filters.get("seller") or "Todos considerados",
+                        "Funis": str(filters.get("pipeline_ids") or "Todos considerados"),
+                    })
+                except ValueError as exc:
+                    return self.auth_json({"ok": False, "error": str(exc)}, 400)
+                except Exception:
+                    return self.auth_json({"ok": False, "error": "Não foi possível gerar a planilha. Tente novamente."}, 500)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="doc4docs-{chart}.xlsx"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if parsed.path == "/api/auth/me":
             keys = self.server.auth_store.allowed_clinics(self.current_user["id"])
             return self.auth_json({"ok": True, "user": self.current_user,

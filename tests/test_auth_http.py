@@ -296,6 +296,24 @@ class HttpAuthTests(unittest.TestCase):
     def limit_permissions(self, permissions):
         self.store.update_user(self.user_id,"Usuario Local","teste",clinic_keys=["vielle"],permissions={"vielle":permissions})
 
+    def test_excel_export_permissions_and_response(self):
+        path = "/api/export-chart?clinic=vielle&chart=revenue_daily"
+        self.assertEqual(self.request("GET", path)[0], 401)
+        cookie, _ = self.login()
+        self.limit_permissions(["dashboard.view", "commercial.view", "commercial.export"])
+        self.assertEqual(self.request("GET", path + "&view=commercialView", cookie=cookie)[0], 403)
+        self.report.assert_not_called()
+        self.limit_permissions(["dashboard.view", "dashboard.export"])
+        self.report.return_value = {"general_panel": {}}
+        status, headers, data = self.request("GET", path, cookie=cookie)
+        self.assertEqual(status, 200, data)
+        self.assertTrue(data.startswith(b"PK"))
+        self.assertIn("spreadsheetml", dict(headers)["Content-Type"])
+        self.assertEqual(dict(headers)["Cache-Control"], "no-store")
+        self.assertEqual(self.report.call_args.kwargs["export_chart"], "revenue_daily")
+        self.assertEqual(self.request("GET", path.replace("vielle", "inspire"), cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", path.replace("revenue_daily", "invalid"), cookie=cookie)[0], 400)
+
     def test_report_endpoint_projects_only_authorized_view(self):
         self.limit_permissions(["commercial.view"])
         cookie,_=self.login()
