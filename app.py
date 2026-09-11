@@ -2308,7 +2308,7 @@ def save_clinica_sale_quote_webhook(payload):
 
 
 def save_clinica_sale(conn, sale, synced_at):
-    uuid = first_value(sale, ["uuid", "id", "sale_uuid"])
+    uuid = first_value(sale, ["uuid", "id", "sale_uuid", "sale_quote_uuid"])
     if not uuid:
         return False
     patient = first_value(sale, ["patient", "patient_uuid", "buyer", "buyer_person", "person"])
@@ -5391,31 +5391,30 @@ def quote_professional_identity(sale):
     )
 
 
-def quote_was_converted(conn, patient_key, patient_uuid, quote_date):
-    if not quote_date:
+def quote_source_status(sale, sale_type=None):
+    """A sale's lifecycle status does not turn it back into a quote."""
+    kind = str(sale_type or sale.get("type") or "").strip().lower()
+    status = str(sale.get("status") or "").strip().lower()
+    if kind not in ("sale_quote", "quote", "budget", "proposal"):
+        if kind or status not in ("inactive", "budget", "quote", "proposal", "quoted", "open", "opened", "aberto"):
+            return None
+    if status in ("won", "converted", "ganho", "vendido"):
+        return "won"
+    if status in ("lost", "rejected", "cancelled", "canceled", "perdido", "cancelado"):
+        return "lost"
+    return "active"
+
+
+def quote_was_converted(conn, quote_key, patient_uuid):
+    if not quote_key:
         return False
     clauses = [
-        "substr(sale_date, 1, 10) >= ?",
         "lower(coalesce(type, json_extract(raw_json, '$.type'), '')) not in ('sale_quote', 'quote', 'budget', 'proposal')",
     ]
-    params = [quote_date]
+    params = []
     if patient_uuid:
         clauses.append("patient_uuid = ?")
         params.append(patient_uuid)
-    else:
-        clauses.append(
-            """
-            lower(coalesce(
-              json_extract(raw_json, '$.buyer.name'),
-              json_extract(raw_json, '$.patient.name'),
-              json_extract(raw_json, '$.person.name'),
-              json_extract(raw_json, '$.client.name'),
-              json_extract(raw_json, '$.patient_name'),
-              ''
-            )) = ?
-            """
-        )
-        params.append(normalize_lookup_text(patient_key))
     rows = conn.execute(
         f"""
         select raw_json, type
@@ -5429,7 +5428,14 @@ def quote_was_converted(conn, patient_key, patient_uuid, quote_date):
             sale = json.loads(row["raw_json"])
         except json.JSONDecodeError:
             sale = {}
-        if sale_status_group(first_value(sale, ["status"]), row["type"]) == "venda":
+        reference = first_value(sale, ["sale_quote_uuid", "quote_uuid"])
+        linked_quote = first_value(sale, ["sale_quote", "quote"])
+        if not reference and isinstance(linked_quote, dict):
+            reference = first_value(linked_quote, ["uuid", "id"])
+        # A later purchase by the same patient is not evidence of conversion.
+        if str(reference or "") == str(quote_key) and str(sale.get("status") or "").lower() not in (
+            "cancelled", "canceled", "cancelado", "deleted", "void"
+        ):
             return True
     return False
 
@@ -5441,7 +5447,8 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         """
         (
           lower(coalesce(type, json_extract(raw_json, '$.type'), '')) in ('sale_quote', 'quote', 'budget', 'proposal')
-          or lower(coalesce(json_extract(raw_json, '$.status'), '')) in ('inactive', 'budget', 'quote', 'proposal', 'quoted', 'open', 'opened', 'aberto')
+          or (coalesce(type, json_extract(raw_json, '$.type'), '') = ''
+              and lower(coalesce(json_extract(raw_json, '$.status'), '')) in ('inactive', 'budget', 'quote', 'proposal', 'quoted', 'open', 'opened', 'aberto'))
         )
         """,
     ]
@@ -5460,7 +5467,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         params.extend(effective_professional_uuids * 5)
     rows = conn.execute(
         f"""
-        select uuid, patient_uuid, sale_date, total, raw_json
+        select uuid, patient_uuid, type, sale_date, total, raw_json
         from clinica_sales
         where {" and ".join(clauses)}
         order by sale_date desc
@@ -5488,9 +5495,12 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         if not quote_date:
             continue
         patient_key, patient_uuid, patient_name, patient_phone, patient_email = quote_patient_identity(row, sale, patient_lookup)
-        if quote_was_converted(conn, patient_key, patient_uuid, quote_date):
+        source_status = quote_source_status(sale, row["type"])
+        if source_status is None:
             continue
         quote_key = str(row["uuid"])
+        if source_status == "active" and quote_was_converted(conn, quote_key, patient_uuid):
+            source_status = "won"
         title = first_value(sale, ["title"])
         quote_total = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount", "final_amount", "total", "amount"]))
         if quote_total is None and isinstance(title, dict):
@@ -5507,9 +5517,12 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             patient_name,
         )
         wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
+        if source_status in ("won", "lost"):
+            wallet_status = source_status
         days_open = max(0, (datetime.now().date() - (parse_iso_date(quote_date) or datetime.now().date())).days)
         items.append({
             "quote_key": quote_key,
+            "source_status": source_status,
             "patient_key": patient_key,
             "patient_name": patient_name,
             "patient_phone": patient_phone,
