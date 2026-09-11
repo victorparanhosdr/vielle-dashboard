@@ -2641,30 +2641,33 @@ def sync_clinica_parcels_period(date_from, date_to):
 
 
 def sync_clinica_sale_quotes_period(date_from, date_to):
-    starts_at = f"{date_from}T00:00:00-03:00"
-    ends_at = f"{date_to}T23:59:59-03:00"
     total = 0
     seen = set()
     synced_at = int(time.time())
-    for sort_column in ("quote_date", "created_at", "updated_at"):
-        path = (
-            f"/sales-quotes?starts_at={starts_at}&ends_at={ends_at}"
-            f"&sort_column={sort_column}&per_page=100"
-        )
-        for page in range(1, 101):
-            payload = clinica_request(f"{path}&page={page}", api_prefix="/api")
-            items = extract_items(payload, ["data", "sales_quotes", "sale_quotes"])
-            if not items:
+    # This endpoint uses the web API's interval filter, not /api/v1's starts_at.
+    query = urllib.parse.urlencode([
+        ("search[interval][]", date_from), ("search[interval][]", date_to),
+        ("sort_column", "due_date"), ("sort_direction", "asc"), ("per_page", 100),
+    ])
+    for page in range(1, 101):
+        payload = clinica_request(f"/sales-quotes?{query}&page={page}", api_prefix="/api")
+        items = extract_items(payload, ["data", "sales_quotes", "sale_quotes"])
+        if not items:
+            break
+        with db() as conn:
+            for item in items:
+                item = {**item, "type": first_value(item, ["type"]) or "sale_quote"}
+                uuid = first_value(item, ["uuid", "id", "sale_quote_uuid"])
+                if save_clinica_sale(conn, item, synced_at) and uuid and str(uuid) not in seen:
+                    seen.add(str(uuid))
+                    total += 1
+        meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
+        last_page = meta.get("last_page") if isinstance(meta, dict) else None
+        if str(last_page or "").isdigit():
+            if page >= int(last_page):
                 break
-            with db() as conn:
-                for item in items:
-                    item = {**item, "type": first_value(item, ["type"]) or "sale_quote"}
-                    uuid = first_value(item, ["uuid", "id", "sale_quote_uuid"])
-                    if save_clinica_sale(conn, item, synced_at) and uuid and str(uuid) not in seen:
-                        seen.add(str(uuid))
-                        total += 1
-            if len(items) < 100:
-                break
+        elif len(items) < 100:
+            break
     return total
 
 
@@ -2701,12 +2704,12 @@ def sync_clinica_bookings_period(date_from, date_to):
     return sync_clinica_list_variants(paths, ["data", "bookings"], save_clinica_booking)
 
 
-def sync_clinica_period(date_from, date_to):
+def sync_clinica_period(date_from, date_to, quote_date_from=None):
     bookings = sync_clinica_bookings_period(date_from, date_to)
     sales = sync_clinica_sales_period(date_from, date_to)
     sale_quote_warnings = []
     try:
-        sale_quotes = sync_clinica_sale_quotes_period(date_from, date_to)
+        sale_quotes = sync_clinica_sale_quotes_period(quote_date_from or date_from, date_to)
     except RuntimeError as exc:
         if "sales-quotes" not in str(exc) and "orçamentos" not in str(exc):
             raise
@@ -2748,7 +2751,8 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
         if historical:
             periods = list(reversed(periods))
         for period_from, period_to in periods:
-            period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = sync_clinica_period(period_from, period_to)
+            quote_date_from = period_from if historical else f"{period_to[:4]}-01-01"
+            period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = sync_clinica_period(period_from, period_to, quote_date_from=quote_date_from)
             bookings += period_bookings
             sales += period_sales
             sale_quotes += period_sale_quotes
@@ -5402,6 +5406,11 @@ def quote_source_status(sale, sale_type=None):
         return "won"
     if status in ("lost", "rejected", "cancelled", "canceled", "perdido", "cancelado"):
         return "lost"
+    if status in ("due", "expired", "overdue", "vencido"):
+        return "expired"
+    due_date = parse_iso_date(str(sale.get("due_date") or "")[:10])
+    if due_date and due_date < datetime.now().date():
+        return "expired"
     return "active"
 
 
@@ -5499,12 +5508,12 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         if source_status is None:
             continue
         quote_key = str(row["uuid"])
-        if source_status == "active" and quote_was_converted(conn, quote_key, patient_uuid):
+        if source_status != "won" and quote_was_converted(conn, quote_key, patient_uuid):
             source_status = "won"
         title = first_value(sale, ["title"])
-        quote_total = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount", "final_amount", "total", "amount"]))
+        quote_total = money_value(first_value(sale, ["final_amount", "budget_amount", "quoted_amount", "total", "amount", "nominal_amount"]))
         if quote_total is None and isinstance(title, dict):
-            quote_total = money_value(first_value(title, ["nominal_amount", "final_amount", "total", "amount"]))
+            quote_total = money_value(first_value(title, ["final_amount", "total", "amount", "nominal_amount"]))
         quote_total = quote_total if quote_total is not None else row["total"] or 0
         professional_uuid, professional_name = quote_professional_identity(sale)
         contacts = contact_lookup.get(quote_key, [])
@@ -5517,7 +5526,7 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             patient_name,
         )
         wallet_status = str((status_info or {}).get("status") or "active").strip().lower() or "active"
-        if source_status in ("won", "lost"):
+        if source_status == "won" or (wallet_status != "won" and source_status != "active"):
             wallet_status = source_status
         days_open = max(0, (datetime.now().date() - (parse_iso_date(quote_date) or datetime.now().date())).days)
         items.append({
@@ -5538,7 +5547,9 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
             "last_contact": contacts[0] if contacts else None,
             "contacts": contacts[:5],
             "wallet_status": wallet_status,
+            "pending": wallet_status != "won",
             "lost": wallet_status == "lost",
+            "expired": wallet_status == "expired",
             "won": wallet_status == "won",
             "status_info": status_info,
             "kommo_lead_id": kommo_lead["id"] if kommo_lead else None,
@@ -5552,18 +5563,27 @@ def build_quote_followup(conn, date_from, date_to, effective_professional_uuids)
         -row["quote_total"],
         row["patient_name"],
     ))
-    active_items = [item for item in items if item["wallet_status"] == "active"]
+    pending_items = [item for item in items if item["pending"]]
+    sync_log = conn.execute("select message from clinica_sync_log order by id desc limit 1").fetchone()
+    sync_warning = ""
+    if sync_log and "sales-quotes" in (sync_log["message"] or ""):
+        sync_warning = (
+            "Sincronização de orçamentos incompleta. A consulta ao Clínica Experts falhou; "
+            "a lista e os status podem estar desatualizados."
+        )
     return {
         "items": items,
+        "sync_warning": sync_warning,
         "reference_date": datetime.now().date().strftime("%Y-%m-%d"),
         "totals": {
-            "total": len(active_items),
-            "amount": sum(item["quote_total"] for item in active_items),
-            "red": len([item for item in active_items if item["status"] == "red"]),
-            "due": len([item for item in active_items if item["status"] == "due"]),
-            "monitor": len([item for item in active_items if item["status"] == "monitor"]),
-            "contacted": len([item for item in active_items if item["contact_count"]]),
+            "total": len(pending_items),
+            "amount": sum(item["quote_total"] for item in pending_items),
+            "red": len([item for item in pending_items if item["status"] == "red"]),
+            "due": len([item for item in pending_items if item["status"] == "due"]),
+            "monitor": len([item for item in pending_items if item["status"] == "monitor"]),
+            "contacted": len([item for item in pending_items if item["contact_count"]]),
             "lost": len([item for item in items if item["wallet_status"] == "lost"]),
+            "expired": len([item for item in items if item["wallet_status"] == "expired"]),
             "won": len([item for item in items if item["wallet_status"] == "won"]),
         },
     }

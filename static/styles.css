@@ -4186,6 +4186,22 @@ select {
   gap: 6px;
 }
 
+#quoteFollowupView .followupControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 640px);
+}
+
+#quoteFollowupView .followupControls label {
+  min-width: 0;
+}
+
+@media (max-width: 680px) {
+  #quoteFollowupView .followupControls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .followupControls select,
 .followupControls input,
 .followupForm input,

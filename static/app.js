@@ -18,7 +18,8 @@ const state = {
   selectedFollowupLastTo: "",
   patientFollowupItems: [],
   followupVisibleCount: 24,
-  selectedQuoteFollowupWallet: "active",
+  selectedQuoteFollowupWallet: "pending",
+  selectedQuoteFollowupMonth: "",
   selectedQuoteFollowupContact: "",
   selectedQuoteFollowupStatus: "",
   quoteFollowupItems: [],
@@ -1953,14 +1954,15 @@ function renderQuoteFollowup(followup) {
     if (container) container.innerHTML = `<div class="empty">Carregando acompanhamento de orçamentos...</div>`;
     return;
   }
-  const totals = followup.totals || {};
   state.quoteFollowupItems = followup.items || [];
+  const syncWarning = document.getElementById("quoteFollowupSyncWarning");
+  if (syncWarning) {
+    syncWarning.textContent = followup.sync_warning || "";
+    syncWarning.classList.toggle("visible", Boolean(followup.sync_warning));
+  }
   document.getElementById("quoteFollowupReferenceDate").textContent = `Base: ${formatFullDay(followup.reference_date)}`;
-  document.getElementById("quoteFollowupTotal").textContent = integerFormat(totals.total || 0);
-  document.getElementById("quoteFollowupAmount").textContent = `${brl.format(totals.amount || 0)} em carteira`;
-  document.getElementById("quoteFollowupRed").textContent = integerFormat(totals.red || 0);
-  document.getElementById("quoteFollowupDue").textContent = integerFormat(totals.due || 0);
-  document.getElementById("quoteFollowupContacted").textContent = integerFormat(totals.contacted || 0);
+  renderQuoteFollowupMonthFilter(followup.reference_date);
+  renderQuoteFollowupTotals();
   const walletSelect = document.getElementById("quoteFollowupStatusWallet");
   if (walletSelect) walletSelect.value = state.selectedQuoteFollowupWallet;
   const contactSelect = document.getElementById("quoteFollowupContactFilter");
@@ -1970,10 +1972,43 @@ function renderQuoteFollowup(followup) {
   renderQuoteFollowupList();
 }
 
+function renderQuoteFollowupMonthFilter(referenceDate) {
+  const select = document.getElementById("quoteFollowupMonthFilter");
+  if (!select) return;
+  const year = String(state.dateTo || referenceDate || new Date().toISOString()).slice(0, 4);
+  const monthFormat = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
+  const options = Array.from({ length: 12 }, (_, index) => {
+    const value = `${year}-${String(index + 1).padStart(2, "0")}`;
+    return new Option(monthFormat.format(new Date(Number(year), index, 1)), value);
+  });
+  if (!options.some(option => option.value === state.selectedQuoteFollowupMonth)) {
+    state.selectedQuoteFollowupMonth = "";
+  }
+  select.replaceChildren(new Option(`Todos os meses de ${year}`, ""), ...options);
+  select.value = state.selectedQuoteFollowupMonth;
+}
+
+function quoteFollowupItemsForMonth() {
+  return (state.quoteFollowupItems || []).filter(item =>
+    !state.selectedQuoteFollowupMonth || String(item.quote_date || "").slice(0, 7) === state.selectedQuoteFollowupMonth
+  );
+}
+
+function renderQuoteFollowupTotals() {
+  const pending = quoteFollowupItemsForMonth().filter(item => !(item.won || item.wallet_status === "won"));
+  document.getElementById("quoteFollowupTotal").textContent = integerFormat(pending.length);
+  document.getElementById("quoteFollowupAmount").textContent = `${brl.format(pending.reduce((sum, item) => sum + (Number(item.quote_total) || 0), 0))} em carteira`;
+  document.getElementById("quoteFollowupRed").textContent = integerFormat(pending.filter(item => item.status === "red").length);
+  document.getElementById("quoteFollowupDue").textContent = integerFormat(pending.filter(item => item.status === "due").length);
+  document.getElementById("quoteFollowupContacted").textContent = integerFormat(pending.filter(item => item.contact_count).length);
+}
+
 function filteredQuoteFollowupItems() {
-  return (state.quoteFollowupItems || []).filter(item => {
+  return quoteFollowupItemsForMonth().filter(item => {
     const walletStatus = item.wallet_status || (item.lost ? "lost" : item.won ? "won" : "active");
-    if (state.selectedQuoteFollowupWallet === "active" && walletStatus !== "active") return false;
+    if (["pending", "active"].includes(state.selectedQuoteFollowupWallet) && walletStatus === "won") return false;
+    if (state.selectedQuoteFollowupWallet === "open" && walletStatus !== "active") return false;
+    if (state.selectedQuoteFollowupWallet === "expired" && walletStatus !== "expired") return false;
     if (state.selectedQuoteFollowupWallet === "lost" && walletStatus !== "lost") return false;
     if (state.selectedQuoteFollowupWallet === "won" && walletStatus !== "won") return false;
     if (state.selectedQuoteFollowupContact === "contacted" && !item.contact_count) return false;
@@ -2019,10 +2054,11 @@ function renderQuoteFollowupList() {
       ? `<a class="followupActionIcon followupKommoLink" href="${escapeHtml(kommoHref)}" target="_blank" rel="noopener" title="${escapeHtml(kommoLabel)}" aria-label="${escapeHtml(kommoLabel)}"><img src="kommo-icon.png" alt=""></a>`
       : "";
     const statusInfo = item.status_info || {};
-    const walletText = item.won ? "Ganho" : (item.lost ? "Perdido" : item.status_label || statusLabel(item.status));
-    const statusNote = walletStatus !== "active"
+    const walletLabel = { won: "Ganho", lost: "Perdido", expired: "Vencido" }[walletStatus];
+    const walletText = walletLabel || item.status_label || statusLabel(item.status);
+    const statusNote = walletStatus !== "active" && statusInfo.status === walletStatus
       ? `<div class="followupStatusNote ${escapeHtml(walletStatus)}">
-          <b>${escapeHtml(item.won ? "Ganho" : "Perdido")}</b>
+          <b>${escapeHtml(walletLabel)}</b>
           <span>${formatDay(statusInfo.status_date)} · ${escapeHtml(statusInfo.marked_by || "Sem responsável")}</span>
           <em>${escapeHtml(statusInfo.note || "Sem observação")}</em>
           <button class="quoteFollowupRestoreBtn" type="button" data-quote-key="${escapeHtml(itemKey)}">Reativar orçamento</button>
@@ -2068,7 +2104,7 @@ function renderQuoteFollowupList() {
           </form>
           <ul class="followupHistory">${history || "<li><em>Sem histórico ainda.</em></li>"}</ul>
         </details>
-        ${walletStatus === "active" ? `
+        ${walletStatus !== "won" ? `
           <details class="followupDetails followupWonDetails">
             <summary>Dar como ganho</summary>
             <form class="quoteFollowupStatusForm followupStatusForm" data-quote-key="${escapeHtml(itemKey)}" data-quote-status="won">
@@ -2078,7 +2114,7 @@ function renderQuoteFollowupList() {
               <button type="submit">Marcar ganho</button>
             </form>
           </details>
-          <details class="followupDetails followupLostDetails">
+          ${walletStatus !== "lost" ? `<details class="followupDetails followupLostDetails">
             <summary>Dar como perdido</summary>
             <form class="quoteFollowupStatusForm followupStatusForm followupLostForm" data-quote-key="${escapeHtml(itemKey)}" data-quote-status="lost">
               <input type="date" name="status_date" value="${new Date().toISOString().slice(0, 10)}" required>
@@ -2086,7 +2122,7 @@ function renderQuoteFollowupList() {
               <textarea name="note" placeholder="Motivo: preço, sem retorno, decidiu não fazer..."></textarea>
               <button type="submit">Marcar perdido</button>
             </form>
-          </details>
+          </details>` : ""}
         ` : ""}
       </article>
     `;
@@ -3276,6 +3312,12 @@ document.getElementById("patientFollowupList")?.addEventListener("click", event 
     return;
   }
   restorePatientFollowup(event);
+});
+document.getElementById("quoteFollowupMonthFilter")?.addEventListener("change", event => {
+  state.selectedQuoteFollowupMonth = event.target.value;
+  state.quoteFollowupVisibleCount = 24;
+  renderQuoteFollowupTotals();
+  renderQuoteFollowupList();
 });
 document.getElementById("quoteFollowupStatusWallet")?.addEventListener("change", event => {
   state.selectedQuoteFollowupWallet = event.target.value;

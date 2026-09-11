@@ -658,17 +658,18 @@
       </div>
 
       <div id="quoteFollowupView" class="viewPanel">
+        <div id="quoteFollowupSyncWarning" class="notice" role="status"></div>
         <section class="patientFollowupHero panel">
           <div class="panelHead">
             <div>
               <h2>Acompanhamento de Orçamentos</h2>
-              <span class="metaText">Carteira comercial de orçamentos em aberto</span>
+              <span class="metaText">Orçamentos abertos, vencidos e perdidos</span>
             </div>
             <span id="quoteFollowupReferenceDate" class="metaText">Base: -</span>
           </div>
           <div class="followupMetricGrid">
             <article class="followupMetric total">
-              <span>Orçamentos em aberto</span>
+              <span>Orçamentos pendentes</span>
               <strong id="quoteFollowupTotal">0</strong>
               <small id="quoteFollowupAmount">R$ 0 em carteira</small>
             </article>
@@ -694,17 +695,25 @@
           <div class="panelHead patientFollowupHead">
             <div>
               <h2>Carteira de orçamentos</h2>
-              <span class="metaText">Orçamentos fechados somem automaticamente quando a venda aparece no Clínica Experts</span>
+              <span class="metaText">Pendentes: abertos, vencidos e perdidos</span>
               <strong id="quoteFollowupFilteredCount" class="followupFilteredCount">0 orçamentos no filtro</strong>
             </div>
             <div class="followupControls">
               <label>
+                <span>Mês</span>
+                <select id="quoteFollowupMonthFilter">
+                  <option value="">Todos os meses</option>
+                </select>
+              </label>
+              <label>
                 <span>Carteira</span>
                 <select id="quoteFollowupStatusWallet">
-                  <option value="active">Ativos</option>
-                  <option value="won">Ganhos</option>
+                  <option value="pending">Pendentes</option>
+                  <option value="open">Abertos</option>
+                  <option value="expired">Vencidos</option>
                   <option value="lost">Perdidos</option>
-                  <option value="all">Todos</option>
+                  <option value="won">Ganhos (histórico)</option>
+                  <option value="all">Todos (histórico)</option>
                 </select>
               </label>
               <label>
