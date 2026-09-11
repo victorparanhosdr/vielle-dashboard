@@ -49,6 +49,12 @@ def permission_map(clinics, permissions):
 
 def project_report(report, module):
     result = {key: value for key, value in report.items() if key in REPORT_KEYS[module] | {"connected", "filters", "pipelines"}}
+    if module == "commercial":
+        intelligence = report.get("financial", {}).get("sales_intelligence", {})
+        result["sales_intelligence"] = {
+            key: value for key, value in intelligence.items()
+            if key in {"top_patients", "top_procedures", "procedure_categories", "performance_daily", "basis"}
+        }
     if module == "dashboard" and "clinica_experts" in result:
         result["clinica_experts"] = {"booking_registry_users": report["clinica_experts"].get("booking_registry_users", [])}
     return result

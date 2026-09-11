@@ -3769,11 +3769,9 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             f"""
             select
               (select count(distinct patient_uuid) from clinica_bookings where {booking_scope}) as patients,
-              (select count(*) from clinica_bookings where {booking_scope}) as bookings,
-              (select count(*) from clinica_sales where {sales_scope}) as sales,
-              (select coalesce(sum(total), 0) from clinica_sales where {sales_scope}) as sales_total
+              (select count(*) from clinica_bookings where {booking_scope}) as bookings
             """,
-            [*booking_params, *booking_params, *sales_params, *sales_params],
+            [*booking_params, *booking_params],
         ).fetchone()
         clinica_bookings_by_status = conn.execute(
             f"""
@@ -4290,7 +4288,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         }
         sales_rows = conn.execute(
             f"""
-            select uuid, patient_uuid, sale_date, total, raw_json
+            select uuid, patient_uuid, type, sale_date, total, raw_json
             from clinica_sales
             where {sales_scope}
             """,
@@ -4302,6 +4300,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         procedure_lookup = {}
         category_lookup = {}
         sale_amounts = []
+        commercial_sales_by_professional = {}
         performance_lookup = {
             row["day"]: {"day": row["day"], "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0}
             for row in fill_daily_series([], date_from, date_to)
@@ -4312,11 +4311,18 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             except json.JSONDecodeError:
                 sale = {}
             day = (sale_row["sale_date"] or "")[:10]
-            status_group = sale_status_group(first_value(sale, ["status"]), first_value(sale, ["type"]))
-            final_amount = money_value(first_value(sale, ["final_amount", "total", "amount"])) or sale_row["total"] or 0
+            status_group = sale_status_group(first_value(sale, ["status"]), first_value(sale, ["type"]) or sale_row["type"])
+            final_amount = money_value(first_value(sale, ["final_amount", "total", "amount"]))
+            if final_amount is None:
+                final_amount = sale_row["total"] or 0
             nominal_amount = money_value(first_value(sale, ["nominal_amount", "budget_amount", "quoted_amount"])) or final_amount
             day_bucket = performance_lookup.setdefault(day, {"day": day, "revenue": 0, "sales": 0, "quoted": 0, "quotes": 0})
             if status_group == "venda":
+                seller = sale.get("seller")
+                seller_uuid = seller.get("uuid") if isinstance(seller, dict) else None
+                seller_totals = commercial_sales_by_professional.setdefault(seller_uuid, {"total": 0, "amount": 0})
+                seller_totals["total"] += 1
+                seller_totals["amount"] += final_amount
                 day_bucket["revenue"] += final_amount
                 day_bucket["sales"] += 1
                 sale_amounts.append(final_amount)
@@ -4419,6 +4425,11 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             day_bucket["quoted"] += nominal_amount
             day_bucket["quotes"] += 1
 
+        clinica_totals = {
+            **dict(clinica_totals),
+            "sales": sum(row["total"] for row in commercial_sales_by_professional.values()),
+            "sales_total": sum(row["amount"] for row in commercial_sales_by_professional.values()),
+        }
         top_patients = sorted(top_patient_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
         top_procedures = sorted(procedure_lookup.values(), key=lambda row: row["amount"], reverse=True)[:10]
         procedure_categories = sorted(category_lookup.values(), key=lambda row: row["amount"], reverse=True)
@@ -4687,16 +4698,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 """,
                 (professional_uuid, date_from, date_to),
             ).fetchone()[0]
-            sales_row = conn.execute(
-                """
-                select count(*) as total, coalesce(sum(total), 0) as amount
-                from clinica_sales
-                where json_extract(raw_json, '$.seller.uuid') = ?
-                  and substr(sale_date, 1, 10) >= ?
-                  and substr(sale_date, 1, 10) <= ?
-                """,
-                (professional_uuid, date_from, date_to),
-            ).fetchone()
+            sales_row = commercial_sales_by_professional.get(professional_uuid, {"total": 0, "amount": 0})
             doctor_rows.append(
                 {
                     "doctor": doctor_name,

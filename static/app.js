@@ -280,6 +280,7 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  renderSalesIntelligence(report.sales_intelligence || report.financial?.sales_intelligence || {});
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
   renderGeneralPanel(report.general_panel || {});
@@ -728,7 +729,6 @@ function renderFinancial(financial) {
     shareTotal: totals.expenses || 0,
   });
   renderFinanceRecent(financial.recent || []);
-  renderSalesIntelligence(financial.sales_intelligence || {});
 }
 
 function renderGeneralPanel(panel) {

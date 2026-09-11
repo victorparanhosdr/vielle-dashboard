@@ -317,11 +317,12 @@ class HttpAuthTests(unittest.TestCase):
     def test_report_endpoint_projects_only_authorized_view(self):
         self.limit_permissions(["commercial.view"])
         cookie,_=self.login()
-        self.report.return_value={"connected":True,"totals":{"total_leads":7},"financial":{"secret":"finance"},"general_panel":{"secret":"summary"},"whatsapp_audit":{"secret":"chats"},"patient_followup":{"secret":"patients"},"quote_followup":{"secret":"budgets"},"paid_traffic":{"secret":"ads"}}
+        self.report.return_value={"connected":True,"totals":{"total_leads":7},"financial":{"secret":"finance", "sales_intelligence":{"top_patients":[{"patient":"Teste","amount":100}], "private_details":"must not leak"}},"general_panel":{"secret":"summary"},"whatsapp_audit":{"secret":"chats"},"patient_followup":{"secret":"patients"},"quote_followup":{"secret":"budgets"},"paid_traffic":{"secret":"ads"}}
         status,_,body=self.request("GET","/api/report?clinic=vielle&view=commercialView",cookie=cookie)
         self.assertEqual(status,200);data=json.loads(body)
         self.assertEqual(data["totals"]["total_leads"],7)
-        self.assertEqual(set(data),{"connected","totals"})
+        self.assertEqual(set(data),{"connected","totals","sales_intelligence"})
+        self.assertEqual(data["sales_intelligence"], {"top_patients":[{"patient":"Teste","amount":100}]})
         self.report.reset_mock()
         for query in ("view=financialView","include_followup=1","view=whatsappAuditView","view=generalView"):
             self.assertEqual(self.request("GET","/api/report?clinic=vielle&"+query,cookie=cookie)[0],403)
