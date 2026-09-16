@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Evolução corporal | DOC4DOCS</title>
   <link rel="icon" href="/doc4docs-favicon.png"><link rel="stylesheet" href="/body-evolution.css">
-  <script src="/session.js" defer></script><script src="/body-icons.js" defer></script><script src="/body-evolution-data.js" defer></script><script src="/body-evolution.js" defer></script>
+  <script src="/session.js" defer></script><script src="/body-icons.js" defer></script><script src="/body-evolution-data.js" defer></script><script src="/body-evolution-charts.js" defer></script><script src="/body-evolution.js" defer></script>
 </head>
 <body>
   <header class="brandbar"><a href="/?clinic=inspire" aria-label="DOC4DOCS, voltar ao painel"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></a><span class="clinic">Clínica Inspire</span><div class="account"><span data-session-user></span><button class="iconButton" data-logout title="Sair" aria-label="Sair"><i data-lucide="log-out"></i></button></div></header>
@@ -26,8 +26,13 @@
           <div class="compositionSummary"><div id="metrics" class="metrics"></div><p id="compositionSource" class="muted"></p></div>
         </div>
         <div class="evolutionGrid">
-          <section class="bodyComparison"><h2>Comparação corporal</h2><div class="bodies"><figure><figcaption>Inicial <span id="firstDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin-pearl.png" width="1024" height="1536" alt="Silhueta corporal ilustrativa inicial"><div class="measure waist" id="firstWaist"></div><div class="measure hip" id="firstHip"></div></div></figure><figure><figcaption>Selecionada <span id="currentDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin-pearl.png" width="1024" height="1536" alt="Silhueta corporal ilustrativa da avaliação selecionada"><div class="measure waist" id="currentWaist"></div><div class="measure hip" id="currentHip"></div></div></figure></div><p class="caption">Silhuetas ilustrativas · Não representam uma reconstrução do paciente</p></section>
-          <section class="chartSection"><div class="sectionHeading"><h2>Evolução das medidas</h2><label class="compact">Origem / método<select id="chartSource" aria-label="Origem e método do gráfico"></select></label></div><div class="metricTabs" role="tablist" aria-label="Medida do gráfico"><button role="tab" data-metric="weight_kg" aria-selected="true">Peso</button><button role="tab" data-metric="fat_pct" aria-selected="false">Gordura</button><button role="tab" data-metric="muscle_kg" aria-selected="false">Músculo</button><button role="tab" data-metric="waist_cm" aria-selected="false">Abdômen</button><button role="tab" data-metric="hip_cm" aria-selected="false">Quadril</button></div><div id="chart" class="chart"></div><p id="chartReadout" class="chartReadout" aria-live="polite"></p><div class="metabolic"><h2>Resultados por exame</h2><div id="metabolicResults" class="metabolicResults"></div></div></section>
+          <section class="bodyComparison"><h2>Comparação corporal</h2><div class="bodies"><figure><figcaption>Inicial <span id="firstDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin-pearl.png" width="1024" height="1536" alt="Silhueta corporal ilustrativa inicial"><div class="measure waist" id="firstWaist"></div><div class="measure hip" id="firstHip"></div></div></figure><figure><figcaption>Selecionada <span id="currentDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin-pearl.png" width="1024" height="1536" alt="Silhueta corporal ilustrativa da avaliação selecionada"><div class="measure waist" id="currentWaist"></div><div class="measure hip" id="currentHip"></div></div></figure></div><p class="caption">Silhuetas ilustrativas · Não representam uma reconstrução do paciente</p><div class="metabolic"><h2>Resultados por exame</h2><div id="metabolicResults" class="metabolicResults"></div></div></section>
+          <section class="chartSection" aria-label="Evolução das medidas">
+            <div class="sectionHeading"><h2 id="compositionChartTitle">Composição corporal</h2><label class="compact">Origem / método<select id="chartSource" aria-label="Origem e método dos gráficos"></select></label></div>
+            <div id="compositionChart" class="bodyChart" aria-labelledby="compositionChartTitle"></div>
+            <div class="measurementsHeading"><h2 id="measurementsChartTitle">Medidas corporais</h2></div>
+            <div id="measurementsChart" class="bodyChart" aria-labelledby="measurementsChartTitle"></div>
+          </section>
         </div>
         <section id="calorimetryPanel" class="calorimetryPanel" aria-label="Calorimetria" hidden><div id="calorimetryResults"></div></section>
         <section class="assessmentData"><h2>Exames do dia</h2><div id="allMeasures"></div></section>

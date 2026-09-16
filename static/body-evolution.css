@@ -141,3 +141,58 @@ figcaption span{display:inline;font-size:12px;margin-left:3px}
   .commands{display:flex}.commands button:last-child{grid-column:auto}.commands button{padding:9px}.metric{gap:8px}.metric>svg{width:20px}.metric dd{font-size:23px}.bodyModel{height:auto}.bodies{gap:14px}.measure strong{font-size:9px}.chartSection .sectionHeading{flex-direction:column;align-items:stretch}.compact{max-width:100%}.metricTabs{gap:8px}.metricTabs button{padding-left:6px;padding-right:6px}.metabolicItem svg.metabolicIcon{display:none}.calorimetryMetrics>div{gap:6px;padding:0 9px}.calorimetryMetrics dd{font-size:20px}.calorimetryMetric>svg{width:19px}.examMeasures .sectionHeading{flex-wrap:wrap}.examMeasures .rowActions{margin-left:auto}.examDetails{margin-left:0}
 }
 @media(prefers-reduced-motion:reduce){button{transition:none}}
+
+/* Paired bars and independent unit axes share the existing exam/source scope. */
+.evolutionGrid{grid-template-columns:minmax(0,38fr) minmax(0,62fr)}
+.bodyComparison .bodies{flex:0}
+.bodyComparison .metabolic{margin-top:auto;padding-top:22px}
+.chartSection .sectionHeading h2,.measurementsHeading h2{font-size:20px}
+.chartSection .compact{max-width:210px}
+.bodyChart{min-width:0}
+.seriesLegend{display:flex;flex-wrap:wrap;gap:4px 16px;padding:10px 0 4px}
+.seriesLegend label{display:flex;align-items:center;gap:6px;min-height:32px;cursor:pointer;font-size:12px;line-height:1.4;color:#20332e}
+.seriesLegend small{font-size:11px;color:#66746e;white-space:nowrap}
+.seriesLegend input{width:14px;height:14px;margin:0;accent-color:var(--series-color);cursor:pointer}
+.seriesSymbol{display:inline-block;position:relative;flex:none;width:15px;height:11px;background:var(--series-color);border-radius:2px}
+.seriesSymbol.line{height:2px;border-radius:0}
+.seriesSymbol.line::after{content:"";position:absolute;width:6px;height:6px;border:1px solid white;border-radius:50%;background:var(--series-color);top:50%;left:50%;transform:translate(-50%,-50%)}
+.seriesLegend input:not(:checked)~span{opacity:.45}
+.seriesLegend input:focus-visible{outline:2px solid var(--series-color);outline-offset:3px}
+.evolutionPlot{position:relative;height:284px;width:100%;min-width:0;margin-top:8px}
+.plotDrawing{width:100%;height:100%}
+.plotDrawing svg{display:block;max-width:100%;height:100%;overflow:hidden}
+.plotDrawing text{font:12px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#66746e}
+.plotDrawing .axisUnit{font-weight:600;fill:#42594c}
+.plotDrawing .axisYear{font-size:10px;fill:#84918b}
+.plotDrawing .plotValue{font-size:11px;font-weight:600;fill:#294738;paint-order:stroke;stroke:#ffffffc9;stroke-width:3px;stroke-linejoin:round}
+.plotDrawing .plotGrid{stroke:#e6ece8;stroke-width:1}
+.plotDrawing .chartHit{cursor:crosshair;outline:none;touch-action:pan-y}
+.plotDrawing .chartHit:focus-visible{stroke:#618a75;stroke-width:1.5;stroke-dasharray:4 4}
+.chartHighlight{pointer-events:none}
+.chartTooltip{position:absolute;z-index:3;max-width:calc(100% - 4px);width:276px;padding:13px 15px;border:1px solid #8ca69577;border-radius:8px;background:linear-gradient(120deg,#102d26f7,#285044f7);box-shadow:0 8px 24px #102d2628;color:#fff;pointer-events:none;font-size:12px;font-variant-numeric:tabular-nums}
+.chartTooltip>strong{display:block;font-size:13px;line-height:1.5;margin-bottom:10px;font-weight:650}
+.chartTooltip dl{display:grid;gap:8px}
+.chartTooltip dl>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}
+.chartTooltip dt{display:flex;align-items:center;gap:7px;min-width:0;overflow-wrap:anywhere}
+.chartTooltip dt span{width:9px;height:9px;border:1px solid #ffffff80;border-radius:50%;flex:none}
+.chartTooltip dd{margin:0;font-size:12px;font-weight:650;text-align:right;white-space:nowrap}
+.chartTooltip p{border-top:1px solid #ffffff28;padding-top:8px;margin-top:10px;font-size:10px;color:#cbd8cf;overflow-wrap:anywhere}
+.chartEmpty{height:100%;display:grid;place-items:center;text-align:center;font-size:13px;color:var(--muted);padding:24px}
+.measurementsHeading{border-top:1px solid var(--line);margin-top:20px;padding-top:20px}
+#measurementsChart .evolutionPlot{height:230px}
+@media(max-width:1100px){
+  .evolutionGrid{display:flex;flex-direction:column;gap:24px}
+  .bodyComparison{border-right:0;border-bottom:1px solid var(--line);padding:0 0 22px}
+  .bodyComparison .bodies{max-width:560px;width:100%;align-self:center}
+  .bodyComparison .metabolic{margin-top:22px}
+  .chartSection .sectionHeading{flex-direction:row;align-items:center}
+}
+@media(max-width:600px){
+  .chartSection .sectionHeading{flex-direction:column;align-items:stretch;gap:10px}
+  .chartSection .compact{max-width:100%}
+  .chartSection .sectionHeading h2,.measurementsHeading h2{font-size:19px}
+  .seriesLegend{column-gap:12px}.seriesLegend label{font-size:11px;gap:5px}.seriesLegend small{font-size:10px}
+  .evolutionPlot{height:256px}#measurementsChart .evolutionPlot{height:230px}
+  .chartTooltip{padding:11px 12px;font-size:11px;width:260px}.chartTooltip>strong{font-size:12px}.chartTooltip dd{font-size:11px}
+  .chartTooltip dl>div{gap:6px}.seriesSymbol{width:12px}
+}

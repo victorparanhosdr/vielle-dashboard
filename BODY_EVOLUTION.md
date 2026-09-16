@@ -31,6 +31,15 @@
   tocar, focar ou passar o mouse. Medidas completas ficam expansivas por exame.
   O novo bitmap e `static/body-mannequin-pearl.png`; a silhueta e estatica e nao
   simula alteracoes anatomicas a partir dos numeros do paciente.
+- Composicao corporal: barras lado a lado de peso e massa muscular (eixo kg,
+  sempre a partir de zero), linha de gordura corporal (eixo percentual proprio).
+  Medidas corporais: abdomen e quadril em linhas no mesmo eixo cm. Gradientes
+  verdes, salvia e oliva, sem misturar unidades ou empilhar peso com musculo.
+  As datas sao categorias de exames em ordem cronologica; horarios repetidos
+  permanecem separados. A legenda permite ocultar series. Mouse, toque e foco
+  mostram data/hora, valores, unidades e metodo; setas navegam entre exames,
+  Escape fecha a leitura. Lacunas nao viram zero nem sao interpoladas.
+  Alteracao apenas de frontend, sem migracao de banco ou dependencia externa.
 
 ## PDFs
 
@@ -95,6 +104,7 @@ para bancos de producao.
 python3 -m unittest tests.test_body_evolution -v
 python3 -m unittest discover -s tests
 node --test tests/test_body_evolution_dates.cjs
+node --test tests/test_body_evolution_charts.cjs
 python3 tests/serve_body_preview.py
 ```
 
@@ -114,7 +124,7 @@ abrir link privado sem sessao; testar usuario somente leitura; verificar celular
 Backend: `body_evolution.py`, `body_exams.py`, hooks em `app.py`,
 `access_policy.py`, `access_store.py`, `auth_http.py`, `requirements.txt`.
 
-Frontend servido: `static/body-evolution.html`, `.css`, `.js`, `static/body-evolution-data.js`,
+Frontend servido: `static/body-evolution.html`, `.css`, `.js`, `static/body-evolution-data.js`, `static/body-evolution-charts.js`,
 `static/body-mannequin-pearl.png`, `static/body-icons.js` e sua licenca; integracao
 em `static/index.html`, `static/app.js`, `static/login.js`, `static/session.js`.
 

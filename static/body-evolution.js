@@ -8,7 +8,9 @@
   const calorimetryFields = {rq:"RQ", fat_fuel_pct:"Gordura (utilização)", carb_fuel_pct:"Carboidratos (utilização)", vo2:"VO₂"};
   const fieldIcons = {weight_kg:"scale", fat_pct:"percent", muscle_kg:"dumbbell", waist_cm:"ruler", rq:"network", fat_fuel_pct:"droplet", carb_fuel_pct:"wheat", vo2:"wind"};
   const primary = ["weight_kg", "height_cm", "muscle_kg", "fat_free_kg", "fat_kg", "fat_pct", "waist_cm", "hip_cm"];
-  let permissions = [], user = {}, catalog = {}, detail = null, selectedId = "", chartMetric = "weight_kg";
+  let permissions = [], user = {}, catalog = {}, detail = null, selectedId = "";
+  const compositionChart = window.Doc4DocsBodyCharts.create($("compositionChart"),"composition");
+  const measurementsChart = window.Doc4DocsBodyCharts.create($("measurementsChart"),"measurements");
   let formRecord = null, pendingPdf = null, previewUrl = "", importSequence = 0, listSequence = 0, searchSequence = 0, patientSequence = 0;
   let lastFocus = null, saveBusy = false;
   let deleteRecord = null, exclusionBusy = false;
@@ -201,31 +203,9 @@
 
   function renderChart() {
     const cutoff = examDay(selected());
-    const rows = throughDay(detail.evaluations,cutoff).filter(item => groupKey(item) === $("chartSource").value && item.fields[chartMetric] != null);
-    $("chartReadout").textContent = "";
-    document.querySelectorAll("[data-metric]").forEach(button => button.setAttribute("aria-selected", String(button.dataset.metric === chartMetric)));
-    if (!rows.length) { $("chart").innerHTML = '<p class="muted">Sem medidas desta origem até o exame selecionado.</p>'; return; }
-    const values = rows.map(row=>row.fields[chartMetric]), times = rows.map(row=>new Date(row.exam_at).getTime());
-    const lo = Math.min(...values), hi = Math.max(...values), pad = Math.max((hi-lo)*.2,1);
-    const min = Math.max(0,lo-pad), max = hi+pad, left=54, right=620, top=22, bottom=215;
-    const point = (value,i) => [times.at(-1)===times[0] ? (left+right)/2 : left+(times[i]-times[0])/(times.at(-1)-times[0])*(right-left), bottom-(value-min)/(max-min)*(bottom-top)];
-    const points = values.map(point);
-    const grid = Array.from({length:5},(_,i)=>{ const y=top+i*(bottom-top)/4;return `<line x1="${left}" x2="${right}" y1="${y}" y2="${y}" stroke="#dce5e4" stroke-dasharray="3 3"/><text x="44" y="${y+4}" text-anchor="end">${number(Number((max-i*(max-min)/4).toFixed(1)))}</text>`;}).join("");
-    const labels = [...new Set([0,Math.floor((rows.length-1)/2),rows.length-1])].map(i=>`<text x="${points[i][0]}" y="243" text-anchor="${i===0?"start":i===rows.length-1?"end":"middle"}">${date(rows[i].exam_at)}</text>`).join("");
-    const circles = points.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="5" fill="#1a6352" stroke="white" stroke-width="2" tabindex="0" data-point="${i}" aria-label="${esc(date(rows[i].exam_at,true)+': '+measure(values[i],chartMetric))}"><title>${esc(date(rows[i].exam_at,true)+': '+measure(values[i],chartMetric))}</title></circle>`).join("");
-    const valuesOnChart = points.map(([x,y],i)=>{
-      const previous = points[i-1];
-      return !previous || x-previous[0] > 70 ? `<text class="pointValue" x="${x}" y="${y-12}" text-anchor="middle">${number(values[i])}</text>` : "";
-    }).join("");
-    const area = `M ${points[0][0]} ${bottom} L ${points.map(p=>p.join(' ')).join(' L ')} L ${points.at(-1)[0]} ${bottom} Z`;
-    $("chart").innerHTML = `<svg viewBox="0 0 655 260" role="img" aria-label="${esc(catalog[chartMetric][0])} por data do exame"><defs><linearGradient id="bodyChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#159f89" stop-opacity=".17"/><stop offset="100%" stop-color="#159f89" stop-opacity="0"/></linearGradient></defs><text x="${left}" y="12">${esc(unit(chartMetric))}</text>${grid}<path d="${area}" fill="url(#bodyChartFill)"/><polyline points="${points.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#078778" stroke-width="2.5"/>${circles}${valuesOnChart}${labels}</svg>`;
-    const announce = i => { $("chartReadout").textContent = `${date(rows[i].exam_at,true)} · ${measure(values[i],chartMetric)} · ${rows[i].method}`; };
-    $("chart").querySelectorAll("[data-point]").forEach(circle=>{
-      circle.addEventListener("mouseenter",()=>announce(Number(circle.dataset.point)));
-      circle.addEventListener("focus",()=>announce(Number(circle.dataset.point)));
-      circle.addEventListener("click",()=>announce(Number(circle.dataset.point)));
-    });
-    announce(rows.length-1);
+    const rows = throughDay(detail.evaluations,cutoff).filter(item => groupKey(item) === $("chartSource").value);
+    compositionChart.render(rows);
+    measurementsChart.render(rows);
   }
 
   function makeFields() {
@@ -336,7 +316,6 @@
     const close=event.target.closest("[data-close]");if(close){closeDialog(close.dataset.close);return;}
     const patient=event.target.closest("[data-patient]");if(patient){run(()=>openPatient(patient.dataset.patient));return;}
     const select=event.target.closest("[data-select]");if(select){selectedId=select.dataset.select;renderDetail();return;}
-    const metric=event.target.closest("[data-metric]");if(metric){chartMetric=metric.dataset.metric;renderChart();return;}
     const edit=event.target.closest("[data-edit]");if(edit){openForm(detail.evaluations.find(item=>item.id===edit.dataset.edit));return;}
     const remove=event.target.closest("[data-delete]");if(remove){confirmExclusion(detail.evaluations.find(item=>item.id===remove.dataset.delete));return;}
     const restore=event.target.closest("[data-restore]");if(restore){changeExclusion(detail.deleted_evaluations.find(item=>item.id===restore.dataset.restore),true);return;}
