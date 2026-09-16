@@ -14,6 +14,7 @@
   let formRecord = null, pendingPdf = null, previewUrl = "", importSequence = 0, listSequence = 0, searchSequence = 0, patientSequence = 0;
   let lastFocus = null, saveBusy = false;
   let deleteRecord = null, exclusionBusy = false;
+  let expertsLinkPreview = null, expertsLinkBusy = false, expertsLinkSequence = 0;
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const number = value => value == null ? "—" : Number(value).toLocaleString("pt-BR", {maximumFractionDigits: 2});
   const date = (value, time = false) => value ? new Date(value).toLocaleString("pt-BR", time ? {dateStyle:"short", timeStyle:"short"} : {dateStyle:"short"}) : "—";
@@ -32,6 +33,7 @@
   function closeDialog(id) {
     if (id === "assessmentDialog" && saveBusy) return;
     if (id === "deleteDialog" && exclusionBusy) return;
+    if (id === "expertsLinkDialog" && expertsLinkBusy) return;
     $(id).close();
     if (id === "assessmentDialog") { importSequence++; releasePreview(); pendingPdf = null; }
     lastFocus?.focus();
@@ -55,6 +57,8 @@
     $("newAssessment").hidden = !can("create");
     $("editSelected").hidden = !can("edit");
     $("deleteSelected").hidden = !can("delete");
+    $("linkExperts").hidden = !can("edit");
+    if (!can("edit")) $("expertsLinkDialog").close();
     if (!can("delete") && $("deleteDialog").open) $("deleteDialog").close();
     if (!can("view")) {
       detail = null;
@@ -310,6 +314,61 @@
     } catch(error){$("revisionContent").textContent=error.message;}
   }
 
+  async function previewExpertsLink() {
+    const patientId = detail.patient.id;
+    const sequence = ++expertsLinkSequence;
+    expertsLinkPreview = null;
+    $("expertsLinkPatient").textContent = detail.patient.display_name + " · Inspire";
+    $("expertsLinkStatus").textContent = "Conferindo cadastro e anotação no Clínica Experts…";
+    $("expertsLinkError").textContent = "";
+    $("expertsLinkExisting").hidden = true;
+    $("expertsLinkExisting").open = false;
+    $("expertsLinkAddition").hidden = true;
+    $("saveExpertsLink").hidden = false;
+    $("saveExpertsLink").disabled = true;
+    showDialog("expertsLinkDialog");
+    try {
+      const data = await api("experts-link", {body:{mode:"preview",patient_id:patientId}});
+      if (sequence !== expertsLinkSequence || !$("expertsLinkDialog").open || detail?.patient.id !== patientId) return;
+      expertsLinkPreview = data;
+      $("expertsLinkPatient").textContent = `DOC4DOCS: ${data.local_name} · Clínica Experts: ${data.experts_name}`;
+      $("expertsLinkBefore").textContent = data.annotation || "Sem anotação.";
+      $("expertsLinkExisting").hidden = false;
+      $("expertsLinkText").textContent = data.addition;
+      $("expertsLinkAddition").hidden = data.linked;
+      $("expertsLinkStatus").textContent = data.linked ? "Este link já consta na anotação do cadastro." : "Confira a identidade do paciente antes de confirmar a gravação na anotação do cadastro.";
+      $("saveExpertsLink").hidden = data.linked;
+      $("saveExpertsLink").disabled = data.linked || !can("edit");
+    } catch (error) {
+      if (sequence !== expertsLinkSequence) return;
+      $("expertsLinkStatus").textContent = "Nenhum texto enviado.";
+      $("expertsLinkError").textContent = error.message;
+    }
+  }
+
+  async function saveExpertsLink(event) {
+    event.preventDefault();
+    if (!expertsLinkPreview || expertsLinkBusy || !can("edit")) return;
+    expertsLinkBusy = true;
+    $("saveExpertsLink").disabled = true;
+    $("expertsLinkError").textContent = "";
+    $("expertsLinkStatus").textContent = "Gravando e conferindo o vínculo…";
+    try {
+      const result = await api("experts-link", {body:{mode:"save",patient_id:expertsLinkPreview.patient_id,
+        revision:expertsLinkPreview.revision,confirmed:true}});
+      $("expertsLinkStatus").textContent = result.already_linked ? "O link já estava salvo. Nenhuma duplicação criada." : "Link gravado e confirmado na anotação do Clínica Experts.";
+      $("saveExpertsLink").hidden = true;
+      $("expertsLinkAddition").hidden = true;
+      $("expertsLinkExisting").hidden = true;
+    } catch (error) {
+      $("expertsLinkStatus").textContent = "Operação não confirmada. Feche e confira o vínculo novamente antes de repetir.";
+      $("expertsLinkError").textContent = error.message;
+    } finally {
+      expertsLinkBusy = false;
+      expertsLinkPreview = null;
+    }
+  }
+
   function debounce(fn,ms=250){let timer;return()=>{clearTimeout(timer);timer=setTimeout(fn,ms);};}
   const run=fn=>Promise.resolve().then(fn).catch(error=>notify(error.message,true));
   document.addEventListener("click",event=>{
@@ -339,6 +398,10 @@
   $("assessmentDialog").addEventListener("close",()=>{importSequence++;releasePreview();pendingPdf=null;});
   $("chartSource").addEventListener("change",renderChart);
   $("copyLink").addEventListener("click",()=>run(async()=>{await navigator.clipboard.writeText(location.origin+`/body-evolution.html?${new URLSearchParams({clinic,patient:detail.patient.id})}`);notify("Link da ficha copiado. O acesso continua protegido por login e permissão.");}));
+  $("linkExperts").addEventListener("click",()=>run(previewExpertsLink));
+  $("expertsLinkForm").addEventListener("submit",saveExpertsLink);
+  $("expertsLinkDialog").addEventListener("cancel",event=>{if(expertsLinkBusy)event.preventDefault();});
+  $("expertsLinkDialog").addEventListener("close",()=>{expertsLinkSequence++;expertsLinkPreview=null;});
   window.addEventListener("popstate",()=>{const id=new URLSearchParams(location.search).get("patient");run(()=>id?openPatient(id,false):showList(false));});
   window.addEventListener("doc4docs-session",event=>applyAccess(event.detail));
   window.addEventListener("doc4docs-permission-denied",()=>run(async()=>{const r=await fetch('/api/auth/me');if(r.ok)applyAccess(await r.json());}));

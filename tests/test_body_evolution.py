@@ -223,6 +223,18 @@ class BodyHttpTests(unittest.TestCase):
         read=json.loads(self.request("GET",f"/api/body/revisions?clinic=inspire&patient={patient}&id={record}",login="viewer")[2])
         self.assertEqual(len(read["revisions"]),2)
 
+    def test_experts_link_has_backend_clinic_permission_and_csrf_guards(self):
+        import clinica_patient_link as links
+        route = "/api/body/experts-link?clinic=inspire"
+        payload = {"mode":"preview", "patient_id":"not-found"}
+        with patch.object(links, "ExpertsPatients") as client:
+            for login, status in [(None,401),("viewer",403),("creator",403),("outsider",403),("denied",403)]:
+                self.assertEqual(self.request("POST",route,payload,login)[0],status)
+            self.assertEqual(self.request("POST",route,payload,"writer",csrf=False)[0],403)
+            self.assertEqual(self.request("POST",route.replace("inspire","vielle"),payload,"writer")[0],403)
+            self.assertEqual(self.request("POST",route,payload,"editor")[0],404)
+            client.assert_not_called()
+
     def test_pdf_preview_save_download_and_duplicate(self):
         pdf = sample_exam()
         encoded = base64.b64encode(pdf).decode()

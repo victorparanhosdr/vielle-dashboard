@@ -12,6 +12,12 @@
 @media(max-width:760px){.brandbar{padding:10px 18px;height:72px;gap:15px}.brandbar img{width:110px;height:50px}.clinic{font-size:12px;padding-left:15px}.account span{display:none}main{padding:20px 18px 40px}.pageTitle{display:block;margin-bottom:22px}h1{font-size:26px}.commands{max-width:none;justify-content:flex-start;margin-top:18px}.pageTitle>button{margin-top:18px}.commands button{font-size:12px;padding:10px}.breadcrumb{margin-bottom:18px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 18px}.metric:nth-child(2){border:0}.metric dd{font-size:27px}.evolutionGrid{display:flex;flex-direction:column;gap:28px}.bodyComparison{border-right:0;border-bottom:1px solid var(--line);padding:0 0 22px}.bodyModel{height:350px;max-width:210px;margin:10px auto 0}.sectionHeading{flex-direction:row;align-items:center}.chart{height:245px}.assessmentData dl{grid-template-columns:repeat(2,minmax(0,1fr))}.history .sectionHeading{display:block}.history .muted{display:block;margin-top:8px}.assessmentContext{align-items:flex-start}.formGrid{grid-template-columns:1fr}dialog{padding:20px}.dialogHeading h2{font-size:20px}.metabolicResults strong{font-size:21px}.compact{max-width:160px}.chartSection .sectionHeading h2{font-size:17px}.listToolbar{margin-top:18px}.measure{font-size:10px}}
 @media(max-width:380px){.clinic{display:none}.bodyModel{height:300px}.commands{display:grid;grid-template-columns:1fr 1fr}.commands button:last-child{grid-column:1/-1}.sectionHeading{flex-direction:column;align-items:stretch}.compact{max-width:100%}.chart{height:225px}.metabolicResults strong{font-size:19px}.metricTabs{gap:10px}}
 
+.linkPreview{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:inherit;font-size:13px;line-height:1.6;background:var(--wash);border:1px solid var(--line);border-radius:6px;padding:14px;margin:12px 0}
+#expertsLinkPatient{overflow-wrap:anywhere;font-weight:600;margin-bottom:10px}
+#expertsLinkStatus{line-height:1.6;margin-bottom:14px}
+#expertsLinkError{color:var(--error);font-size:13px;line-height:1.6;margin-top:12px}
+#expertsLinkExisting summary{cursor:pointer;font-size:13px}
+
 /* Clinical overview: open surfaces and independent, source-labelled results. */
 :root{--green:#0d4b3d;--deep:#09392f;--olive:#8a9479;--teal:#078778;--ink:#192636;--muted:#697782;--line:#e0e7eb;--wash:#f6f9fa}
 body{background:#f5f8f8}

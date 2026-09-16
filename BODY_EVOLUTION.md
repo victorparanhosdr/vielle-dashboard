@@ -41,6 +41,41 @@
   Escape fecha a leitura. Lacunas nao viram zero nem sao interpoladas.
   Alteracao apenas de frontend, sem migracao de banco ou dependencia externa.
 
+## Vinculo na anotacao do Clinica Experts
+
+- Botao `Vincular no Clinica Experts` na ficha, apenas para quem tem
+  `body_evolution.edit`. A rota POST `/api/body/experts-link` exige sessao,
+  acesso a Inspire, visualizacao, edicao e protecao CSRF no backend.
+- A previa consulta `GET https://api.clinicaexperts.com.br/api/v1/patients/{uuid}`
+  com a chave ja configurada **da Inspire**. Compara o UUID do retorno, mostra
+  nomes local/remoto, anotacao anterior e o texto a acrescentar. Nao grava ao
+  cadastrar paciente nem ao importar exames.
+- A confirmacao envia somente `annotation` em `PUT` na mesma rota e verifica
+  o texto por um novo GET. Nao cria atendimento nem entrada no prontuario.
+  Contrato oficial: https://clinicaexperts.readme.io/reference/update-patient
+- Definir `BODY_EVOLUTION_PUBLIC_ORIGIN=https://doc4docs.com.br` no servidor
+  publicado (alternativamente `APP_BASE_URL`, se ja contiver essa origem).
+  Nao usa Host, URL ou UUID enviados pelo cliente para escolher o destino.
+  Dominios locais, HTTP e caminhos adicionais sao recusados. Nunca configurar
+  uma demonstracao com chaves reais e IDs de pacientes ficticios.
+- O texto anterior e preservado integralmente, inclusive espacos. O link exato
+  ja existente nao e duplicado. Mudancas no nome, anotacao ou updated_at desde
+  a previa interrompem a gravacao e exigem nova conferencia. Uma trava local
+  evita requisicoes simultaneas do mesmo processo; a API nao documenta ETag /
+  If-Match, portanto nao ha garantia atomica contra edicoes externas entre GET
+  e PUT. Evitar editar o mesmo cadastro no Experts durante a confirmacao.
+- Antes do PUT e criada/atualizada uma tabela nova e independente no banco da
+  clinica: `body_experts_link_writes`, com copia anterior/posterior da anotacao,
+  paciente, autor, data e status (`pending`, `verified`, `unconfirmed`). Nada
+  e apagado das tabelas anteriores. O commit ocorre antes da chamada de rede.
+  A auditoria central registra IDs, nao o texto da anotacao.
+- Timeout ou resposta divergente nao provoca repeticao automatica nem rollback
+  no Experts. Reabrir a previa consulta o estado real antes de nova tentativa.
+- Testes: `python3 -m unittest tests.test_clinica_patient_link tests.test_body_evolution -v`.
+  Os testes usam dados ficticios e transporte simulado. A confirmacao real e a
+  apresentacao/clicabilidade do link no Experts precisam ser verificadas em
+  cadastro autorizado antes de considerar a integracao validada em producao.
+
 ## PDFs
 
 Leitura local com `pdfplumber==0.11.9`, sem envio para OpenAI ou outro servico.

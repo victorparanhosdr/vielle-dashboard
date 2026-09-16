@@ -6899,7 +6899,7 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/body/"):
             from body_evolution import handle_request
             with clinic_context(self.request_clinic_id(parsed)):
-                return handle_request(self, parsed, db)
+                return handle_request(self, parsed, db, lambda: config_value("CLINICA_EXPERTS_TOKEN", ""))
         if parsed.path == "/api/export-authorize":
             return self.auth_json({"ok": True})
         if parsed.path == "/api/export-chart":
@@ -7135,7 +7135,7 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/body/"):
             from body_evolution import handle_request
             with clinic_context(self.request_clinic_id(parsed)):
-                return handle_request(self, parsed, db)
+                return handle_request(self, parsed, db, lambda: config_value("CLINICA_EXPERTS_TOKEN", ""))
         if parsed.path == "/api/clinic-access":
             try:
                 payload = self.read_json_body()

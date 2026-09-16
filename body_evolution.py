@@ -288,7 +288,7 @@ def change_exclusion(conn, payload, actor, restore=False):
     return evaluation_id
 
 
-def handle_request(handler, parsed, connect):
+def handle_request(handler, parsed, connect, experts_token=lambda: ""):
     """Called only after the session/clinic/module guards, inside clinic_context."""
     from urllib.parse import parse_qs
 
@@ -305,6 +305,9 @@ def handle_request(handler, parsed, connect):
             payload = json.loads(handler.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Solicitação inválida.")
+        if action == "experts-link" and handler.command == "POST":
+            from clinica_patient_link import handle_link
+            return handle_link(handler, clinic, payload, connect, experts_token)
         attachment = None
         if handler.command == "POST" and action in ("import", "evaluation") and payload.get("pdf"):
             data = decode_pdf(payload["pdf"])

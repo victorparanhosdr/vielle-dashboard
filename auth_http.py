@@ -167,6 +167,8 @@ class SessionAuthMixin:
                 return False
             if path == "/api/body/document":
                 return self.require_permission(clinic, "body_evolution.export")
+            if path == "/api/body/experts-link":
+                return self.require_permission(clinic, "body_evolution.edit")
             if self.command == "POST" and path in {"/api/body/enroll", "/api/body/import"}:
                 return self.require_permission(clinic, "body_evolution.create")
             if self.command == "POST" and path in {"/api/body/delete", "/api/body/restore"}:
