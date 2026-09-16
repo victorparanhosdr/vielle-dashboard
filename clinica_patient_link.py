@@ -36,12 +36,17 @@ class ExpertsPatients:
             raise LinkError("A API do Clínica Experts não está configurada nesta clínica.", 503)
         self.token = token
 
-    def request(self, uuid, annotation=None):
+    def request(self, uuid, annotation=None, *, name=None):
         try:
             uuid = str(UUID(uuid))
         except (ValueError, TypeError, AttributeError):
             raise LinkError("O cadastro não possui um UUID válido do Clínica Experts.") from None
-        body = None if annotation is None else json.dumps({"annotation": annotation}).encode()
+        body = None
+        if annotation is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise LinkError("Não foi possível conferir o nome atual do paciente para preservar o cadastro.")
+            # The live API requires name even when only the annotation changes.
+            body = json.dumps({"name": name, "annotation": annotation}).encode()
         request = urllib.request.Request(
             API_ROOT + uuid, data=body, method="GET" if body is None else "PUT",
             headers={"Authorization": "Bearer " + self.token, "Accept": "application/json",
@@ -158,9 +163,9 @@ def handle_link(handler, clinic, payload, connect, token):
                 conn.execute("INSERT INTO body_experts_link_writes VALUES (?,?,?,?,?,?,?,?,?,NULL)",
                     (attempt, patient_id, uuid, handler.current_user["id"], link, before, after, "pending", now()))
             try:
-                client.request(uuid, after)
+                client.request(uuid, after, name=patient["name"])
                 verified = read_patient(client, uuid)
-                if verified["annotation"] != after:
+                if verified["annotation"] != after or verified["name"] != patient["name"]:
                     raise LinkError("O texto retornado difere do esperado. Confira a anotação no Clínica Experts; não houve nova tentativa automática.", 502)
             except LinkError:
                 with connect() as conn:

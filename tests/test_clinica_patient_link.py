@@ -51,9 +51,10 @@ class LinkTests(unittest.TestCase):
             mocker.start()
             self.addCleanup(mocker.stop)
 
-    def request(self, uuid, annotation=None):
+    def request(self, uuid, annotation=None, *, name=None):
         self.calls.append((uuid, annotation))
         if annotation is not None:
+            self.assertEqual(name, self.remote["name"])
             self.remote["annotation"] = annotation
         return dict(self.remote)
 
@@ -120,8 +121,8 @@ class LinkTests(unittest.TestCase):
 
     def test_uncertain_write_keeps_backup_and_never_retries(self):
         preview = self.preview()
-        def uncertain(uuid, annotation=None):
-            result = self.request(uuid, annotation)
+        def uncertain(uuid, annotation=None, *, name=None):
+            result = self.request(uuid, annotation, name=name)
             if annotation is not None:
                 raise links.LinkError("Timeout", 502)
             return result
@@ -136,7 +137,7 @@ class LinkTests(unittest.TestCase):
 
     def test_confirmation_read_must_match_exact_annotation(self):
         preview = self.preview()
-        def lost_write(uuid, annotation=None):
+        def lost_write(uuid, annotation=None, *, name=None):
             return dict(self.remote)
         self.client.request.side_effect = lost_write
         self.assertEqual(self.call("save", revision=preview["revision"], confirmed=True)[0], 502)
@@ -144,23 +145,30 @@ class LinkTests(unittest.TestCase):
 
 
 class TransportTests(unittest.TestCase):
-    def test_only_annotation_is_sent_to_official_host(self):
+    def test_annotation_and_unchanged_required_name_are_sent_to_official_host(self):
         response = io.BytesIO(b'{"ok":true}')
         opener = Mock()
         opener.open.return_value = response
         with patch.object(links.urllib.request, "build_opener", return_value=opener):
-            links.ExpertsPatients("private-test-token").request(UUID, "Link")
+            links.ExpertsPatients("private-test-token").request(UUID, "Link", name="Paciente Fictício")
         request = opener.open.call_args.args[0]
         self.assertEqual(request.full_url, links.API_ROOT + UUID)
         self.assertEqual(request.method, "PUT")
-        self.assertEqual(json.loads(request.data), {"annotation":"Link"})
+        self.assertEqual(json.loads(request.data), {"annotation":"Link", "name":"Paciente Fictício"})
+
+    def test_write_without_current_name_is_rejected_before_network(self):
+        with patch.object(links.urllib.request, "build_opener") as network:
+            for name in (None, "", "   ", 123):
+                with self.subTest(name=name), self.assertRaises(links.LinkError):
+                    links.ExpertsPatients("test").request(UUID, "Link", name=name)
+            network.assert_not_called()
 
     def test_api_failure_does_not_echo_secret_response_or_retry(self):
         opener = Mock()
         opener.open.side_effect = urllib.error.HTTPError(links.API_ROOT + UUID, 403, "private content", {}, io.BytesIO(b'secret'))
         with patch.object(links.urllib.request, "build_opener", return_value=opener):
             with self.assertRaises(links.LinkError) as result:
-                links.ExpertsPatients("secret-token").request(UUID, "new note")
+                links.ExpertsPatients("secret-token").request(UUID, "new note", name="Paciente Fictício")
         self.assertNotIn("secret", str(result.exception))
         self.assertEqual(opener.open.call_count, 1)
 

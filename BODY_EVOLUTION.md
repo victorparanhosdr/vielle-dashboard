@@ -50,7 +50,8 @@
   com a chave ja configurada **da Inspire**. Compara o UUID do retorno, mostra
   nomes local/remoto, anotacao anterior e o texto a acrescentar. Nao grava ao
   cadastrar paciente nem ao importar exames.
-- A confirmacao envia somente `annotation` em `PUT` na mesma rota e verifica
+- A confirmacao envia `annotation` e o `name` atual, sem modifica-lo, em `PUT`
+  na mesma rota (a API em producao exige o nome mesmo nesta atualizacao) e verifica
   o texto por um novo GET. Nao cria atendimento nem entrada no prontuario.
   Contrato oficial: https://clinicaexperts.readme.io/reference/update-patient
 - Definir `BODY_EVOLUTION_PUBLIC_ORIGIN=https://doc4docs.com.br` no servidor
