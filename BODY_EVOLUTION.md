@@ -14,6 +14,23 @@
 - Graficos e comparacoes usam data/hora do exame e separam origem/metodo.
   Medidas ausentes nao viram zero. Silhuetas sao ilustrativas, nao simulacoes
   anatomicas ou diagnosticos.
+- A navegacao agrupa exames pela data local do laudo, em uma unica aba por dia.
+  Bioimpedancia, calorimetria e registros manuais do mesmo dia aparecem juntos,
+  mas conservam horarios, medidas, PDFs, edicao e exclusao individuais.
+  Os indicadores de composicao priorizam a bioimpedancia do dia (a mais recente
+  se houver mais de uma), com origem visivel. Nao ha media ou sobrescrita de pesos
+  ou TMB de equipamentos diferentes. Resultados de outro dia nao sao apresentados
+  como se fossem atuais. Os graficos incluem o dia selecionado inteiro.
+- A calorimetria destaca RQ, utilizacao de gorduras, utilizacao de carboidratos
+  e VO2 em ml/kg/min. Utilizacao de gordura nao e percentual de gordura corporal.
+  Ausencias sao exibidas como "Nao informado". Nao ha migracao ou mescla no banco
+  para o agrupamento por dia; registros existentes recebem a nova visualizacao.
+- Visual aprovado: superficies claras, cabecalho verde, indicadores compactos
+  com icones Lucide, silhueta perolada ilustrativa e faixa de calorimetria.
+  O grafico mostra valores nos pontos quando ha espaco, mantendo leitura ao
+  tocar, focar ou passar o mouse. Medidas completas ficam expansivas por exame.
+  O novo bitmap e `static/body-mannequin-pearl.png`; a silhueta e estatica e nao
+  simula alteracoes anatomicas a partir dos numeros do paciente.
 
 ## PDFs
 
@@ -34,24 +51,40 @@ sao mantidos separadamente. O sistema nao faz recomendacoes de tratamento.
 
 ## Persistencia e permissoes
 
-Quatro tabelas novas sao criadas de forma idempotente no primeiro acesso ao
+Cinco tabelas sao criadas de forma idempotente no primeiro acesso ao
 modulo, no banco **existente da Inspire**, dentro do `DATA_DIR` configurado:
 
 - `body_patients`: vinculo com Clinica Experts e nome de contingencia.
 - `body_evaluations`: medidas, data do exame, origem, profissional e versao.
 - `body_documents`: PDF original como BLOB, hash SHA-256 e extracao original.
 - `body_revisions`: autor, momento e snapshots de criacao/correcao.
+- `body_exclusions`: estado de exclusao recuperavel, autor e data. Nao altera
+  as colunas de tabelas existentes; adicionada na atualizacao de exclusao.
 
 Nenhuma tabela anterior e removida, renomeada ou limpa. Sincronizar o catalogo
 nao apaga avaliacoes. O backup SQLite da Inspire deve incluir estas tabelas e
 documentos; usar backup consistente do SQLite, incluindo o estado WAL.
 
 Permissoes no catalogo central existente:
-`body_evolution.view`, `.create`, `.edit`, `.export`.
+`body_evolution.view`, `.create`, `.edit`, `.delete`, `.export`.
 Master tem acesso. Usuarios comuns existentes nao recebem liberacao automatica:
 o Master deve habilitar as acoes na Inspire. O painel e os perfis existentes
 utilizam o novo modulo sem uma segunda estrutura de autorizacao. Outras clinicas
 nao o oferecem e suas rotas sao bloqueadas pelo backend.
+
+## Exclusao recuperavel
+
+O icone de lixeira aparece na avaliacao selecionada e no historico para quem
+possui `.delete`. A confirmacao identifica paciente, exame e data. A avaliacao
+excluida deixa de participar de contagens, graficos e comparacoes. O download
+do PDF fica indisponivel ate a restauracao.
+
+O painel `Avaliacoes excluidas` permite restaurar o mesmo registro, inclusive
+quando nao existem mais avaliacoes ativas. PDF, medidas e auditoria permanecem
+armazenados. Excluir/restaurar incrementa a versao para impedir sobrescrita
+por outra tela aberta. Nao ha exclusao fisica de registros ou arquivos.
+Usuarios existentes nao recebem `.delete` automaticamente; o Master pode
+libera-la em `Excluir / restaurar` dentro de Evolucao corporal da Inspire.
 
 ## Testar localmente
 
@@ -61,6 +94,7 @@ para bancos de producao.
 ```sh
 python3 -m unittest tests.test_body_evolution -v
 python3 -m unittest discover -s tests
+node --test tests/test_body_evolution_dates.cjs
 python3 tests/serve_body_preview.py
 ```
 
@@ -80,8 +114,8 @@ abrir link privado sem sessao; testar usuario somente leitura; verificar celular
 Backend: `body_evolution.py`, `body_exams.py`, hooks em `app.py`,
 `access_policy.py`, `access_store.py`, `auth_http.py`, `requirements.txt`.
 
-Frontend servido: `static/body-evolution.html`, `.css`, `.js`,
-`static/body-mannequin.png`, `static/body-icons.js` e sua licenca; integracao
+Frontend servido: `static/body-evolution.html`, `.css`, `.js`, `static/body-evolution-data.js`,
+`static/body-mannequin-pearl.png`, `static/body-icons.js` e sua licenca; integracao
 em `static/index.html`, `static/app.js`, `static/login.js`, `static/session.js`.
 
 Testes: `tests/test_body_evolution.py`, `tests/serve_body_preview.py`.

@@ -107,6 +107,49 @@ class BodyStoreTests(unittest.TestCase):
         for value in [None, "!!!", base64.b64encode(b"hello").decode(), "x"*(body.MAX_PDF*2)]:
             with self.assertRaises(ValueError):body.decode_pdf(value)
 
+    def test_exclusion_restore_preserves_document_history_and_existing_schema(self):
+        pdf = b"%PDF-original-to-preserve"
+        record = body.save_evaluation(self.conn, {**self.payload,"source":"inbody"}, self.actor,
+                                      (pdf,{"source":"inbody"}))
+        self.conn.commit()
+        body.initialize(self.conn)
+        body.initialize(self.conn)
+        state = {"id":record,"patient_id":self.patient,"version":1,"confirmed":True}
+        with self.conn:
+            body.change_exclusion(self.conn,state,self.actor)
+        self.assertEqual(body.patient_detail(self.conn,self.patient)["evaluations"],[])
+        self.assertNotIn("deleted_evaluations",body.patient_detail(self.conn,self.patient))
+        excluded = body.patient_detail(self.conn,self.patient,include_deleted=True)["deleted_evaluations"]
+        self.assertEqual(len(excluded),1)
+        self.assertEqual(excluded[0]["version"],2)
+        self.assertEqual(self.conn.execute("SELECT content FROM body_documents").fetchone()[0],pdf)
+        listed = body.search_patients(self.conn,"",registered=True)[0]
+        self.assertEqual(listed["evaluations"],0);self.assertIsNone(listed["last_exam"])
+        with self.assertRaises(ValueError):
+            body.save_evaluation(self.conn,{**self.payload,"id":record,"version":2},self.actor)
+        with self.conn:
+            body.change_exclusion(self.conn,{**state,"version":2},self.actor,restore=True)
+        result = body.patient_detail(self.conn,self.patient)
+        self.assertEqual(result["evaluations"][0]["id"],record)
+        self.assertEqual(result["evaluations"][0]["version"],3)
+        self.assertEqual(result["evaluations"][0]["fields"]["weight_kg"],70)
+        self.assertEqual([r[0] for r in self.conn.execute("SELECT action FROM body_revisions ORDER BY id")],["create","delete","restore"])
+        self.assertEqual(body.search_patients(self.conn,"",registered=True)[0]["evaluations"],1)
+
+    def test_exclusion_rejects_missing_confirmation_wrong_patient_and_stale_version(self):
+        record = body.save_evaluation(self.conn,self.payload,self.actor)
+        self.conn.commit()
+        state = {"id":record,"patient_id":self.patient,"version":1,"confirmed":True}
+        for change in [{"confirmed":False},{"patient_id":"another-patient"},{"version":0},{"id":"missing"}]:
+            with self.subTest(change=change), self.assertRaises(ValueError), self.conn:
+                body.change_exclusion(self.conn,{**state,**change},self.actor)
+        with self.assertRaises(ValueError), self.conn:
+            body.change_exclusion(self.conn,state,self.actor,restore=True)
+        with self.conn:body.change_exclusion(self.conn,state,self.actor)
+        for restore,version in [(False,1),(False,2),(True,1)]:
+            with self.assertRaises(ValueError), self.conn:
+                body.change_exclusion(self.conn,{**state,"version":version},self.actor,restore=restore)
+
 
 class BodyHttpTests(unittest.TestCase):
     def setUp(self):
@@ -218,6 +261,38 @@ class BodyHttpTests(unittest.TestCase):
         self.assertEqual(self.request("POST",route,payload,"creator")[0],403)
         self.assertEqual(self.request("POST",route,payload,"editor")[0],200)
 
+    def test_http_exclusion_requires_permission_and_hides_pdf_until_restore(self):
+        patient = json.loads(self.request("POST","/api/body/enroll?clinic=inspire",{"experts_uuid":"experts-1"},"writer")[2])["id"]
+        pdf = sample_exam()
+        data = {"patient_id":patient,"exam_at":"2026-02-01T09:42","source":"handymet","method":"HandyMet",
+                "professional":"Dra Teste","fields":{"weight_kg":70},"confirmed":True,"pdf":base64.b64encode(pdf).decode()}
+        record = json.loads(self.request("POST","/api/body/evaluation?clinic=inspire",data,"writer")[2])["id"]
+        detail_route = f"/api/body/patient?clinic=inspire&id={patient}"
+        row = json.loads(self.request("GET",detail_route,login="writer")[2])["evaluations"][0]
+        document_route = f"/api/body/document?clinic=inspire&patient={patient}&id={row['document_id']}"
+        state = {"id":record,"patient_id":patient,"version":1,"confirmed":True}
+        for action in ("delete","restore"):
+            route = f"/api/body/{action}?clinic=inspire"
+            for login,status in [(None,401),("viewer",403),("creator",403),("editor",403),("outsider",403)]:
+                self.assertEqual(self.request("POST",route,state,login)[0],status)
+            self.assertEqual(self.request("POST",route,state,"writer",csrf=False)[0],403)
+            self.assertEqual(self.request("POST",route.replace("inspire","vielle"),state,"writer")[0],403)
+        route = "/api/body/delete?clinic=inspire"
+        self.assertEqual(self.request("POST",route,{**state,"confirmed":False},"writer")[0],400)
+        self.assertEqual(self.request("POST",route,state,"writer")[0],200)
+        self.assertEqual(self.request("POST",route,state,"writer")[0],400)
+        read = json.loads(self.request("GET",detail_route,login="viewer")[2])
+        self.assertEqual(read["evaluations"],[]);self.assertNotIn("deleted_evaluations",read)
+        read = json.loads(self.request("GET",detail_route,login="writer")[2])
+        self.assertEqual(len(read["deleted_evaluations"]),1)
+        self.assertEqual(self.request("GET",document_route,login="writer")[0],404)
+        revision_route = f"/api/body/revisions?clinic=inspire&patient={patient}&id={record}"
+        self.assertEqual(json.loads(self.request("GET",revision_route,login="viewer")[2])["revisions"],[])
+        self.assertEqual(json.loads(self.request("GET",revision_route,login="writer")[2])["revisions"][0]["action"],"delete")
+        self.assertEqual(self.request("POST","/api/body/restore?clinic=inspire",{**state,"version":2},"writer")[0],200)
+        self.assertEqual(self.request("GET",document_route,login="writer")[2],pdf)
+        self.assertEqual(len(json.loads(self.request("GET",detail_route,login="viewer")[2])["evaluations"]),1)
+
 
 class ExamReaderTests(unittest.TestCase):
     def test_supported_layouts_keep_dates_and_different_metabolic_measures(self):
@@ -232,6 +307,11 @@ class ExamReaderTests(unittest.TestCase):
         self.assertEqual(handymet["fields"]["bmr_kcal"],1500)
         self.assertEqual(handymet["fields"]["predicted_bmr_kcal"],1400)
         self.assertEqual(handymet["fields"]["tdee_kcal"],2400)
+        self.assertEqual(handymet["fields"]["rq"],0.81)
+        self.assertEqual(handymet["fields"]["fat_fuel_pct"],63.1)
+        self.assertEqual(handymet["fields"]["carb_fuel_pct"],36.9)
+        self.assertEqual(handymet["fields"]["vo2"],5.08)
+        self.assertNotIn("fat_pct",handymet["fields"])
         self.assertNotIn("waist_cm",inbody["fields"])
 
     def test_unrecognized_document_does_not_guess(self):

@@ -10,10 +10,10 @@ MODULES = {
     "budget_followup": {"label": "Acompanhamento de Orçamentos", "view": "quoteFollowupView", "actions": ["view", "create", "edit", "export"]},
     "paid_traffic": {"label": "Tráfego pago", "view": "trafficView", "actions": ["view", "edit", "export"]},
     "whatsapp_review": {"label": "Avaliação WhatsApp", "view": "whatsappAuditView", "actions": ["view", "edit", "export"]},
-    "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "export"]},
+    "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "delete", "export"]},
 }
 VIEW_MODULES = {item["view"]: key for key, item in MODULES.items()}
-ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "export": "Exportar"}
+ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "delete": "Excluir / restaurar", "export": "Exportar"}
 REPORT_KEYS = {
     "dashboard": {"general_panel", "clinica_experts"},
     "commercial": {"totals", "by_pipeline", "interacted_leads", "by_status", "all_current_status", "daily_new_leads", "agendado_migrations", "kommo_panel", "clinica_experts"},

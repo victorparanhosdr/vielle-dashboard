@@ -4,10 +4,14 @@
   const params = new URLSearchParams(location.search);
   const clinic = params.get("clinic");
   const sources = {manual: "Registro manual", inbody: "Bioimpedância", handymet: "Calorimetria"};
+  const {examDay, groupDays, primaryRecord, throughDay} = window.Doc4DocsBodyDates;
+  const calorimetryFields = {rq:"RQ", fat_fuel_pct:"Gordura (utilização)", carb_fuel_pct:"Carboidratos (utilização)", vo2:"VO₂"};
+  const fieldIcons = {weight_kg:"scale", fat_pct:"percent", muscle_kg:"dumbbell", waist_cm:"ruler", rq:"network", fat_fuel_pct:"droplet", carb_fuel_pct:"wheat", vo2:"wind"};
   const primary = ["weight_kg", "height_cm", "muscle_kg", "fat_free_kg", "fat_kg", "fat_pct", "waist_cm", "hip_cm"];
   let permissions = [], user = {}, catalog = {}, detail = null, selectedId = "", chartMetric = "weight_kg";
   let formRecord = null, pendingPdf = null, previewUrl = "", importSequence = 0, listSequence = 0, searchSequence = 0, patientSequence = 0;
   let lastFocus = null, saveBusy = false;
+  let deleteRecord = null, exclusionBusy = false;
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const number = value => value == null ? "—" : Number(value).toLocaleString("pt-BR", {maximumFractionDigits: 2});
   const date = (value, time = false) => value ? new Date(value).toLocaleString("pt-BR", time ? {dateStyle:"short", timeStyle:"short"} : {dateStyle:"short"}) : "—";
@@ -25,6 +29,7 @@
   function showDialog(id) { lastFocus = document.activeElement; $(id).showModal(); icons(); }
   function closeDialog(id) {
     if (id === "assessmentDialog" && saveBusy) return;
+    if (id === "deleteDialog" && exclusionBusy) return;
     $(id).close();
     if (id === "assessmentDialog") { importSequence++; releasePreview(); pendingPdf = null; }
     lastFocus?.focus();
@@ -47,6 +52,8 @@
     $("importExam").hidden = !can("create");
     $("newAssessment").hidden = !can("create");
     $("editSelected").hidden = !can("edit");
+    $("deleteSelected").hidden = !can("delete");
+    if (!can("delete") && $("deleteDialog").open) $("deleteDialog").close();
     if (!can("view")) {
       detail = null;
       $("patientPage").hidden = true;
@@ -78,7 +85,7 @@
     $("patientPage").hidden = false;
     $("patientCrumb").textContent = `/ ${data.patient.display_name}`;
     $("patientName").textContent = data.patient.display_name;
-    $("patientMeta").textContent = `${data.evaluations.length} avaliação(ões) · Clínica Inspire`;
+    $("patientMeta").textContent = `${groupDays(data.evaluations).length} data(s) · ${data.evaluations.length} exame(s) / registro(s) · Clínica Inspire`;
     if (push) history.pushState({}, "", `/body-evolution.html?${new URLSearchParams({clinic, patient:id})}`);
     renderDetail();
   }
@@ -97,47 +104,104 @@
   function renderDetail() {
     if (!detail) return;
     const entries = detail.evaluations;
+    const deleted = can("delete") ? (detail.deleted_evaluations || []) : [];
+    $("deletedAssessments").hidden = !deleted.length;
+    $("deletedCount").textContent = `(${deleted.length})`;
+    $("deletedRows").innerHTML = [...deleted].reverse().map(item=>`<div class="deletedRow"><div><p><strong>${date(item.exam_at,true)} · ${esc(sources[item.source])}</strong></p><p class="muted">${esc(item.method)} · Excluída em ${date(item.deleted_at,true)}</p></div><div class="rowActions"><button data-restore="${esc(item.id)}" title="Restaurar avaliação"><i data-lucide="rotate-ccw"></i>Restaurar</button><button data-revisions="${esc(item.id)}" class="iconButton" title="Ver registro de alterações" aria-label="Ver registro de alterações"><i data-lucide="history"></i></button></div></div>`).join("");
     $("noAssessments").hidden = !!entries.length;
     $("assessmentView").hidden = !entries.length;
     $("timeline").hidden = !entries.length;
-    $("timeline").innerHTML = entries.map(item => `<button data-select="${esc(item.id)}" aria-pressed="${item.id === selectedId}">${date(item.exam_at, true)}<small>${esc(sources[item.source])}</small></button>`).join("");
-    if (!entries.length) return;
-    const current = selected();
+    const days = groupDays(entries);
+    const day = examDay(selected() || entries.at(-1) || {exam_at:""});
+    $("timeline").innerHTML = days.map(item => `<button data-select="${esc(primaryRecord(item.records).id)}" title="${esc([...new Set(item.records.map(row=>sources[row.source]))].join(" + "))}" aria-pressed="${item.day === day}">${date(item.records[0].exam_at)}</button>`).join("");
+    if (!entries.length) { icons(); return; }
+    const dayRecords = days.find(item => item.day === day).records;
+    const current = primaryRecord(dayRecords);
     const first = entries.find(item => groupKey(item) === groupKey(current));
-    $("selectedContext").textContent = `${sources[current.source]} · ${current.method} · Exame de ${date(current.exam_at, true)}`;
+    $("selectedContext").textContent = [...new Set(dayRecords.map(row=>sources[row.source]))].join(" + ");
+    document.querySelector(".assessmentActions").hidden = dayRecords.length !== 1;
     $("editSelected").hidden = !can("edit");
+    $("compositionSource").textContent = `${sources[current.source]} · ${current.method} · ${date(current.exam_at,true)}`;
     $("firstDate").textContent = date(first.exam_at);
     $("currentDate").textContent = date(current.exam_at);
     $("metrics").innerHTML = ["weight_kg", "fat_pct", "muscle_kg", "waist_cm"].map(key => {
       const value = current.fields[key], base = first.fields[key];
       const diff = value != null && base != null ? value - base : null;
-      const delta = diff == null || current.id === first.id ? "Sem comparação anterior" : `${diff > 0 ? "+" : ""}${number(diff)} ${key === "fat_pct" ? "p.p." : unit(key)} desde ${date(first.exam_at)}`;
-      return `<dl class="metric"><dt>${esc(catalog[key][0])}</dt><dd>${number(value)}${value == null ? "" : ` <small style="display:inline;font-size:16px;color:inherit">${esc(unit(key))}</small>`}</dd><small>${esc(delta)}</small></dl>`;
+      const comparable = diff != null && current.id !== first.id;
+      const delta = comparable ? `${diff > 0 ? "+" : ""}${number(diff)} ${key === "fat_pct" ? "p.p." : unit(key)}` : "Sem comparação";
+      const label = {weight_kg:"Peso", fat_pct:"Gordura corporal", muscle_kg:"Massa muscular", waist_cm:"Abdômen"}[key];
+      return `<div class="metric"><i data-lucide="${fieldIcons[key]}" aria-hidden="true"></i><dl><dt title="${esc(catalog[key][0])}">${label}</dt><dd>${number(value)}${value == null ? "" : `<span class="metricUnit"> ${esc(unit(key))}</span>`}</dd><dd class="metricDelta" title="${comparable ? `Desde ${date(first.exam_at)}` : "Não há medida anterior comparável"}">${comparable ? `<i data-lucide="${diff > 0 ? "arrow-up" : diff < 0 ? "arrow-down" : "minus"}" aria-hidden="true"></i>` : ""}${esc(delta)}</dd></dl></div>`;
     }).join("");
     for (const [prefix, item] of [["first",first],["current",current]]) {
       for (const [suffix,key,label] of [["Waist","waist_cm","Abdômen"],["Hip","hip_cm","Quadril"]]) {
-        $(prefix+suffix).innerHTML = `<span>${label}</span><strong>${item.fields[key] == null ? "—" : esc(measure(item.fields[key],key))}</strong>`;
+        $(prefix+suffix).innerHTML = `<span class="srOnly">${label}: </span><strong>${item.fields[key] == null ? "—" : esc(measure(item.fields[key],key))}</strong>`;
+        $(prefix+suffix).title = `${label}: ${measure(item.fields[key],key)}`;
+        $(prefix+suffix).classList.toggle("unavailable",item.fields[key] == null);
       }
     }
-    const groups = [...new Map(entries.map(item => [groupKey(item), `${sources[item.source]} · ${item.method}`])).entries()];
+    const groups = [...new Map(throughDay(entries,day).map(item => [groupKey(item), `${sources[item.source]} · ${item.method}`])).entries()];
     $("chartSource").innerHTML = groups.map(([key,label]) => `<option value="${esc(key)}">${esc(label)}</option>`).join("");
     $("chartSource").value = groupKey(current);
     renderChart();
-    $("metabolicResults").innerHTML = ["inbody", "handymet"].map(source => {
-      const item = entries.filter(value => value.source === source && value.exam_at <= current.exam_at).at(-1);
-      return `<div><p class="sourceName">${sources[source]}</p><p class="muted">${item ? esc(date(item.exam_at, true)) : "Sem exame até esta data"}</p><strong>${item ? esc(measure(item.fields.bmr_kcal,"bmr_kcal")) : "—"}</strong><p>${source === "inbody" ? "TMB estimada · InBody" : "TMB informada · HandyMet"}</p>${source === "handymet" && item ? `<p class="muted">GET: ${esc(measure(item.fields.tdee_kcal,"tdee_kcal"))}</p><p class="muted">Laudo: TMB estimada a partir de TMR − 10%.</p>` : ""}</div>`;
+    $("metabolicResults").innerHTML = ["inbody", "handymet"].flatMap(source => {
+      const records = dayRecords.filter(value => value.source === source);
+      const icon = `<i class="metabolicIcon" data-lucide="${source === "inbody" ? "flame" : "wind"}" aria-hidden="true"></i>`;
+      if (!records.length) return `<div class="metabolicItem">${icon}<div><p class="sourceName">${sources[source]}</p><p class="muted">Sem exame nesta data</p></div></div>`;
+      return records.map(item => `<div class="metabolicItem">${icon}<div><p class="sourceName">${sources[source]}</p><p class="muted">${esc(date(item.exam_at, true))}</p><p>${source === "inbody" ? "TMB estimada · InBody" : "TMB informada · HandyMet"}</p><strong>${esc(measure(item.fields.bmr_kcal,"bmr_kcal"))}</strong>${source === "handymet" ? `<p class="muted">GET: ${esc(measure(item.fields.tdee_kcal,"tdee_kcal"))}</p><p class="metabolicFootnote">Laudo: TMB estimada a partir de TMR − 10%.</p>` : ""}</div></div>`);
     }).join("");
-    $("allMeasures").innerHTML = Object.entries(current.fields).map(([key,value]) => `<div><dt>${esc(catalog[key]?.[0] || key)}</dt><dd>${esc(measure(value,key))}</dd></div>`).join("");
-    $("assessmentNotes").textContent = current.notes || "";
-    $("historyRows").innerHTML = [...entries].reverse().map(item => `<tr class="${item.id === selectedId ? "selectedRow" : ""}"><td><button class="quiet" data-select="${esc(item.id)}">${date(item.exam_at,true)}</button></td><td>${esc(sources[item.source])}<br><span class="muted">${esc(item.method)}</span></td><td>${esc(measure(item.fields.weight_kg,"weight_kg"))}</td><td>${esc(measure(item.fields.fat_pct,"fat_pct"))}</td><td>${esc(measure(item.fields.muscle_kg,"muscle_kg"))}</td><td>${esc(item.professional)}</td><td>${item.document_id && can("export") ? `<a class="quiet" title="Baixar PDF original" aria-label="Baixar PDF original" href="${documentUrl(item)}"><i data-lucide="file-down"></i></a>` : "—"}</td><td><div class="rowActions">${can("edit") ? `<button data-edit="${esc(item.id)}" class="iconButton" title="Editar avaliação" aria-label="Editar avaliação"><i data-lucide="pencil"></i></button>` : ""}<button data-revisions="${esc(item.id)}" class="iconButton" title="Ver registro de alterações" aria-label="Ver registro de alterações"><i data-lucide="history"></i></button></div></td></tr>`).join("");
+    const calorimetry = dayRecords.filter(item => item.source === "handymet");
+    $("calorimetryPanel").hidden = !calorimetry.length;
+    $("calorimetryResults").innerHTML = calorimetry.map(item=>`<div class="calorimetryExam"><div class="calorimetryHeading"><h2>Calorimetria</h2><p class="muted">${esc(item.method)} · ${date(item.exam_at,true)}</p></div><div class="calorimetryMetrics">${Object.entries(calorimetryFields).map(([key,label])=>`<div class="calorimetryMetric"><i data-lucide="${fieldIcons[key]}" aria-hidden="true"></i><dl><dt title="${esc(catalog[key][0])}">${label}</dt><dd>${number(item.fields[key])}${item.fields[key] == null ? '<small>Não informado</small>' : `<span class="metricUnit"> ${esc(unit(key))}</span>`}</dd></dl></div>`).join("")}</div></div>`).join("");
+    $("allMeasures").innerHTML = dayRecords.map(item => `<section class="examMeasures"><div class="sectionHeading"><div class="examTitle"><i data-lucide="file-text" aria-hidden="true"></i><div><h3>${sources[item.source]} · ${esc(item.method)}</h3><p class="muted">${date(item.exam_at,true)} · ${esc(item.professional)}</p></div></div><div class="rowActions">${item.document_id && can("export") ? `<a class="iconButton" title="Baixar PDF original" aria-label="Baixar PDF original" href="${documentUrl(item)}"><i data-lucide="file-down"></i></a>` : ""}${can("edit") ? `<button data-edit="${esc(item.id)}" class="iconButton" title="Editar ${esc(sources[item.source])}" aria-label="Editar ${esc(sources[item.source])}"><i data-lucide="pencil"></i></button>` : ""}${can("delete") ? `<button data-delete="${esc(item.id)}" class="iconButton danger" title="Excluir ${esc(sources[item.source])}" aria-label="Excluir ${esc(sources[item.source])}"><i data-lucide="trash-2"></i></button>` : ""}</div></div><details class="examDetails"><summary>Medidas e observações</summary><dl>${Object.entries(item.fields).map(([key,value]) => `<div><dt>${esc(catalog[key]?.[0] || key)}</dt><dd>${esc(measure(value,key))}</dd></div>`).join("")}</dl>${item.notes ? `<p>${esc(item.notes)}</p>` : ""}</details></section>`).join("");
+    $("historyRows").innerHTML = [...entries].reverse().map(item => `<tr class="${examDay(item) === day ? "selectedRow" : ""}"><td><button class="quiet" data-select="${esc(item.id)}">${date(item.exam_at,true)}</button></td><td>${esc(sources[item.source])}<br><span class="muted">${esc(item.method)}</span></td><td>${esc(measure(item.fields.weight_kg,"weight_kg"))}</td><td>${esc(measure(item.fields.fat_pct,"fat_pct"))}</td><td>${esc(measure(item.fields.muscle_kg,"muscle_kg"))}</td><td>${esc(item.professional)}</td><td>${item.document_id && can("export") ? `<a class="quiet" title="Baixar PDF original" aria-label="Baixar PDF original" href="${documentUrl(item)}"><i data-lucide="file-down"></i></a>` : "—"}</td><td><div class="rowActions">${can("edit") ? `<button data-edit="${esc(item.id)}" class="iconButton" title="Editar avaliação" aria-label="Editar avaliação"><i data-lucide="pencil"></i></button>` : ""}<button data-revisions="${esc(item.id)}" class="iconButton" title="Ver registro de alterações" aria-label="Ver registro de alterações"><i data-lucide="history"></i></button></div></td></tr>`).join("");
+    if (can("delete")) $("historyRows").querySelectorAll(".rowActions").forEach((actions,index)=>{
+      const item = [...entries].reverse()[index];
+      actions.insertAdjacentHTML("beforeend",`<button data-delete="${esc(item.id)}" class="iconButton danger" title="Excluir avaliação" aria-label="Excluir avaliação"><i data-lucide="trash-2"></i></button>`);
+    });
     icons();
   }
 
   function documentUrl(item) { return `/api/body/document?${new URLSearchParams({clinic,id:item.document_id,patient:detail.patient.id})}`; }
 
+  function confirmExclusion(record) {
+    if (!record || !can("delete") || exclusionBusy) return;
+    deleteRecord = {...record, patient_id:detail.patient.id};
+    $("deleteContext").textContent = `${detail.patient.display_name} · ${date(record.exam_at,true)} · ${sources[record.source]}`;
+    $("deleteError").textContent = "";
+    $("confirmDelete").disabled = false;
+    showDialog("deleteDialog");
+  }
+
+  async function changeExclusion(record, restore = false) {
+    if (!record || !can("delete") || exclusionBusy) return;
+    exclusionBusy = true;
+    $("confirmDelete").disabled = true;
+    $("deleteError").textContent = "";
+    const patientId = record.patient_id || detail.patient.id;
+    let changed = false;
+    try {
+      await api(restore ? "restore" : "delete", {body:{id:record.id,patient_id:patientId,version:record.version,confirmed:true}});
+      changed = true;
+      if (!restore) { $("deleteDialog").close(); lastFocus?.focus(); }
+      if (detail?.patient.id === patientId) {
+        await openPatient(patientId,false);
+        if (detail?.patient.id === patientId) {
+          const sameDay = detail.evaluations.filter(item=>examDay(item) === examDay(record));
+          selectedId = restore ? record.id : (primaryRecord(sameDay)?.id || selectedId);
+          renderDetail();
+        }
+      }
+      notify(restore ? "Avaliação restaurada." : "Avaliação excluída da evolução. Você pode restaurá-la em Avaliações excluídas.");
+    } catch(error) {
+      if (changed) notify("A operação foi salva. Recarregue a ficha para atualizar a visualização.",true);
+      else if (restore) notify(error.message,true);
+      else $("deleteError").textContent=error.message;
+    } finally { exclusionBusy=false; $("confirmDelete").disabled=false; }
+  }
+
   function renderChart() {
-    const cutoff = selected().exam_at;
-    const rows = detail.evaluations.filter(item => groupKey(item) === $("chartSource").value && item.exam_at <= cutoff && item.fields[chartMetric] != null);
+    const cutoff = examDay(selected());
+    const rows = throughDay(detail.evaluations,cutoff).filter(item => groupKey(item) === $("chartSource").value && item.fields[chartMetric] != null);
     $("chartReadout").textContent = "";
     document.querySelectorAll("[data-metric]").forEach(button => button.setAttribute("aria-selected", String(button.dataset.metric === chartMetric)));
     if (!rows.length) { $("chart").innerHTML = '<p class="muted">Sem medidas desta origem até o exame selecionado.</p>'; return; }
@@ -146,10 +210,15 @@
     const min = Math.max(0,lo-pad), max = hi+pad, left=54, right=620, top=22, bottom=215;
     const point = (value,i) => [times.at(-1)===times[0] ? (left+right)/2 : left+(times[i]-times[0])/(times.at(-1)-times[0])*(right-left), bottom-(value-min)/(max-min)*(bottom-top)];
     const points = values.map(point);
-    const grid = Array.from({length:5},(_,i)=>{ const y=top+i*(bottom-top)/4;return `<line x1="${left}" x2="${right}" y1="${y}" y2="${y}" stroke="#e2e9e4"/><text x="44" y="${y+4}" text-anchor="end">${number(max-i*(max-min)/4)}</text>`;}).join("");
+    const grid = Array.from({length:5},(_,i)=>{ const y=top+i*(bottom-top)/4;return `<line x1="${left}" x2="${right}" y1="${y}" y2="${y}" stroke="#dce5e4" stroke-dasharray="3 3"/><text x="44" y="${y+4}" text-anchor="end">${number(Number((max-i*(max-min)/4).toFixed(1)))}</text>`;}).join("");
     const labels = [...new Set([0,Math.floor((rows.length-1)/2),rows.length-1])].map(i=>`<text x="${points[i][0]}" y="243" text-anchor="${i===0?"start":i===rows.length-1?"end":"middle"}">${date(rows[i].exam_at)}</text>`).join("");
     const circles = points.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="5" fill="#1a6352" stroke="white" stroke-width="2" tabindex="0" data-point="${i}" aria-label="${esc(date(rows[i].exam_at,true)+': '+measure(values[i],chartMetric))}"><title>${esc(date(rows[i].exam_at,true)+': '+measure(values[i],chartMetric))}</title></circle>`).join("");
-    $("chart").innerHTML = `<svg viewBox="0 0 655 260" role="img" aria-label="${esc(catalog[chartMetric][0])} por data do exame"><text x="${left}" y="12">${esc(unit(chartMetric))}</text>${grid}<polyline points="${points.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#1a6352" stroke-width="2.5"/>${circles}${labels}</svg>`;
+    const valuesOnChart = points.map(([x,y],i)=>{
+      const previous = points[i-1];
+      return !previous || x-previous[0] > 70 ? `<text class="pointValue" x="${x}" y="${y-12}" text-anchor="middle">${number(values[i])}</text>` : "";
+    }).join("");
+    const area = `M ${points[0][0]} ${bottom} L ${points.map(p=>p.join(' ')).join(' L ')} L ${points.at(-1)[0]} ${bottom} Z`;
+    $("chart").innerHTML = `<svg viewBox="0 0 655 260" role="img" aria-label="${esc(catalog[chartMetric][0])} por data do exame"><defs><linearGradient id="bodyChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#159f89" stop-opacity=".17"/><stop offset="100%" stop-color="#159f89" stop-opacity="0"/></linearGradient></defs><text x="${left}" y="12">${esc(unit(chartMetric))}</text>${grid}<path d="${area}" fill="url(#bodyChartFill)"/><polyline points="${points.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#078778" stroke-width="2.5"/>${circles}${valuesOnChart}${labels}</svg>`;
     const announce = i => { $("chartReadout").textContent = `${date(rows[i].exam_at,true)} · ${measure(values[i],chartMetric)} · ${rows[i].method}`; };
     $("chart").querySelectorAll("[data-point]").forEach(circle=>{
       circle.addEventListener("mouseenter",()=>announce(Number(circle.dataset.point)));
@@ -175,7 +244,7 @@
     $("formPatient").textContent=detail.patient.display_name;
     $("uploadArea").hidden=!importing;
     $("formError").textContent=""; $("importStatus").textContent=""; $("importWarnings").textContent="";
-    $("previewOriginal").hidden=true; $("extraFields").open=false;
+    $("previewOriginal").hidden=true; $("extraFields").open=record?.source==="handymet";
     $("formSource").value=sources[record?.source||"manual"];
     form.elements.exam_at.value=record?.exam_at || (importing ? "" : localNow());
     form.elements.exam_at.max=localNow();
@@ -255,7 +324,8 @@
         const previous=item.before ? JSON.parse(item.before.fields_json) : {};
         const changes=Object.keys(catalog).filter(key=>previous[key]!==item.after.fields[key]).map(key=>`<li>${esc(catalog[key][0])}: ${esc(measure(previous[key],key))} → ${esc(measure(item.after.fields[key],key))}</li>`);
         for(const key of ["exam_at","method","professional","notes"]){if(item.before && item.before[key]!==item.after[key])changes.push(`<li>${esc({exam_at:"Data do exame",method:"Método",professional:"Profissional",notes:"Observações"}[key])}: ${esc(item.before[key])} → ${esc(item.after[key])}</li>`);}
-        return `<article><strong>${item.action==="create"?"Registro criado":"Registro corrigido"}</strong><p>${esc(item.actor_name)} · ${date(item.recorded_at,true)}</p><ul>${changes.join("")}</ul></article>`;
+        const label = {create:"Registro criado",edit:"Registro corrigido",delete:"Avaliação excluída",restore:"Avaliação restaurada"}[item.action] || "Registro atualizado";
+        return `<article><strong>${label}</strong><p>${esc(item.actor_name)} · ${date(item.recorded_at,true)}</p><ul>${changes.join("")}</ul></article>`;
       }).join("") || "Nenhum registro.";
     } catch(error){$("revisionContent").textContent=error.message;}
   }
@@ -268,6 +338,8 @@
     const select=event.target.closest("[data-select]");if(select){selectedId=select.dataset.select;renderDetail();return;}
     const metric=event.target.closest("[data-metric]");if(metric){chartMetric=metric.dataset.metric;renderChart();return;}
     const edit=event.target.closest("[data-edit]");if(edit){openForm(detail.evaluations.find(item=>item.id===edit.dataset.edit));return;}
+    const remove=event.target.closest("[data-delete]");if(remove){confirmExclusion(detail.evaluations.find(item=>item.id===remove.dataset.delete));return;}
+    const restore=event.target.closest("[data-restore]");if(restore){changeExclusion(detail.deleted_evaluations.find(item=>item.id===restore.dataset.restore),true);return;}
     const rev=event.target.closest("[data-revisions]");if(rev){revisions(rev.dataset.revisions);return;}
     const enroll=event.target.closest("[data-enroll]");if(enroll){run(async()=>{enroll.disabled=true;try{const id=enroll.dataset.existing || (await api("enroll",{body:{experts_uuid:enroll.dataset.enroll}})).id;closeDialog("patientDialog");await openPatient(id);}finally{enroll.disabled=false;}});}
   });
@@ -279,6 +351,9 @@
   $("newAssessment").addEventListener("click",()=>openForm());
   $("importExam").addEventListener("click",()=>openForm(null,true));
   $("editSelected").addEventListener("click",()=>openForm(selected()));
+  $("deleteSelected").addEventListener("click",()=>confirmExclusion(selected()));
+  $("deleteForm").addEventListener("submit",event=>{event.preventDefault();changeExclusion(deleteRecord);});
+  $("deleteDialog").addEventListener("cancel",event=>{if(exclusionBusy)event.preventDefault();});
   $("examFile").addEventListener("change",event=>importFile(event.target.files[0]));
   $("assessmentForm").addEventListener("submit",save);
   $("assessmentDialog").addEventListener("cancel",event=>{if(saveBusy)event.preventDefault();});

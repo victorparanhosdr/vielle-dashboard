@@ -67,6 +67,10 @@ def initialize(conn):
             actor_id INTEGER NOT NULL, action TEXT NOT NULL, recorded_at TEXT NOT NULL,
             snapshot_json TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS body_exclusions (
+            evaluation_id TEXT PRIMARY KEY REFERENCES body_evaluations(id),
+            deleted_at TEXT NOT NULL, deleted_by INTEGER NOT NULL
+        );
     """)
 
 
@@ -89,6 +93,7 @@ def search_patients(conn, query, registered=False):
                    MAX(e.exam_at) AS last_exam, COUNT(e.id) AS evaluations
             FROM body_patients p LEFT JOIN clinica_patients c ON c.uuid=p.experts_uuid
             LEFT JOIN body_evaluations e ON e.patient_id=p.id
+                AND NOT EXISTS (SELECT 1 FROM body_exclusions x WHERE x.evaluation_id=e.id)
             WHERE COALESCE(c.name, p.name) LIKE ? ESCAPE '\\'
             GROUP BY p.id ORDER BY name LIMIT 100
         """, (pattern,))]
@@ -112,18 +117,27 @@ def enroll(conn, experts_uuid, actor):
     return conn.execute("SELECT id FROM body_patients WHERE experts_uuid=?", (experts_uuid,)).fetchone()[0]
 
 
-def patient_detail(conn, patient_id):
+def patient_detail(conn, patient_id, include_deleted=False):
     row = conn.execute("""SELECT p.*, COALESCE(c.name,p.name) AS display_name, c.phone
                           FROM body_patients p LEFT JOIN clinica_patients c ON c.uuid=p.experts_uuid
                           WHERE p.id=?""", (patient_id,)).fetchone()
     if not row:
         raise ValueError("Paciente não encontrado nesta clínica.")
-    evaluations = []
-    for item in conn.execute("SELECT * FROM body_evaluations WHERE patient_id=? ORDER BY exam_at, created_at, id", (patient_id,)):
+    evaluations, deleted = [], []
+    for item in conn.execute("""SELECT e.*, x.deleted_at FROM body_evaluations e
+                                LEFT JOIN body_exclusions x ON x.evaluation_id=e.id
+                                WHERE e.patient_id=? ORDER BY e.exam_at, e.created_at, e.id""", (patient_id,)):
         value = dict(item)
         value["fields"] = json.loads(value.pop("fields_json"))
-        evaluations.append(value)
-    return {"patient": dict(row), "evaluations": evaluations}
+        if value["deleted_at"]:
+            if include_deleted:
+                deleted.append(value)
+        else:
+            evaluations.append(value)
+    result = {"patient": dict(row), "evaluations": evaluations}
+    if include_deleted:
+        result["deleted_evaluations"] = deleted
+    return result
 
 
 def decode_pdf(value):
@@ -199,6 +213,8 @@ def save_evaluation(conn, payload, actor, attachment=None):
         previous = conn.execute("SELECT * FROM body_evaluations WHERE id=? AND patient_id=?", (evaluation_id, patient_id)).fetchone()
         if not previous:
             raise ValueError("Avaliação não encontrada.")
+        if conn.execute("SELECT 1 FROM body_exclusions WHERE evaluation_id=?", (evaluation_id,)).fetchone():
+            raise ValueError("Esta avaliação foi excluída. Restaure antes de editar.")
         if payload.get("version") != previous["version"]:
             raise ValueError("Esta avaliação foi alterada por outra pessoa. Recarregue antes de editar.")
         if attachment or value["source"] != previous["source"]:
@@ -215,7 +231,7 @@ def save_evaluation(conn, payload, actor, attachment=None):
             conn.execute("INSERT INTO body_documents VALUES (?, ?, ?, ?, ?, ?)",
                          (doc_id, patient_id, hashlib.sha256(data).hexdigest(), data, now(), json.dumps(extracted, ensure_ascii=False)))
         except sqlite3.IntegrityError:
-            raise ValueError("Este PDF já foi importado nesta clínica. Abra a avaliação existente.") from None
+            raise ValueError("Este PDF já foi importado nesta clínica. Abra a avaliação existente ou restaure-a em Avaliações excluídas.") from None
     stamp = now()
     fields_json = json.dumps(value["fields"], ensure_ascii=False)
     if previous:
@@ -237,11 +253,48 @@ def save_evaluation(conn, payload, actor, attachment=None):
     return evaluation_id
 
 
+def change_exclusion(conn, payload, actor, restore=False):
+    evaluation_id = bounded(payload.get("id"), 64, "Avaliação", True)
+    patient_id = bounded(payload.get("patient_id"), 64, "Paciente", True)
+    if payload.get("confirmed") is not True:
+        raise ValueError("Confirme a operação antes de continuar.")
+    previous = conn.execute("""SELECT e.*, x.deleted_at FROM body_evaluations e
+                               LEFT JOIN body_exclusions x ON x.evaluation_id=e.id
+                               WHERE e.id=? AND e.patient_id=?""", (evaluation_id, patient_id)).fetchone()
+    if not previous:
+        raise ValueError("Avaliação não encontrada nesta ficha.")
+    if payload.get("version") != previous["version"]:
+        raise ValueError("Esta avaliação foi alterada. Recarregue a ficha antes de continuar.")
+    if bool(previous["deleted_at"]) != restore:
+        raise ValueError("Avaliação já excluída." if not restore else "Esta avaliação já está ativa.")
+    stamp = now()
+    result = conn.execute("""UPDATE body_evaluations SET updated_at=?, updated_by=?, version=version+1
+                             WHERE id=? AND version=?""", (stamp, actor["id"], evaluation_id, previous["version"]))
+    if result.rowcount != 1:
+        raise ValueError("Avaliação alterada simultaneamente. Recarregue a ficha.")
+    # Keep the assessment and original PDF intact; only its active state changes.
+    if restore:
+        conn.execute("DELETE FROM body_exclusions WHERE evaluation_id=?", (evaluation_id,))
+    else:
+        conn.execute("INSERT INTO body_exclusions VALUES (?, ?, ?)", (evaluation_id, stamp, actor["id"]))
+    after = {**dict(previous), "fields": json.loads(previous["fields_json"]),
+             "deleted_at": None if restore else stamp, "version": previous["version"] + 1,
+             "updated_at": stamp, "updated_by": actor["id"]}
+    after.pop("fields_json")
+    snapshot = {"before": dict(previous), "after": after, "actor_name": actor["nome"],
+                "document_id": previous["document_id"]}
+    conn.execute("INSERT INTO body_revisions(evaluation_id, actor_id, action, recorded_at, snapshot_json) VALUES (?, ?, ?, ?, ?)",
+                 (evaluation_id, actor["id"], "restore" if restore else "delete", stamp, json.dumps(snapshot, ensure_ascii=False)))
+    return evaluation_id
+
+
 def handle_request(handler, parsed, connect):
     """Called only after the session/clinic/module guards, inside clinic_context."""
     from urllib.parse import parse_qs
 
     query = parse_qs(parsed.query)
+    clinic = query.get("clinic", [""])[0]
+    can_delete = handler.server.auth_store.has_permission(handler.current_user["id"], clinic, "body_evolution.delete")
     action = parsed.path.removeprefix("/api/body/")
     try:
         payload = {}
@@ -266,7 +319,7 @@ def handle_request(handler, parsed, connect):
                 data = {"patients": search_patients(conn, query.get("q", [""])[0], query.get("registered", [""])[0] == "1"),
                         "catalog": FIELDS, "synced_patients": conn.execute("SELECT COUNT(*) FROM clinica_patients").fetchone()[0]}
             elif handler.command == "GET" and action == "patient":
-                data = patient_detail(conn, query.get("id", [""])[0])
+                data = patient_detail(conn, query.get("id", [""])[0], include_deleted=can_delete)
             elif handler.command == "POST" and action == "enroll":
                 data = {"id": enroll(conn, payload.get("experts_uuid"), handler.current_user)}
             elif handler.command == "POST" and action == "evaluation":
@@ -275,8 +328,15 @@ def handle_request(handler, parsed, connect):
                 if not handler.require_permission(clinic, permission):
                     return
                 data = {"id": save_evaluation(conn, payload, handler.current_user, attachment)}
+            elif handler.command == "POST" and action in ("delete", "restore"):
+                if not handler.require_permission(clinic, "body_evolution.delete"):
+                    return
+                data = {"id": change_exclusion(conn, payload, handler.current_user, restore=action == "restore")}
             elif handler.command == "GET" and action == "document":
-                row = conn.execute("SELECT content FROM body_documents WHERE id=? AND patient_id=?",
+                row = conn.execute("""SELECT d.content FROM body_documents d
+                                      JOIN body_evaluations e ON e.document_id=d.id
+                                      WHERE d.id=? AND d.patient_id=?
+                                      AND NOT EXISTS (SELECT 1 FROM body_exclusions x WHERE x.evaluation_id=e.id)""",
                                    (query.get("id", [""])[0], query.get("patient", [""])[0])).fetchone()
                 if not row:
                     return handler.auth_json({"ok": False, "error": "Documento não encontrado."}, 404)
@@ -289,8 +349,11 @@ def handle_request(handler, parsed, connect):
                 handler.wfile.write(row[0])
                 return
             elif handler.command == "GET" and action == "revisions":
-                rows = conn.execute("SELECT r.action, r.recorded_at, r.snapshot_json FROM body_revisions r JOIN body_evaluations e ON e.id=r.evaluation_id WHERE e.patient_id=? AND e.id=? ORDER BY r.id DESC",
-                                    (query.get("patient", [""])[0], query.get("id", [""])[0])).fetchall()
+                rows = conn.execute("""SELECT r.action, r.recorded_at, r.snapshot_json FROM body_revisions r
+                                       JOIN body_evaluations e ON e.id=r.evaluation_id WHERE e.patient_id=? AND e.id=?
+                                       AND (? OR NOT EXISTS (SELECT 1 FROM body_exclusions x WHERE x.evaluation_id=e.id))
+                                       ORDER BY r.id DESC""",
+                                    (query.get("patient", [""])[0], query.get("id", [""])[0], can_delete)).fetchall()
                 data = {"revisions": [{"action": row[0], "recorded_at": row[1], **json.loads(row[2])} for row in rows]}
             else:
                 return handler.auth_json({"ok": False, "error": "Rota não encontrada."}, 404)

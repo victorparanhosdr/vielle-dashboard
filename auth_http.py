@@ -169,6 +169,8 @@ class SessionAuthMixin:
                 return self.require_permission(clinic, "body_evolution.export")
             if self.command == "POST" and path in {"/api/body/enroll", "/api/body/import"}:
                 return self.require_permission(clinic, "body_evolution.create")
+            if self.command == "POST" and path in {"/api/body/delete", "/api/body/restore"}:
+                return self.require_permission(clinic, "body_evolution.delete")
             if self.command == "POST" and path == "/api/body/evaluation":
                 return (self.server.auth_store.has_permission(self.current_user["id"], clinic, "body_evolution.create")
                         or self.require_permission(clinic, "body_evolution.edit"))
