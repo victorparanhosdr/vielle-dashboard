@@ -75,7 +75,7 @@ class AccessStoreMixin:
     def save_profile(self, name, permissions, profile_id=None, actor_id=None):
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 100:
             raise ValueError("Informe um nome de perfil com até 100 caracteres.")
-        values = validate_permissions("vielle", permissions)
+        values = validate_permissions(None, permissions)
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if profile_id is None:

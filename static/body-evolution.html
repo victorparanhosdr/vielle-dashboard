@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evolução corporal | DOC4DOCS</title>
+  <link rel="icon" href="/doc4docs-favicon.png"><link rel="stylesheet" href="/body-evolution.css">
+  <script src="/session.js" defer></script><script src="/body-icons.js" defer></script><script src="/body-evolution.js" defer></script>
+</head>
+<body>
+  <header class="brandbar"><a href="/?clinic=inspire" aria-label="DOC4DOCS, voltar ao painel"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></a><span class="clinic">Clínica Inspire</span><div class="account"><span data-session-user></span><button class="iconButton" data-logout title="Sair" aria-label="Sair"><i data-lucide="log-out"></i></button></div></header>
+  <main>
+    <nav class="breadcrumb"><a href="/?clinic=inspire">Inspire</a><span>/</span><button id="backList">Evolução corporal</button><span id="patientCrumb"></span></nav>
+    <div id="sessionStatus" role="status"></div><div id="notice" role="status" aria-live="polite"></div>
+    <section id="patientList">
+      <div class="pageTitle"><div><p class="eyebrow">ACOMPANHAMENTO INDIVIDUAL</p><h1>Evolução corporal</h1><p id="listCount" class="muted">Carregando pacientes...</p></div><button id="addPatient" class="primary" hidden><i data-lucide="user-plus"></i>Adicionar paciente</button></div>
+      <div class="listToolbar"><label class="search"><i data-lucide="search"></i><input id="listSearch" placeholder="Buscar paciente em acompanhamento" aria-label="Buscar paciente em acompanhamento" type="search"></label><button id="refreshList" class="iconButton" title="Atualizar lista" aria-label="Atualizar lista"><i data-lucide="refresh-cw"></i></button></div>
+      <div class="tableScroll"><table><thead><tr><th>Paciente</th><th>Último exame</th><th>Avaliações</th><th></th></tr></thead><tbody id="patientRows"></tbody></table></div>
+      <p id="listEmpty" class="empty" hidden>Nenhum paciente em acompanhamento.</p>
+    </section>
+    <section id="patientPage" hidden>
+      <div class="pageTitle"><div><p class="eyebrow">EVOLUÇÃO CORPORAL</p><h1 id="patientName"></h1><p class="muted" id="patientMeta"></p></div><div class="commands"><button id="copyLink" title="Copiar link da ficha"><i data-lucide="link"></i>Copiar link</button><button id="importExam" hidden><i data-lucide="upload"></i>Importar exame</button><button id="newAssessment" class="primary" hidden><i data-lucide="plus"></i>Nova avaliação</button></div></div>
+      <div id="timeline" class="timeline" aria-label="Exames por data"></div>
+      <p id="noAssessments" class="empty" hidden>Nenhuma avaliação registrada para este paciente.</p>
+      <div id="assessmentView" hidden>
+        <div class="assessmentContext"><span id="selectedContext"></span><button id="editSelected" class="quiet" hidden><i data-lucide="pencil"></i>Editar avaliação</button></div>
+        <div id="metrics" class="metrics"></div>
+        <div class="evolutionGrid">
+          <section class="bodyComparison"><h2>Comparação corporal</h2><div class="bodies"><figure><figcaption>Inicial <span id="firstDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin.png" alt="Silhueta corporal ilustrativa inicial"><div class="measure waist" id="firstWaist"></div><div class="measure hip" id="firstHip"></div></div></figure><figure><figcaption>Selecionada <span id="currentDate"></span></figcaption><div class="bodyModel"><img src="/body-mannequin.png" alt="Silhueta corporal ilustrativa da avaliação selecionada"><div class="measure waist" id="currentWaist"></div><div class="measure hip" id="currentHip"></div></div></figure></div><p class="caption">Silhuetas ilustrativas · Não representam uma reconstrução do paciente</p></section>
+          <section class="chartSection"><div class="sectionHeading"><h2>Evolução das medidas</h2><label class="compact">Origem / método<select id="chartSource" aria-label="Origem e método do gráfico"></select></label></div><div class="metricTabs" role="tablist" aria-label="Medida do gráfico"><button role="tab" data-metric="weight_kg" aria-selected="true">Peso</button><button role="tab" data-metric="fat_pct" aria-selected="false">Gordura</button><button role="tab" data-metric="muscle_kg" aria-selected="false">Músculo</button><button role="tab" data-metric="waist_cm" aria-selected="false">Abdômen</button><button role="tab" data-metric="hip_cm" aria-selected="false">Quadril</button></div><div id="chart" class="chart"></div><p id="chartReadout" class="chartReadout" aria-live="polite"></p><div class="metabolic"><h2>Resultados por exame</h2><div id="metabolicResults" class="metabolicResults"></div></div></section>
+        </div>
+        <section class="assessmentData"><h2>Medidas da avaliação</h2><dl id="allMeasures"></dl><p id="assessmentNotes"></p></section>
+        <section class="history"><div class="sectionHeading"><h2>Histórico de avaliações</h2><span class="muted">Ordenado pela data do exame</span></div><div class="tableScroll"><table><thead><tr><th>Data do exame</th><th>Origem / método</th><th>Peso</th><th>Gordura</th><th>Músculo esquelético</th><th>Profissional</th><th>PDF</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div></section>
+      </div>
+    </section>
+  </main>
+  <dialog id="patientDialog"><div class="dialogHeading"><div><p class="eyebrow">CLÍNICA EXPERTS · INSPIRE</p><h2>Adicionar paciente</h2></div><button data-close="patientDialog" class="iconButton" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></div><label class="search"><i data-lucide="search"></i><input id="expertsSearch" type="search" placeholder="Nome ou telefone" aria-label="Buscar paciente no Clínica Experts" autocomplete="off"></label><p id="searchStatus" class="muted" role="status">Digite ao menos 2 caracteres.</p><div id="searchResults" class="searchResults"></div></dialog>
+  <dialog id="assessmentDialog" class="wideDialog"><form id="assessmentForm"><div class="dialogHeading"><div><p class="eyebrow" id="formPatient"></p><h2 id="formTitle">Nova avaliação</h2></div><button type="button" data-close="assessmentDialog" class="iconButton" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></div>
+    <div id="uploadArea"><label class="uploadLabel"><i data-lucide="file-up"></i>PDF do exame<input type="file" id="examFile" accept="application/pdf,.pdf"></label><p class="muted">InBody120 ou HandyMet · Até 8 MB por exame</p><div id="importStatus" role="status"></div><div id="importWarnings"></div><a id="previewOriginal" target="_blank" rel="noopener" hidden>Conferir PDF original</a></div>
+    <div class="formGrid"><label>Data e hora do exame<input name="exam_at" type="datetime-local" required></label><label>Origem<input id="formSource" readonly value="Registro manual"></label><label>Método / aparelho<input name="method" maxlength="120" required></label><label>Profissional responsável<input name="professional" maxlength="120" required></label></div>
+    <h3>Medidas e composição corporal</h3><div id="primaryFields" class="formGrid"></div>
+    <details id="extraFields"><summary>Medidas complementares e metabolismo</summary><div id="secondaryFields" class="formGrid"></div></details>
+    <label class="notesLabel">Observações<textarea name="notes" maxlength="4000" rows="3"></textarea></label><label class="confirm"><input name="confirmed" type="checkbox" required>Conferi o paciente, a data do exame, as unidades e os valores.</label><p id="formError" role="alert"></p>
+    <div class="dialogFooter"><button type="button" data-close="assessmentDialog">Cancelar</button><button id="saveAssessment" class="primary" type="submit"><i data-lucide="check"></i>Salvar avaliação</button></div>
+  </form></dialog>
+  <dialog id="revisionDialog"><div class="dialogHeading"><h2>Registro de alterações</h2><button data-close="revisionDialog" class="iconButton" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></div><div id="revisionContent"></div></dialog>
+</body></html>

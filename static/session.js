@@ -8,7 +8,8 @@
     redirecting = true;
     Object.keys(sessionStorage).filter(key => key.startsWith("clinicAccess:")).forEach(key => sessionStorage.removeItem(key));
     localStorage.removeItem("selectedClinic");
-    window.location.replace("/login");
+    const next = window.location.pathname === "/body-evolution.html" ? "?next=" + encodeURIComponent(window.location.pathname + window.location.search) : "";
+    window.location.replace("/login" + next);
   }
   window.fetch = async (input, init = {}) => {
     const url = new URL(input instanceof Request ? input.url : input, window.location.href);

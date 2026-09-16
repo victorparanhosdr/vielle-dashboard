@@ -21,7 +21,12 @@ form.addEventListener("submit", async event => {
     localStorage.removeItem("selectedClinic");
     form.elements.password.value = "";
     const next = new URLSearchParams(window.location.search).get("next");
-    window.location.replace(next === "/master" ? "/master" : "/");
+    let destination = next === "/master" ? "/master" : "/";
+    if (next?.startsWith("/body-evolution.html?")) {
+      const target = new URL(next, window.location.origin);
+      if (target.origin === window.location.origin && target.pathname === "/body-evolution.html") destination = target.pathname + target.search;
+    }
+    window.location.replace(destination);
   } catch (problem) {
     error.textContent = problem instanceof TypeError ? "Não foi possível conectar. Verifique sua conexão e tente novamente." : problem.message;
   } finally {

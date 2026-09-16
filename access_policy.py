@@ -10,9 +10,10 @@ MODULES = {
     "budget_followup": {"label": "Acompanhamento de Orçamentos", "view": "quoteFollowupView", "actions": ["view", "create", "edit", "export"]},
     "paid_traffic": {"label": "Tráfego pago", "view": "trafficView", "actions": ["view", "edit", "export"]},
     "whatsapp_review": {"label": "Avaliação WhatsApp", "view": "whatsappAuditView", "actions": ["view", "edit", "export"]},
+    "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "export"]},
 }
 VIEW_MODULES = {item["view"]: key for key, item in MODULES.items()}
-ACTION_LABELS = {"view": "Visualizar", "create": "Registrar contato", "edit": "Editar / executar", "export": "Exportar"}
+ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "export": "Exportar"}
 REPORT_KEYS = {
     "dashboard": {"general_panel", "clinica_experts"},
     "commercial": {"totals", "by_pipeline", "interacted_leads", "by_status", "all_current_status", "daily_new_leads", "agendado_migrations", "kommo_panel", "clinica_experts"},
@@ -23,7 +24,8 @@ REPORT_KEYS = {
 
 
 def clinic_modules(clinic):
-    return [key for key in MODULES if key != "patient_followup" or clinic == "vielle"] if clinic in SUPPORTED_CLINICS else []
+    return [key for key in MODULES if (key != "patient_followup" or clinic == "vielle")
+            and (key != "body_evolution" or clinic == "inspire")] if clinic in SUPPORTED_CLINICS else []
 
 
 def clinic_permissions(clinic):
@@ -31,7 +33,8 @@ def clinic_permissions(clinic):
 
 
 def validate_permissions(clinic, permissions):
-    if not isinstance(permissions, list) or any(not isinstance(value, str) or value not in clinic_permissions(clinic) for value in permissions):
+    allowed = clinic_permissions(clinic) if clinic is not None else [f"{key}.{action}" for key, module in MODULES.items() for action in module["actions"]]
+    if not isinstance(permissions, list) or any(not isinstance(value, str) or value not in allowed for value in permissions):
         raise ValueError("Permissões inválidas para esta clínica.")
     values = set(permissions)
     if any(value.split(".")[0] + ".view" not in values for value in values):
@@ -48,6 +51,8 @@ def permission_map(clinics, permissions):
 
 
 def project_report(report, module):
+    if module == "body_evolution":
+        return {}
     result = {key: value for key, value in report.items() if key in REPORT_KEYS[module] | {"connected", "filters", "pipelines"}}
     if module == "commercial":
         intelligence = report.get("financial", {}).get("sales_intelligence", {})

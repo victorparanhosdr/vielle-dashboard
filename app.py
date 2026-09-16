@@ -6896,6 +6896,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if self.handle_master_api(parsed):
             return
+        if parsed.path.startswith("/api/body/"):
+            from body_evolution import handle_request
+            with clinic_context(self.request_clinic_id(parsed)):
+                return handle_request(self, parsed, db)
         if parsed.path == "/api/export-authorize":
             return self.auth_json({"ok": True})
         if parsed.path == "/api/export-chart":
@@ -7128,6 +7132,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             return
         if self.handle_master_api(parsed):
             return
+        if parsed.path.startswith("/api/body/"):
+            from body_evolution import handle_request
+            with clinic_context(self.request_clinic_id(parsed)):
+                return handle_request(self, parsed, db)
         if parsed.path == "/api/clinic-access":
             try:
                 payload = self.read_json_body()

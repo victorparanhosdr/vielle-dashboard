@@ -7,7 +7,7 @@ from pathlib import Path
 import posixpath
 import threading
 import time
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from auth_store import SESSION_TTL_SECONDS, normalize_login
 from clinic_catalog import SUPPORTED_CLINICS
@@ -111,7 +111,10 @@ class SessionAuthMixin:
                                [self.session_cookie()])
             else:
                 self.send_response(303)
-                self.send_header("Location", "/login?next=/master" if is_admin_path(path) else "/login")
+                destination = "/login?next=/master" if is_admin_path(path) else "/login"
+                if posixpath.normpath(unquote(path)).removeprefix("/static") == "/body-evolution.html":
+                    destination = "/login?next=" + quote("/body-evolution.html?" + parsed.query, safe="")
+                self.send_header("Location", destination)
                 self.send_header("Set-Cookie", self.session_cookie())
                 self.send_header("Content-Length", "0")
                 self.end_headers()
@@ -154,6 +157,21 @@ class SessionAuthMixin:
         query = parse_qs(parsed.query, keep_blank_values=True)
         clinic = query.get("clinic", ["vielle"])[0]
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
+            return True
+        normalized = posixpath.normpath(unquote(path)).removeprefix("/static")
+        if path.startswith("/api/body/") or normalized == "/body-evolution.html":
+            if clinic != "inspire":
+                self.auth_json({"ok": False, "error": "Evolução corporal disponível apenas na Inspire."}, 403)
+                return False
+            if not self.require_permission(clinic, "body_evolution.view"):
+                return False
+            if path == "/api/body/document":
+                return self.require_permission(clinic, "body_evolution.export")
+            if self.command == "POST" and path in {"/api/body/enroll", "/api/body/import"}:
+                return self.require_permission(clinic, "body_evolution.create")
+            if self.command == "POST" and path == "/api/body/evaluation":
+                return (self.server.auth_store.has_permission(self.current_user["id"], clinic, "body_evolution.create")
+                        or self.require_permission(clinic, "body_evolution.edit"))
             return True
         if path == "/api/export-chart":
             return (self.require_permission(clinic, "dashboard.view")
@@ -228,6 +246,8 @@ class SessionAuthMixin:
         target = Path(self.translate_path(self.path)).resolve()
         protected = {Path(self.directory).resolve() / name for name in ("master.html", "settings.html", "settings.js")}
         if target in protected and not self.require_master_auth():
+            return None
+        if target.name == "body-evolution.html" and not self.require_request_permission(urlsplit(self.path)):
             return None
         return super().send_head()
 

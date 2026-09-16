@@ -367,6 +367,10 @@ function updateMobileTabsToggle() {
 function applyActiveViewState() {
   const views = permittedViews();
   if (!views.includes(state.activeView)) state.activeView = views[0] || "";
+  if (state.activeView === "bodyEvolutionView") {
+    window.location.replace(`/body-evolution.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
+    return;
+  }
   document.querySelectorAll(".tabBtn").forEach(tab => {
     tab.hidden = !views.includes(tab.dataset.view);
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
@@ -3088,6 +3092,7 @@ async function exportChart(button) {
 }
 
 async function loadReport() {
+  if (state.activeView === "bodyEvolutionView") return;
   if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
     showClinicLanding();
