@@ -4481,7 +4481,8 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             elapsed_days = month_days
         else:
             elapsed_days = 1
-        projected_revenue = (financial_income_total / elapsed_days) * month_days if elapsed_days else financial_income_total
+        sales_revenue = clinica_totals["sales_total"]
+        projected_revenue = (sales_revenue / elapsed_days) * month_days if elapsed_days else sales_revenue
         sales_ticket_daily = []
         sales_performance_by_day = {item["day"]: item for item in sales_performance}
         cursor_day = start_date
@@ -4497,6 +4498,12 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
                 "revenue": revenue,
             })
             cursor_day += timedelta(days=1)
+        # The general panel measures sales by sale date, not financial receipts.
+        general_daily = [
+            {**item, "income": sales_performance_by_day.get(item["day"], {}).get("revenue", 0),
+             "balance": sales_performance_by_day.get(item["day"], {}).get("revenue", 0) - item["expenses"]}
+            for item in financial_daily
+        ]
         kommo_alias_lookup = clinic_kommo_doctor_alias_lookup()
         daily_doctors = {}
         for row in daily_lead_details:
@@ -4828,25 +4835,26 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "month": month_key,
             "goal": month_goal,
             "goal_entries": month_goal_entries,
-            "revenue": financial_income_total,
+            "revenue": sales_revenue,
             "expenses_total": financial_expense_total,
             "expenses_paid": financial_expense_settled,
             "expenses_pending": financial_expense_open,
-            "balance": financial_income_total - financial_expense_total,
-            "margin_1_rate": ((financial_income_total - margin_1_expenses) / financial_income_total) if financial_income_total else None,
+            "balance": sales_revenue - financial_expense_total,
+            "margin_1_rate": ((sales_revenue - margin_1_expenses) / sales_revenue) if sales_revenue else None,
             "margin_1_expenses": margin_1_expenses,
-            "margin_2_rate": ((financial_income_total - margin_2_expenses) / financial_income_total) if financial_income_total else None,
+            "margin_2_rate": ((sales_revenue - margin_2_expenses) / sales_revenue) if sales_revenue else None,
             "margin_2_expenses": margin_2_expenses,
-            "goal_rate": (financial_income_total / month_goal) if month_goal else None,
+            "goal_rate": (sales_revenue / month_goal) if month_goal else None,
             "projected_revenue": projected_revenue,
             "elapsed_days": elapsed_days,
             "month_days": month_days,
             "average_ticket": (clinica_totals["sales_total"] / clinica_totals["sales"]) if clinica_totals["sales"] else 0,
-            "sales_count": financial_income_count,
-            "active_revenue_days": len([item for item in financial_daily if item.get("income", 0) > 0]),
+            "sales_count": clinica_totals["sales"],
+            "active_revenue_days": len([item for item in general_daily if item.get("income", 0) > 0]),
             "distinct_patients": len(top_patient_lookup),
-            "financial_daily": financial_daily,
-            "income_by_type": financial_income_by_type,
+            "financial_daily": general_daily,
+            "income_by_type": [{"type": "Venda", "total": clinica_totals["sales"], "amount": sales_revenue}]
+            if clinica_totals["sales"] else [],
             "expenses_by_category": financial_expense_categories,
             "expenses_daily": financial_daily,
             "top_patients": top_patients,

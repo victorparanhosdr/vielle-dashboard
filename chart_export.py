@@ -128,8 +128,7 @@ def build_workbook(chart, panel, context):
                   [[day, leads.get(day, 0), bookings.get(day, 0)] for day in sorted(leads.keys() | bookings.keys())])
     sources = ({"Leads": "leads", "Agendamentos": "bookings"} if chart == "leads_bookings" else
                {"Saídas": "expenses"} if chart.startswith("expense_") else
-               {"Vendas": "sales"} if chart in {"sales_ticket", "top_patients", "value_ranges"} else
-               {"Lançamentos": "income"})
+               {"Vendas": "sales"})
     for name, key in sources.items():
         details_sheet(wb, name, details.get(key, []), originals)
     add_sheet(wb, "Registros originais", ["Aba", "ID origem", "Parte JSON", "JSON original (concatenar partes)"], originals)

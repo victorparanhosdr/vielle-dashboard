@@ -60,7 +60,9 @@ class ChartExportTests(unittest.TestCase):
             details = panel.pop("export_details")
             self.assertEqual(regular, panel)
             self.assertAlmostEqual(sum(r["amount"] for r in details["income"]), 143.45)
-            self.assertAlmostEqual(sum(r["income"] for r in panel["financial_daily"]), 143.45)
+            self.assertAlmostEqual(sum(r["income"] for r in panel["financial_daily"]), 1200)
+            self.assertEqual(panel["revenue"], 1200)
+            self.assertEqual(panel["sales_count"], 12)
             self.assertAlmostEqual(sum(r["amount"] for r in details["expenses"]), 30)
             self.assertEqual(len(details["sales"]), 12)
             self.assertEqual(len(panel["top_patients"]), 10)
@@ -71,7 +73,17 @@ class ChartExportTests(unittest.TestCase):
             self.assertEqual(sum(r["total"] for r in panel["daily_bookings"]), 1)
             panel["export_details"] = details
             for chart in CHARTS:
-                load_workbook(io.BytesIO(build_workbook(chart, panel, {})))
+                wb = load_workbook(io.BytesIO(build_workbook(chart, panel, {})))
+                if chart in {"revenue_daily", "accumulated"}:
+                    self.assertNotIn("Lançamentos", wb.sheetnames)
+                    self.assertEqual(wb["Vendas"].max_row, 13)
+                    headers = [cell.value for cell in wb["Vendas"][1]]
+                    amount_index = headers.index("Valor considerado (R$)")
+                    self.assertEqual(sum(row[amount_index] for row in wb["Vendas"].iter_rows(min_row=2, values_only=True)), 1200)
+                    self.assertEqual(sum(row[1] for row in wb["Resumo"].iter_rows(min_row=2, values_only=True)), 1200)
+                    self.assertEqual(wb["Resumo"].cell(wb["Resumo"].max_row, 3).value, 1200)
+                elif chart == "expense_daily":
+                    self.assertEqual(sum(row[1] for row in wb["Resumo"].iter_rows(min_row=2, values_only=True)), 30)
 
 
 if __name__ == "__main__":

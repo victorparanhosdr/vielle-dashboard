@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -72,6 +73,59 @@ class CommercialReportTests(unittest.TestCase):
         report = app.report_data(date_from="2026-09-30", date_to="2026-09-30")
         self.assertEqual(report["clinica_experts"]["totals"]["sales_total"], 200)
         self.assertEqual(report["clinica_experts"]["totals"]["sales"], 1)
+
+    def test_general_panel_and_financial_keep_separate_bases(self):
+        with app.db() as conn:
+            conn.execute("insert into clinica_bills(uuid,type,due_date,amount,raw_json,synced_at) values('bill','sale','2026-09-02',900,'{}',0)")
+            conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,raw_json,synced_at) values('manual','other','received','2026-09-02',50,'{}',0)")
+            conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('expense','expense','paid','2026-09-02',30,'Aluguel','{}',0)")
+            conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('owner','expense','paid','2026-09-03',20,'Pró-labore','{}',0)")
+        app.save_monthly_goal("2026-09", 1000)
+        with patch.object(app, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = datetime(2026, 9, 15)
+            report = app.report_data(date_from="2026-09-01", date_to="2026-09-30")
+        panel = report["general_panel"]
+        self.assertEqual(panel["revenue"], 600)
+        self.assertEqual(panel["sales_count"], 4)
+        self.assertEqual(panel["average_ticket"], 150)
+        self.assertEqual(panel["active_revenue_days"], 3)
+        self.assertEqual(panel["distinct_patients"], 4)
+        self.assertEqual(panel["expenses_total"], 50)
+        self.assertEqual(panel["balance"], 550)
+        self.assertAlmostEqual(panel["margin_1_rate"], 570 / 600)
+        self.assertAlmostEqual(panel["margin_2_rate"], 550 / 600)
+        self.assertEqual(panel["goal_rate"], 0.6)
+        self.assertEqual(panel["projected_revenue"], 1200)
+        self.assertEqual(sum(row["income"] for row in panel["financial_daily"]), 600)
+        self.assertEqual(sum(row["balance"] for row in panel["financial_daily"]), 550)
+        self.assertEqual(sum(row["amount"] for row in panel["income_by_type"]), 600)
+        self.assertEqual(sum(row["expenses"] for row in panel["expenses_daily"]), 50)
+        daily = {row["day"]: row for row in panel["financial_daily"]}
+        self.assertEqual(daily["2026-09-01"]["income"], 100)
+        self.assertEqual(daily["2026-09-02"]["income"], 0)
+        self.assertEqual(daily["2026-09-02"]["expenses"], 30)
+        self.assertEqual(report["financial"]["totals"]["income"], 950)
+        self.assertEqual(sum(row["income"] for row in report["financial"]["daily"]), 950)
+
+    def test_general_panel_obeys_doctor_date_and_status_filters(self):
+        for doctor, start, end, amount, count, days in (
+            ("Doutor A", "2026-09-01", "2026-09-30", 300, 3, 2),
+            ("Doutor B", "2026-09-01", "2026-09-30", 300, 1, 1),
+            ("Doutor A", "2026-09-30", "2026-09-30", 200, 1, 1),
+            ("Doutor A", "2026-09-15", "2026-09-15", 0, 1, 0),
+            ("Doutor A", "2026-09-02", "2026-09-02", 0, 0, 0),
+        ):
+            with self.subTest(doctor=doctor, start=start, end=end):
+                panel = app.report_data(date_from=start, date_to=end, doctor=doctor)["general_panel"]
+                self.assertEqual(panel["revenue"], amount)
+                self.assertEqual(panel["sales_count"], count)
+                self.assertEqual(panel["active_revenue_days"], days)
+                self.assertEqual(sum(row["income"] for row in panel["financial_daily"]), amount)
+                self.assertEqual(sum(row["revenue"] for row in panel["sales_ticket_daily"]), amount)
+                self.assertEqual(sum(row["amount"] for row in panel["value_ranges"]), amount)
+                if not amount:
+                    self.assertIsNone(panel["margin_1_rate"])
+                    self.assertIsNone(panel["margin_2_rate"])
 
 
 if __name__ == "__main__":
