@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cérebro do sistema | DOC4DOCS</title>
+  <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
+  <link rel="stylesheet" href="/master/brain.css?v=1">
+  <script src="/session.js"></script>
+  <script src="/body-icons.js" defer></script>
+  <script src="/master/brain.js?v=1" defer></script>
+</head>
+<body>
+  <header class="brainHeader">
+    <a href="/master" aria-label="Voltar ao Painel Master"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="140" height="64"></a>
+    <nav aria-label="Conta"><span class="masterLabel"><i data-lucide="shield-check" aria-hidden="true"></i>Master</span><span data-session-user></span><a href="/master">Usuários e acessos</a><a href="/">Sistema</a><button type="button" data-logout>Sair</button></nav>
+  </header>
+  <main>
+    <div class="heading">
+      <div><p class="eyebrow">DOC4DOCS / Inteligência operacional</p><h1>Cérebro do sistema</h1><p id="snapshotTime" class="muted" role="status">Carregando diagnóstico...</p></div>
+      <div class="headingActions"><label>Clínica<select id="clinic"><option value="vielle">Vielle Clinic</option><option value="inspire">Clínica Inspire</option><option value="carla">Dra. Carla Ferreira</option></select></label><button id="refresh" class="iconButton" aria-label="Atualizar diagnóstico" title="Atualizar diagnóstico"><i data-lucide="refresh-cw" aria-hidden="true"></i></button><button id="theme" class="iconButton" aria-label="Alternar aparência" title="Alternar aparência"><i data-lucide="moon" aria-hidden="true"></i></button></div>
+    </div>
+    <p id="sessionStatus" role="status"></p><p id="error" class="error" role="alert" hidden></p>
+    <nav class="tabs" aria-label="Cérebro do sistema" role="tablist">
+      <button type="button" role="tab" id="mapTab" aria-controls="mapPanel" aria-selected="true" data-tab="map"><i data-lucide="workflow" aria-hidden="true"></i>Mapa do sistema</button>
+      <button type="button" role="tab" id="healthTab" aria-controls="healthPanel" aria-selected="false" data-tab="health"><i data-lucide="activity" aria-hidden="true"></i>Diagnóstico <span id="attentionCount"></span></button>
+      <button type="button" role="tab" id="aiTab" aria-controls="aiPanel" aria-selected="false" data-tab="ai"><i data-lucide="sparkles" aria-hidden="true"></i>Análise da IA</button>
+      <button type="button" role="tab" id="codeTab" aria-controls="codePanel" aria-selected="false" data-tab="code"><i data-lucide="code-xml" aria-hidden="true"></i>Estrutura técnica</button>
+    </nav>
+    <section id="mapPanel" role="tabpanel" aria-labelledby="mapTab">
+      <div class="mapToolbar"><div class="segments" aria-label="Fluxo destacado"><button data-flow="all" aria-pressed="true">Visão geral</button><button data-flow="revenue" aria-pressed="false">Faturamento</button><button data-flow="body" aria-pressed="false">Evolução corporal</button><button data-flow="whatsapp" aria-pressed="false">WhatsApp</button></div><span class="mapLegend">Caminho dos dados</span></div>
+      <div class="systemMap" id="systemMap"><svg id="wires" aria-hidden="true"></svg><div class="lanes" id="lanes"><p class="muted">Carregando mapa...</p></div></div>
+      <div class="securityLine"><span><i data-lucide="lock-keyhole" aria-hidden="true"></i>Autenticação central</span><span>Usuário <b>→</b> Clínica <b>→</b> Permissão <b>→</b> API</span></div>
+      <div id="nodeDetail" class="nodeDetail" aria-live="polite"></div>
+    </section>
+    <section id="healthPanel" role="tabpanel" aria-labelledby="healthTab" hidden>
+      <div class="sectionHeading"><h2>Sincronizações</h2><span class="muted">Histórico local · referência de atraso: 24h</span></div>
+      <div id="integrations" class="integrations"></div>
+      <div class="sectionHeading"><h2>Pontos de atenção</h2></div><div id="evidence" class="evidence"></div>
+      <div class="sectionHeading"><h2>Cobertura da base local</h2></div>
+      <div class="tableWrap"><table><thead><tr><th>Conjunto de dados</th><th>Registros</th><th>Primeira data</th><th>Última data</th></tr></thead><tbody id="datasets"></tbody></table></div>
+      <ul id="limitations" class="limitations"></ul>
+    </section>
+    <section id="aiPanel" role="tabpanel" aria-labelledby="aiTab" hidden>
+      <div class="sectionHeading aiHeading"><div><h2>Análise consultiva</h2><p id="aiConfiguration" class="muted"></p></div><div class="aiActions"><label>Foco<select id="focus"><option value="general">Visão geral</option><option value="sync">Sincronizações</option><option value="quality">Qualidade dos dados</option><option value="architecture">Arquitetura</option></select></label><button id="analyze" class="primary" disabled><i data-lucide="sparkles" aria-hidden="true"></i>Analisar com IA</button></div></div>
+      <p class="privacy"><i data-lucide="shield-check" aria-hidden="true"></i>Somente metadados técnicos são enviados à OpenAI. Sem prontuários, mensagens, credenciais ou identificação de pacientes. Cada análise consome a API configurada.</p>
+      <p id="aiStatus" class="muted" role="status" aria-live="polite"></p>
+      <div id="analysis"><p class="empty">Nenhuma análise salva para esta clínica.</p></div>
+    </section>
+    <section id="codePanel" role="tabpanel" aria-labelledby="codeTab" hidden>
+      <div class="sectionHeading"><h2>Inventário do código publicado</h2><code id="revision"></code></div>
+      <div class="techStack"><span>Python · ThreadingHTTPServer</span><span>HTML / CSS / JavaScript</span><span>SQLite · DATA_DIR</span><span>GitHub → Railway</span></div>
+      <div class="tableWrap"><table><thead><tr><th>Arquivo</th><th>Funções</th><th>Dependências locais</th><th>Versão</th></tr></thead><tbody id="files"></tbody></table></div>
+      <details class="routes"><summary>Rotas detectadas no código <span id="routeCount"></span></summary><div id="routes"></div></details>
+    </section>
+    <footer><span id="fingerprint"></span><span>Diagnóstico somente leitura · Acesso exclusivo Master</span></footer>
+  </main>
+</body>
+</html>

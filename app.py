@@ -6902,6 +6902,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/master/brain" or parsed.path.startswith("/api/master/brain/"):
+            from system_brain import handle_request
+            return handle_request(self, parsed, globals())
         if self.handle_master_api(parsed):
             return
         if parsed.path.startswith("/api/body/"):
@@ -7138,6 +7141,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
                 return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
         if not self.require_dashboard_auth():
             return
+        if parsed.path == "/api/master/brain" or parsed.path.startswith("/api/master/brain/"):
+            from system_brain import handle_request
+            return handle_request(self, parsed, globals())
         if self.handle_master_api(parsed):
             return
         if parsed.path.startswith("/api/body/"):
