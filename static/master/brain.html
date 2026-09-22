@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cérebro do sistema | DOC4DOCS</title>
   <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
-  <link rel="stylesheet" href="/master/brain.css?v=1">
+  <link rel="stylesheet" href="/master/brain.css?v=5">
   <script src="/session.js"></script>
   <script src="/body-icons.js" defer></script>
-  <script src="/master/brain.js?v=1" defer></script>
+  <script src="/master/brain-data.js?v=6" defer></script>
+  <script src="/master/brain.js?v=6" defer></script>
 </head>
 <body>
   <header class="brainHeader">
@@ -18,7 +19,7 @@
   <main>
     <div class="heading">
       <div><p class="eyebrow">DOC4DOCS / Inteligência operacional</p><h1>Cérebro do sistema</h1><p id="snapshotTime" class="muted" role="status">Carregando diagnóstico...</p></div>
-      <div class="headingActions"><label>Clínica<select id="clinic"><option value="vielle">Vielle Clinic</option><option value="inspire">Clínica Inspire</option><option value="carla">Dra. Carla Ferreira</option></select></label><button id="refresh" class="iconButton" aria-label="Atualizar diagnóstico" title="Atualizar diagnóstico"><i data-lucide="refresh-cw" aria-hidden="true"></i></button><button id="theme" class="iconButton" aria-label="Alternar aparência" title="Alternar aparência"><i data-lucide="moon" aria-hidden="true"></i></button></div>
+      <div class="headingActions"><label>Clínica<select id="clinic"><option value="vielle">Vielle Clinic</option><option value="inspire">Clínica Inspire</option><option value="carla">Dra. Carla Ferreira</option></select></label><button id="refresh" class="iconButton" aria-label="Atualizar diagnóstico" title="Atualizar diagnóstico"><i data-lucide="refresh-cw" aria-hidden="true"></i></button><button id="exportReport" class="iconButton" aria-label="Baixar relatório técnico" title="Baixar relatório técnico" disabled><i data-lucide="download" aria-hidden="true"></i></button><button id="theme" class="iconButton" aria-label="Alternar aparência" title="Alternar aparência"><i data-lucide="moon" aria-hidden="true"></i></button></div>
     </div>
     <p id="sessionStatus" role="status"></p><p id="error" class="error" role="alert" hidden></p>
     <nav class="tabs" aria-label="Cérebro do sistema" role="tablist">
@@ -45,13 +46,17 @@
       <div class="sectionHeading aiHeading"><div><h2>Análise consultiva</h2><p id="aiConfiguration" class="muted"></p></div><div class="aiActions"><label>Foco<select id="focus"><option value="general">Visão geral</option><option value="sync">Sincronizações</option><option value="quality">Qualidade dos dados</option><option value="architecture">Arquitetura</option></select></label><button id="analyze" class="primary" disabled><i data-lucide="sparkles" aria-hidden="true"></i>Analisar com IA</button></div></div>
       <p class="privacy"><i data-lucide="shield-check" aria-hidden="true"></i>Somente metadados técnicos são enviados à OpenAI. Sem prontuários, mensagens, credenciais ou identificação de pacientes. Cada análise consome a API configurada.</p>
       <p id="aiStatus" class="muted" role="status" aria-live="polite"></p>
+      <p id="historyNotice" class="historyNotice" role="status" hidden></p>
+      <div class="historyToolbar" id="historyToolbar" hidden><label>Análises salvas<select id="analysisHistory"></select></label><span class="muted" id="historyCount"></span></div>
       <div id="analysis"><p class="empty">Nenhuma análise salva para esta clínica.</p></div>
+      <section class="analysisComparison" id="analysisComparison" aria-labelledby="comparisonTitle" hidden><div class="sectionHeading"><h2 id="comparisonTitle">Desde a análise anterior</h2><span class="muted" id="comparisonDates"></span></div><p class="muted" id="comparisonStatus"></p><div id="comparisonChanges"></div></section>
     </section>
     <section id="codePanel" role="tabpanel" aria-labelledby="codeTab" hidden>
-      <div class="sectionHeading"><h2>Inventário do código publicado</h2><code id="revision"></code></div>
+      <div class="sectionHeading"><h2>Inventário do código</h2><code id="revision"></code></div>
       <div class="techStack"><span>Python · ThreadingHTTPServer</span><span>HTML / CSS / JavaScript</span><span>SQLite · DATA_DIR</span><span>GitHub → Railway</span></div>
-      <div class="tableWrap"><table><thead><tr><th>Arquivo</th><th>Funções</th><th>Dependências locais</th><th>Versão</th></tr></thead><tbody id="files"></tbody></table></div>
-      <details class="routes"><summary>Rotas detectadas no código <span id="routeCount"></span></summary><div id="routes"></div></details>
+      <div class="inventoryToolbar"><div class="inventoryField"><label for="codeSearch">Buscar arquivo, dependência ou rota</label><div class="inventorySearch"><i data-lucide="search" aria-hidden="true"></i><input id="codeSearch" type="search" maxlength="120" autocomplete="off" spellcheck="false" aria-controls="files routes" disabled><button type="button" id="clearCodeSearch" class="iconButton" aria-label="Limpar busca" title="Limpar busca" disabled><i data-lucide="x" aria-hidden="true"></i></button></div></div><p id="inventoryCount" class="muted" role="status" aria-live="polite"></p></div>
+      <div class="tableWrap" role="region" aria-label="Arquivos do código" tabindex="0"><table><thead><tr><th scope="col">Arquivo</th><th scope="col">Funções Python</th><th scope="col">Dependências Python locais</th><th scope="col">Versão</th></tr></thead><tbody id="files"></tbody></table></div>
+      <details class="routes" id="detectedRoutes"><summary>Rotas detectadas no código <span id="routeCount"></span></summary><div id="routes"></div></details>
     </section>
     <footer><span id="fingerprint"></span><span>Diagnóstico somente leitura · Acesso exclusivo Master</span></footer>
   </main>
