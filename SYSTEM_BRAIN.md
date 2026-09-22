@@ -42,12 +42,15 @@ automatic repairs. Uses the clinic's existing OpenAI configuration, falling back
 to Vielle when absent; the UI shows the configuration source. Optional
 `SYSTEM_BRAIN_OPENAI_API_KEY` overrides the key for a dedicated installation.
 `OPENAI_MODEL` retains the existing configured model (default gpt-4.1-mini).
-The output is bounded and validated. Every finding must reference a supplied
-evidence ID. Provider errors are replaced by safe messages. One analysis runs at
+The output uses a strict JSON Schema with evidence IDs constrained to the current
+snapshot, and is validated again locally. Every finding must reference a supplied
+evidence ID. Truncation and refusal are reported separately from invalid evidence.
+Provider errors are replaced by safe messages. One analysis runs at
 a time per process, with a 60-second per-Master interval and a 2000-token output
 ceiling. Calls consume the configured API account; no background AI calls occur.
 
 Official API reference: https://developers.openai.com/api/reference/resources/chat
+Structured output: https://developers.openai.com/api/docs/guides/structured-outputs
 
 ## Verification
 

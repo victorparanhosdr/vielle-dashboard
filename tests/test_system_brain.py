@@ -93,6 +93,16 @@ class BrainTests(unittest.TestCase):
             body=json.loads(request.data)
             self.assertFalse(body["store"])
             self.assertEqual(body["max_completion_tokens"],2000)
+            output = body["response_format"]
+            self.assertEqual(output["type"], "json_schema")
+            self.assertTrue(output["json_schema"]["strict"])
+            schema = output["json_schema"]["schema"]
+            self.assertFalse(schema["additionalProperties"])
+            finding = schema["properties"]["findings"]["items"]
+            self.assertEqual(set(finding["required"]), set(finding["properties"]))
+            refs = finding["properties"]["evidence_ids"]
+            self.assertEqual(refs["minItems"], 1)
+            self.assertEqual(set(refs["items"]["enum"]), {e["id"] for e in snap["evidence"]})
             for text in ("PATIENT-NAME","private-key","email@example.com","private_record","private-sale"):
                 self.assertNotIn(text,request.data.decode())
             self.assertEqual(request.get_header("Authorization"),"Bearer private-key")
@@ -107,6 +117,20 @@ class BrainTests(unittest.TestCase):
         result["findings"][0]["evidence_ids"]=["invented"]
         with patch("urllib.request.urlopen",side_effect=response), self.assertRaisesRegex(ValueError,"evidências"):
             brain.ai_analysis(self.app,snap,"general")
+
+    def test_incomplete_or_refused_ai_output_is_not_misreported_as_missing_evidence(self):
+        snap=brain.snapshot(self.app,"vielle")
+        for reason, message, expected in (
+            ("length", {"content": "{partial"}, "limite de tamanho"),
+            ("stop", {"refusal": "private refusal text"}, "não concluiu"),
+            ("content_filter", {"content": ""}, "não concluiu"),
+        ):
+            with self.subTest(reason=reason):
+                response=io.BytesIO(json.dumps({"choices":[{"finish_reason":reason,"message":message}]}).encode())
+                with patch("urllib.request.urlopen",return_value=response), self.assertRaisesRegex(ValueError,expected) as caught:
+                    brain.ai_analysis(self.app,snap,"general")
+                self.assertNotIn("private refusal", str(caught.exception))
+                self.assertFalse(brain.analysis_path(self.app).exists())
 
     def test_provider_errors_are_redacted(self):
         snap=brain.snapshot(self.app,"vielle")
