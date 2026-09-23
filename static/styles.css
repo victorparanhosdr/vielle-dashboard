@@ -1617,8 +1617,7 @@ button.danger {
 }
 
 .generalMetric.emphasisLeads,
-.generalMetric.emphasisBookings,
-.generalMetric.compact {
+.generalMetric.emphasisBookings {
   grid-column: span 2;
 }
 
