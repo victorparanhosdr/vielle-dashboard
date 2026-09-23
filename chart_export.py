@@ -8,9 +8,9 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 CHARTS = {
-    "revenue_daily": "Evolução do faturamento diário",
+    "revenue_daily": "Evolução das vendas diárias",
     "sales_ticket": "Vendas e ticket médio por dia",
-    "accumulated": "Faturamento acumulado",
+    "accumulated": "Total vendido acumulado",
     "top_patients": "Top pacientes",
     "value_ranges": "Distribuição por faixa de valor",
     "leads_bookings": "Leads x agendamentos criados por dia",
@@ -100,7 +100,7 @@ def build_workbook(chart, panel, context):
             rows.append([item["day"], amount, cumulative])
         add_sheet(wb, "Resumo", ["Dia", "Valor do dia (R$)", "Acumulado no período (R$)"], rows, [2, 3])
     elif chart == "sales_ticket":
-        add_sheet(wb, "Resumo", ["Dia", "Vendas", "Faturamento (R$)", "Ticket médio (R$)"],
+        add_sheet(wb, "Resumo", ["Dia", "Vendas", "Total vendido (R$)", "Ticket médio (R$)"],
                   [[r["day"], r["sales"], r["revenue"], r["average_ticket"]]
                    for r in panel.get("sales_ticket_daily", [])], [3, 4])
     elif chart == "value_ranges":
@@ -114,7 +114,7 @@ def build_workbook(chart, panel, context):
             item = patients.setdefault(key, [str(key or ""), row.get("patient"), 0, 0])
             item[2] += 1
             item[3] += row.get("amount", 0)
-        add_sheet(wb, "Ranking completo", ["ID paciente", "Paciente", "Vendas", "Faturamento (R$)"],
+        add_sheet(wb, "Ranking completo", ["ID paciente", "Paciente", "Vendas", "Total vendido (R$)"],
                   sorted(patients.values(), key=lambda r: r[3], reverse=True), [4])
     elif chart == "expense_categories":
         categories = panel.get("expenses_by_category", [])

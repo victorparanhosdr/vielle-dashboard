@@ -28,6 +28,7 @@ from pathlib import Path
 from auth_store import AuthStore, auth_database_path
 from auth_http import LoginLimiter, SessionAuthMixin
 from master_api import MasterApiMixin
+from financial_receipts import build_receipts
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -4482,6 +4483,10 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         else:
             elapsed_days = 1
         sales_revenue = clinica_totals["sales_total"]
+        receipt_professionals = effective_professional_uuids
+        if forced_clinica_professional_uuids and not receipt_professionals:
+            receipt_professionals = ["__no_allowed_professional__"]
+        receipts = build_receipts(conn, date_from, date_to, receipt_professionals)
         projected_revenue = (sales_revenue / elapsed_days) * month_days if elapsed_days else sales_revenue
         sales_ticket_daily = []
         sales_performance_by_day = {item["day"]: item for item in sales_performance}
@@ -4836,6 +4841,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "goal": month_goal,
             "goal_entries": month_goal_entries,
             "revenue": sales_revenue,
+            "receipts": receipts,
             "expenses_total": financial_expense_total,
             "expenses_paid": financial_expense_settled,
             "expenses_pending": financial_expense_open,

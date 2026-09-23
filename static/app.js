@@ -759,6 +759,7 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalGoal").textContent = brl.format(goal);
   document.getElementById("generalGoalMonth").textContent = `${clinic.name} · ${monthLabel(state.selectedMonth)}`;
   document.getElementById("generalRevenue").textContent = brl.format(revenue);
+  renderGeneralReceipts(panel.receipts);
   document.getElementById("generalFeaturedExpenses").textContent = brl.format(panel.expenses_total || 0);
   document.getElementById("generalFeaturedBalance").textContent = brl.format(panel.balance || 0);
   document.getElementById("generalGoalRate").textContent = goal ? formatPercent(goalRate) : "-";
@@ -770,10 +771,10 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
   document.getElementById("generalMarginOne").textContent = formatPercent(panel.margin_1_rate);
   document.getElementById("generalMarginOneProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_1_expenses || 0))}`;
-  document.getElementById("generalMarginOne").title = `Saídas consideradas: ${brl.format(panel.margin_1_expenses || 0)}`;
+  document.getElementById("generalMarginOne").title = `Base: total vendido. Saídas consideradas: ${brl.format(panel.margin_1_expenses || 0)}`;
   document.getElementById("generalMarginTwo").textContent = formatPercent(panel.margin_2_rate);
   document.getElementById("generalMarginTwoProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_2_expenses || 0))}`;
-  document.getElementById("generalMarginTwo").title = `Todas as saídas: ${brl.format(panel.margin_2_expenses || 0)}`;
+  document.getElementById("generalMarginTwo").title = `Base: total vendido. Todas as saídas: ${brl.format(panel.margin_2_expenses || 0)}`;
   const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
   const dailyAverage = monthDays ? revenue / monthDays : 0;
   const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
@@ -806,6 +807,29 @@ function renderGeneralPanel(panel) {
   renderGeneralExpenseCategories(panel.expenses_by_category || [], panel.expenses_total || 0);
   renderGeneralIncomeTypes(panel.income_by_type || []);
   renderGeneralExpenseDailyChart(panel.expenses_daily || []);
+}
+
+function renderGeneralReceipts(receipts) {
+  const value = document.getElementById("generalReceived");
+  const count = document.getElementById("generalReceivedCount");
+  const basis = document.getElementById("generalReceivedBasis");
+  const warning = document.getElementById("generalReceivedWarning");
+  const available = receipts && Number.isFinite(receipts.net_total);
+  value.textContent = available
+    ? brlCents.format(receipts.net_total)
+    : "-";
+  count.textContent = available
+    ? `${receipts.count} ${receipts.count === 1 ? "parcela recebida" : "parcelas recebidas"}`
+    : "Recebimentos indisponíveis";
+  basis.textContent = "Líquido de taxas · Data de compensação";
+  basis.title = receipts?.basis || "";
+  const excluded = receipts?.excluded || {};
+  const messages = [];
+  if (excluded.professional) messages.push(`${excluded.professional} sem vínculo seguro com profissional`);
+  if (excluded.net_amount) messages.push(`${excluded.net_amount} sem valor líquido`);
+  if (excluded.date) messages.push(`${excluded.date} sem data de recebimento na base`);
+  warning.hidden = !messages.length;
+  warning.textContent = messages.length ? `Total parcial: ${messages.join("; ")}.` : "";
 }
 
 function renderMonthlyGoalRows(entries) {
@@ -849,7 +873,7 @@ function renderGeneralRevenueBarChart(items) {
   const days = items.filter(item => item.day);
   const hasSignal = days.some(item => Number(item.income || 0) > 0);
   if (!hasSignal) {
-    el.innerHTML = `<div class="empty">Sem faturamento no mês selecionado.</div>`;
+    el.innerHTML = `<div class="empty">Sem vendas no mês selecionado.</div>`;
     return;
   }
   const max = Math.max(...days.map(item => Number(item.income || 0)), 1);
@@ -915,7 +939,7 @@ function renderGeneralAccumulatedChart(items) {
     return { day: item.day, total: accumulated };
   });
   if (!prepared.some(item => item.total > 0)) {
-    el.innerHTML = `<div class="empty">Sem faturamento acumulado.</div>`;
+    el.innerHTML = `<div class="empty">Sem vendas acumuladas.</div>`;
     return;
   }
   const width = Math.max(360, prepared.length * 18);
@@ -944,7 +968,7 @@ function renderGeneralAccumulatedChart(items) {
     `;
   };
   el.innerHTML = `
-    <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento acumulado">
+    <svg class="generalAccumulatedSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Total vendido acumulado">
       <defs>
         <linearGradient id="generalAccumulatedArea" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="#102B25" stop-opacity=".22"></stop>
@@ -1015,7 +1039,7 @@ function renderGeneralSalesTicketChart(items) {
     empty: "Sem vendas no mês selecionado.",
     firstKey: "revenue",
     secondKey: "average_ticket",
-    firstLabel: "Faturamento",
+    firstLabel: "Total vendido",
     secondLabel: "Ticket médio",
     firstColor: "#102B25",
     secondColor: "#969A78",
@@ -1107,7 +1131,7 @@ function renderGeneralIncomeTypes(items) {
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
   const total = sortedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   if (!sortedItems.length) {
-    el.innerHTML = `<div class="empty">Sem entradas por tipo no mês selecionado.</div>`;
+    el.innerHTML = `<div class="empty">Sem vendas por tipo no mês selecionado.</div>`;
     return;
   }
   el.innerHTML = sortedItems.slice(0, 6).map(item => {
@@ -1116,7 +1140,7 @@ function renderGeneralIncomeTypes(items) {
       <div class="incomeTypeCard">
         <span>${escapeHtml(financeTypeLabel(item.type))}</span>
         <strong>${brl.format(amount)}</strong>
-        <small>${formatPercent(total ? amount / total : 0)} das entradas</small>
+        <small>${formatPercent(total ? amount / total : 0)} das vendas</small>
       </div>
     `;
   }).join("");
@@ -1440,12 +1464,12 @@ function renderSalesPerformanceChart(items) {
   }).join("");
   el.innerHTML = `
     <div class="performanceLegend">
-      <span><i class="revenueLine"></i>Faturamento</span>
+      <span><i class="revenueLine"></i>Total vendido</span>
       <span><i class="salesLine"></i>Vendas</span>
       <span><i class="quotedLine"></i>Orçado</span>
     </div>
     <div class="lineChartScroller">
-      <svg class="performanceSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Faturamento, vendas e orçado dia a dia">
+      <svg class="performanceSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Valor vendido, quantidade de vendas e orçado dia a dia">
         <defs>
           <linearGradient id="revenueArea" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stop-color="#102B25" stop-opacity=".24"></stop>
@@ -1488,7 +1512,7 @@ function showSalesTooltip(event, item, tooltip, container) {
   if (!item) return;
   tooltip.innerHTML = `
     <strong>${formatDay(item.day)}</strong>
-    <span><i class="revenueDot"></i>Faturamento: ${brl.format(item.revenue || 0)}</span>
+    <span><i class="revenueDot"></i>Total vendido: ${brl.format(item.revenue || 0)}</span>
     <span><i class="salesDot"></i>Vendas: ${item.sales || 0}</span>
     <span><i class="quotedDot"></i>Orçado: ${brl.format(item.quoted || 0)}</span>
   `;

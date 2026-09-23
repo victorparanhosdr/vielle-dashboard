@@ -127,6 +127,28 @@ class CommercialReportTests(unittest.TestCase):
                     self.assertIsNone(panel["margin_1_rate"])
                     self.assertIsNone(panel["margin_2_rate"])
 
+    def test_general_receipts_are_net_and_keep_the_professional_filter(self):
+        with app.db() as conn:
+            for key, seller, amount, net in (("first", "a", 10000, 9750), ("other", "b", 30000, 28500)):
+                sale_day = "2026-09-01" if seller == "a" else "2026-09-15"
+                app.save_clinica_bill(conn, {
+                    "uuid": "bill-" + key, "type": "Venda", "emission_date": sale_day,
+                    "person": {"uuid": key}, "final_amount": amount,
+                    "payment_methods": [{"parcels": [{"uuid": "parcel-" + key,
+                        "status": "received", "final_amount": amount, "net_amount": net,
+                        "fees_amount": amount - net, "compensation_date": "2026-09-20"}]}],
+                }, 100)
+        for doctor, sold, received in (("Doutor A", 300, 97.5), ("Doutor B", 300, 285), (None, 600, 382.5)):
+            with self.subTest(doctor=doctor):
+                panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30", doctor=doctor)["general_panel"]
+                self.assertEqual(panel["revenue"], sold)
+                self.assertEqual(panel["receipts"]["net_total"], received)
+        panel = app.report_data(date_from="2026-09-01", date_to="2026-09-15", doctor="Doutor A")["general_panel"]
+        self.assertEqual(panel["receipts"]["net_total"], 0)
+        with patch.object(app, "forced_professional_uuids", return_value=["b"]):
+            panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30", doctor="Doutor A")["general_panel"]
+            self.assertEqual(panel["receipts"]["net_total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

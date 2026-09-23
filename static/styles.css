@@ -1533,6 +1533,33 @@ button.danger {
   padding-top: 18px;
 }
 
+.generalMetric.receivedMetric {
+  background: linear-gradient(135deg, #153c32, #375e4c);
+}
+
+.receivedDetails {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 18px;
+  overflow-wrap: anywhere;
+}
+
+.receivedDetails span {
+  min-height: 0;
+}
+
+.generalMetric.receivedMetric strong {
+  font-size: 30px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.receivedDetails small[role="status"] {
+  border-top: 1px solid rgba(255, 255, 255, .25);
+  padding-top: 10px;
+}
+
 .featuredFinanceSplit > div {
   min-width: 0;
   padding: 12px;

@@ -6,7 +6,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=receipts-1">
     <script src="/session.js"></script>
   </head>
   <body>
@@ -398,7 +398,7 @@
 
             <section class="generalHeroGrid">
               <article class="generalMetric featured emphasisRevenue">
-                <span>Faturamento total</span>
+                <span>Total vendido</span>
                 <strong id="generalRevenue">R$ 0</strong>
                 <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
                 <div class="featuredFinanceSplit">
@@ -407,9 +407,19 @@
                     <b id="generalFeaturedExpenses">R$ 0</b>
                   </div>
                   <div>
-                    <span>Saldo</span>
+                    <span>Vendido − saídas</span>
                     <b id="generalFeaturedBalance">R$ 0</b>
                   </div>
+                </div>
+              </article>
+              <article class="generalMetric featured receivedMetric">
+                <span>Total recebido</span>
+                <strong id="generalReceived">R$ 0,00</strong>
+                <small>Faturamento líquido</small>
+                <div class="receivedDetails">
+                  <span id="generalReceivedCount">0 parcelas recebidas</span>
+                  <small id="generalReceivedBasis">Pela data de compensação</small>
+                  <small id="generalReceivedWarning" role="status" hidden></small>
                 </div>
               </article>
               <article class="generalMetric emphasisMargin">
@@ -463,7 +473,7 @@
                 <small>Lançamentos</small>
               </article>
               <article class="generalMetric compact">
-                <span>Dias com faturamento</span>
+                <span>Dias com vendas</span>
                 <strong id="generalActiveDays">0</strong>
                 <small id="generalActiveDaysHint">No mês</small>
               </article>
@@ -472,7 +482,7 @@
             <section class="generalDashboardGrid">
               <article class="panel generalWide">
                 <div class="panelHead">
-                  <h2>Evolução do faturamento diário</h2>
+                  <h2>Evolução das vendas diárias</h2>
                   <span class="metaText">Clínica Experts</span>
                 </div>
                 <div id="generalRevenueBarChart" class="generalRevenueChart"></div>
@@ -486,7 +496,7 @@
 
               <article class="panel">
                 <div class="panelHead">
-                  <h2>Faturamento acumulado</h2>
+                  <h2>Total vendido acumulado</h2>
                 </div>
                 <div id="generalAccumulatedChart" class="generalSmallChart"></div>
               </article>
@@ -509,7 +519,7 @@
               <article class="panel">
                 <div class="panelHead">
                   <h2>Top pacientes</h2>
-                  <span class="metaText">Por faturamento</span>
+                  <span class="metaText">Por valor vendido</span>
                 </div>
                 <div id="generalTopPatients" class="generalTopList"></div>
               </article>
@@ -536,7 +546,7 @@
                     <div class="expenseMiniGrid">
                       <span>Pago/recebido <b id="generalExpensesPaid">R$ 0</b></span>
                       <span>Em aberto <b id="generalExpensesPending">R$ 0</b></span>
-                      <span>Saldo do período <b id="generalBalance">R$ 0</b></span>
+                      <span>Vendido − saídas <b id="generalBalance">R$ 0</b></span>
                     </div>
                   </div>
                 </article>
@@ -551,8 +561,8 @@
 
                 <article class="panel generalIncomePanel">
                   <div class="panelHead">
-                    <h2>Entradas por tipo</h2>
-                    <span class="metaText">Receitas</span>
+                    <h2>Vendas por tipo</h2>
+                    <span class="metaText">Valor vendido</span>
                   </div>
                   <div id="generalIncomeTypes" class="generalIncomeTypes"></div>
                 </article>
@@ -917,6 +927,6 @@
         </section>
       </div>
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=receipts-1"></script>
   </body>
 </html>
