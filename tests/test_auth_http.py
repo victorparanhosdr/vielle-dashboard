@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from auth_store import AuthStore
 from auth_http import LoginLimiter
+from clinic_catalog import SUPPORTED_CLINICS
 
 
 class HttpAuthTests(unittest.TestCase):
@@ -291,7 +292,24 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(json.loads(body)["user"]["clinic_keys"], ["carla"])
         _, _, body = self.request("GET", "/api/auth/me", cookie=master)
-        self.assertEqual(len(json.loads(body)["clinics"]), 3)
+        self.assertEqual([item["key"] for item in json.loads(body)["clinics"]], list(SUPPORTED_CLINICS))
+
+    def test_brandao_requires_explicit_membership_and_permissions(self):
+        master = self.master_cookie()
+        common, _ = self.login()
+        for path in ("/?clinic=brandao", "/api/report?clinic=brandao"):
+            self.assertEqual(self.request("GET", path, cookie=common)[0], 403)
+        _, _, body = self.request("GET", "/api/auth/me", cookie=master)
+        self.assertIn({"key": "brandao", "name": "Clínica Brandão"}, json.loads(body)["clinics"])
+        data = {"nome": "Usuario Local", "login": "teste", "clinic_keys": ["brandao"],
+                "permissions": {"brandao": ["dashboard.view"]}}
+        path = f"/api/master/users/{self.user_id}/edit"
+        status, _, body = self.request("POST", path, data, master, {"X-DOC4DOCS-Request": "1"})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.request("GET", "/api/report?clinic=brandao", cookie=common)[0], 200)
+        self.assertEqual(self.request("GET", "/api/report?clinic=vielle", cookie=common)[0], 403)
+        self.assertEqual(self.request("GET", "/api/report?clinic=brandao&view=financialView", cookie=common)[0], 403)
+        self.assertEqual(self.request("GET", "/settings.html?clinic=brandao", cookie=common)[0], 403)
 
     def limit_permissions(self, permissions):
         self.store.update_user(self.user_id,"Usuario Local","teste",clinic_keys=["vielle"],permissions={"vielle":permissions})

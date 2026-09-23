@@ -1,8 +1,13 @@
 "use strict";
 
-function allowedModuleKeys(clinic) { return Object.keys(moduleCatalog).filter(key=>key!=="patient_followup"||clinic==="vielle"); }
+function allowedModuleKeys(clinic) {
+  return Object.keys(moduleCatalog).filter(key => !clinic || (
+    (key !== "patient_followup" || clinic === "vielle") &&
+    (key !== "body_evolution" || clinic === "inspire")
+  ));
+}
 function choiceOption(value,text) { const option=document.createElement("option");option.value=value;option.textContent=text;return option; }
-function permissionGrid(container,values,clinic="vielle") {
+function permissionGrid(container,values,clinic=null) {
   container.replaceChildren();
   allowedModuleKeys(clinic).forEach(key=>{
     const group=document.createElement("fieldset"),legend=document.createElement("legend");legend.textContent=moduleCatalog[key].label;group.append(legend);

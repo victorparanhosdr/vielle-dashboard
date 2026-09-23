@@ -105,6 +105,14 @@ const clinics = {
     status: "Relatório da Dr. Carla Ferreira pronto para conectar Kommo e Clínica Experts.",
     connected: true,
   },
+  brandao: {
+    id: "brandao",
+    name: "Clínica Brandão",
+    kommoSubdomain: "",
+    title: "DOC4DOCS",
+    status: "Kommo e Clínica Experts não conectados.",
+    connected: true,
+  },
 };
 
 function fmtDate(value) {

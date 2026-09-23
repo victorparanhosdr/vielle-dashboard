@@ -51,7 +51,7 @@ from access_policy import MODULES, ACTION_LABELS, project_report
 CLINICA_BACKGROUND_SYNC_LOCK = threading.Lock()
 CLINICA_BACKGROUND_SYNC_STATE = {}
 FOLLOWUP_CALLERS = ("Emerson", "Mariana", "Ayrton", "Victor")
-CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA"}
+CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "brandao": "BRANDAO"}
 CLINIC_SCOPED_CONFIG_KEYS = {
     "KOMMO_SUBDOMAIN",
     "KOMMO_CLIENT_ID",
@@ -766,6 +766,11 @@ def config_value(key, default=None):
     clinic_id = current_clinic_id()
     clinic_defaults = CLINIC_CONFIG_DEFAULTS.get(clinic_id, {})
     fallback = clinic_defaults.get(key, CONFIG_DEFAULTS.get(key, default or ""))
+    # Scope defaults before the disconnected-Kommo branch can return early.
+    if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
+        fallback = clinic_defaults.get(key, default or "")
+        if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
+            fallback = clinic_defaults.get(key, CONFIG_DEFAULTS.get(key, fallback))
     stale_vielle_subdomains = {"contatoconsultingvpnet"}
     stale_vielle_client_ids = {KOMMO_CLIENT_ID}
     stale_vielle_secrets = {KOMMO_CLIENT_SECRET}
@@ -813,9 +818,6 @@ def config_value(key, default=None):
         except sqlite3.Error:
             pass
     if clinic_id != "vielle" and key in CLINIC_SCOPED_CONFIG_KEYS:
-        fallback = clinic_defaults.get(key, default or "")
-        if key in {"MIDAS_API_BASE_URL", "MIDAS_HISTORY_START"}:
-            fallback = clinic_defaults.get(key, CONFIG_DEFAULTS.get(key, fallback))
         try:
             with db() as conn:
                 row = conn.execute("select value from app_settings where key = ?", (key,)).fetchone()
@@ -1392,18 +1394,20 @@ CLINIC_ACCESS_ENV = {
     "vielle": "VIELLE_ACCESS_CODE",
     "inspire": "INSPIRE_ACCESS_CODE",
     "carla": "CARLA_ACCESS_CODE",
+    "brandao": "BRANDAO_ACCESS_CODE",
 }
 
 CLINIC_TEAM_ACCESS_ENV = {
     "vielle": "VIELLE_TEAM_ACCESS_CODE",
     "inspire": "INSPIRE_TEAM_ACCESS_CODE",
     "carla": "CARLA_TEAM_ACCESS_CODE",
+    "brandao": "BRANDAO_TEAM_ACCESS_CODE",
 }
 
 
 def normalize_clinic_id(value):
     clinic_id = (value or "vielle").strip().lower()
-    return clinic_id if clinic_id in CLINIC_ACCESS_ENV else "vielle"
+    return clinic_id if clinic_id in SUPPORTED_CLINICS else "vielle"
 
 
 def normalize_access_mode(value):

@@ -4,6 +4,7 @@ const clinicLabels = {
   vielle: "Vielle Clinic",
   inspire: "Clínica Inspire",
   carla: "Dr. Carla Ferreira",
+  brandao: "Clínica Brandão",
 };
 
 document.querySelectorAll("[data-clinic-label]").forEach(element => {

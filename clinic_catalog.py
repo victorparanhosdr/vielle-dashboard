@@ -4,6 +4,7 @@ CLINIC_DISPLAY_NAMES = {
     "vielle": "Vielle Clinic",
     "inspire": "Clínica Inspire",
     "carla": "Dr. Carla Ferreira",
+    "brandao": "Clínica Brandão",
 }
 SUPPORTED_CLINICS = tuple(CLINIC_DISPLAY_NAMES)
 
