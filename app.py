@@ -6912,6 +6912,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in ("/precificacao", "/precificacao/"):
+            self.path = "/pricing.html"
+            return super().do_GET()
         if parsed.path == "/api/master/brain" or parsed.path.startswith("/api/master/brain/"):
             from system_brain import handle_request
             return handle_request(self, parsed, globals())

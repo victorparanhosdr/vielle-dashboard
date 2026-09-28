@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Calculadora de precificação DOC4DOCS: custos clínicos, materiais, impostos e divisão do lucro.">
+  <title>Calculadora de precificação | DOC4DOCS</title>
+  <link rel="icon" type="image/png" href="/doc4docs-favicon.png">
+  <link rel="stylesheet" href="/pricing.css?v=1">
+  <script src="/body-icons.js" defer></script>
+  <script src="/pricing-math.js?v=1" defer></script>
+  <script src="/pricing.js?v=1" defer></script>
+</head>
+<body>
+  <header class="brandbar">
+    <a href="/precificacao" aria-label="DOC4DOCS, calculadora de precificação"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="156" height="64"></a>
+    <div class="header-actions">
+      <button id="exportPdf" type="button"><i data-lucide="file-down"></i><span>Baixar PDF</span></button>
+      <button id="reset" type="button" class="icon-button" title="Reiniciar simulação" aria-label="Reiniciar simulação"><i data-lucide="rotate-ccw"></i></button>
+    </div>
+  </header>
+  <main>
+    <div class="page-heading"><h1>Calculadora de precificação</h1><span id="simulationLabel" class="badge">Simulação de exemplo</span></div>
+    <noscript><p class="notice">Ative o JavaScript para calcular a precificação.</p></noscript>
+    <div class="workspace">
+      <form id="pricingForm" novalidate autocomplete="off">
+        <section class="form-section" aria-labelledby="structureTitle">
+          <div class="section-heading"><span class="section-number">01</span><h2 id="structureTitle">Estrutura da clínica</h2><button class="help-button" type="button" data-help="structureHelp" aria-haspopup="dialog" aria-label="Ajuda sobre estrutura da clínica" title="O que incluir nos custos da clínica?"><i data-lucide="circle-help"></i></button></div>
+          <div class="structure-fields">
+            <label class="monthly">Custos mensais <span class="field-control"><span>R$</span><input id="monthlyCost" inputmode="decimal" data-currency value="12.000,00" aria-describedby="monthlyCostError"></span><small id="monthlyCostError" class="field-error"></small></label>
+            <label>Dias / mês<input id="days" type="number" min="1" max="31" step="1" value="20" aria-describedby="daysError"><small id="daysError" class="field-error"></small></label>
+            <label>Horas / dia<input id="hours" type="number" min="0.01" max="24" step="0.5" value="8" aria-describedby="hoursError"><small id="hoursError" class="field-error"></small></label>
+            <label>Salas<input id="rooms" type="number" min="1" max="1000" step="1" value="2" aria-describedby="roomsError"><small id="roomsError" class="field-error"></small></label>
+            <label class="occupancy">Ocupação <span class="field-control"><input id="occupancy" type="number" min="1" max="100" step="1" value="75" aria-describedby="occupancyError"><span>%</span></span><input id="occupancySlider" type="range" min="1" max="100" value="75" aria-label="Ajustar ocupação"><small id="occupancyError" class="field-error"></small></label>
+          </div>
+          <div class="readout"><span>Hora clínica</span><strong id="hourlyCost">—</strong></div>
+        </section>
+        <section class="form-section" aria-labelledby="materialsTitle">
+          <div class="section-heading"><span class="section-number">02</span><h2 id="materialsTitle">Ficha técnica</h2><button class="help-button" type="button" data-help="materialsHelp" aria-haspopup="dialog" aria-label="Ajuda sobre ficha técnica" title="Como calcular o consumo dos materiais?"><i data-lucide="circle-help"></i></button></div>
+          <label>Nome do procedimento<input id="procedure" maxlength="120" value="Procedimento personalizado"></label>
+          <div class="material-header" aria-hidden="true"><span>Material</span><span>Preço da embalagem</span><span>Qtd. na embalagem</span><span>Qtd. utilizada</span><span>Custo</span><span></span></div>
+          <div id="materials"></div>
+          <div class="material-actions"><button type="button" id="addMaterial" class="text-button"><i data-lucide="circle-plus"></i>Adicionar material</button><span id="materialCount"></span></div>
+          <div class="readout"><span>Materiais</span><strong id="materialTotal">—</strong></div>
+          <div class="duration-fields"><label>Duração <span class="field-control"><input id="duration" type="number" value="90" min="0.01" max="10080" step="1" aria-describedby="durationError"><span>min</span></span><small id="durationError" class="field-error"></small></label><div class="calculated-field"><span>Custo do tempo</span><strong id="timeCost">—</strong></div></div>
+        </section>
+        <section class="form-section" aria-labelledby="ratesTitle">
+          <div class="section-heading"><span class="section-number">03</span><h2 id="ratesTitle">Impostos e remuneração</h2><button class="help-button" type="button" data-help="ratesHelp" aria-haspopup="dialog" aria-label="Ajuda sobre impostos e comissão" title="Como funciona a divisão do lucro?"><i data-lucide="circle-help"></i></button></div>
+          <div class="rates-fields">
+            <label>Impostos <span class="field-control"><input id="tax" type="number" min="0" max="100" step="0.1" value="10" aria-describedby="taxError"><span>%</span></span><small id="taxError" class="field-error"></small></label>
+            <label>Taxa de pagamento <span class="field-control"><input id="card" type="number" min="0" max="100" step="0.1" value="4" aria-describedby="cardError"><span>%</span></span><small id="cardError" class="field-error"></small></label>
+            <label>Comissão sobre o lucro <span class="field-control"><input id="commission" type="number" min="0" max="100" step="0.1" value="50" aria-describedby="commissionError"><span>%</span></span><small id="commissionError" class="field-error"></small></label>
+            <label>Margem da clínica após comissão <span class="field-control"><input id="margin" type="number" min="0" max="100" step="0.1" value="20" aria-describedby="marginError"><span>%</span></span><small id="marginError" class="field-error"></small></label>
+          </div>
+        </section>
+      </form>
+      <aside class="results" aria-label="Resultado da precificação">
+        <div class="suggested"><span>Preço sugerido</span><strong id="suggestedPrice">—</strong><div><span>Margem da clínica após comissão</span><b id="targetMargin">20%</b></div></div>
+        <div class="result-content">
+          <label class="actual-price">Preço praticado <span class="field-control"><span>R$</span><input id="actualPrice" inputmode="decimal" data-currency value="2.000,00" placeholder="Usar preço sugerido" aria-describedby="actualPriceError"></span><small id="actualPriceError" class="field-error"></small></label>
+          <div id="errorSummary" class="notice error-notice" role="status" hidden></div>
+          <div id="resultNumbers">
+            <h2 class="breakdown-heading">Composição do preço</h2>
+            <div id="priceBar" class="price-bar" role="img" aria-label="Distribuição do preço"></div>
+            <dl id="breakdown" class="breakdown"></dl>
+            <dl class="reconciliation"><div><dt>Preço praticado</dt><dd id="priceValue">—</dd></div><div><dt>Custos, impostos e taxas</dt><dd id="costsValue">—</dd></div><div class="profit-line"><dt id="profitLabel">Lucro para dividir</dt><dd id="profitValue">—</dd></div></dl>
+            <div class="profit-split"><div><span id="professionalLabel">Profissional · 50%</span><strong id="professionalValue">—</strong></div><div><span id="clinicLabel">Clínica · 50%</span><strong id="clinicValue">—</strong></div></div>
+            <div id="marginStatus" class="margin-status" role="status"><i data-lucide="chart-no-axes-column-increasing"></i><span id="marginText"></span></div>
+            <div class="minimum-price"><span>Preço de equilíbrio</span><strong id="minimumPrice">—</strong></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <footer><span>DOC4DOCS</span><button type="button" class="text-button" data-help="privacyHelp" aria-haspopup="dialog"><i data-lucide="shield-check"></i>Privacidade e premissas</button></footer>
+    <p id="actionStatus" class="action-status" role="status"></p>
+  </main>
+  <dialog id="structureHelp" aria-labelledby="structureHelpTitle"><div class="dialog-heading"><h2 id="structureHelpTitle">O que entra na estrutura?</h2><button type="button" class="icon-button" data-close aria-label="Fechar ajuda" title="Fechar"><i data-lucide="x"></i></button></div><p>Some os gastos mensais para manter a clínica funcionando, mesmo quando não há atendimento.</p><ul><li>Aluguel, condomínio e IPTU proporcional ao mês.</li><li>Salários, encargos e benefícios da equipe.</li><li><strong>Pró-labore dos sócios e seus encargos.</strong> É a remuneração pelo trabalho na clínica, não a distribuição de lucro.</li><li>Água, energia, internet, contabilidade, sistemas, limpeza e manutenção.</li><li>Depreciação e outros custos de estrutura, quando aplicáveis.</li></ul><div class="help-example"><h3>Exemplo de custo mensal</h3><dl><div><dt>Aluguel e condomínio</dt><dd>R$ 3.000</dd></div><div><dt>Equipe e encargos</dt><dd>R$ 4.000</dd></div><div><dt>Pró-labore e encargos</dt><dd>R$ 3.000</dd></div><div><dt>Outros custos de estrutura</dt><dd>R$ 2.000</dd></div><div><dt>Total</dt><dd>R$ 12.000</dd></div></dl></div><h3>Horas e ocupação</h3><p>Com 20 dias, 8 horas, 2 salas e 75% de ocupação, são 240 horas de atendimento por mês. R$ 12.000 ÷ 240 = <strong>R$ 50 por hora de sala</strong>. Conte apenas as salas que podem atender simultaneamente e use uma ocupação realista.</p><p>Não repita aqui os materiais da ficha técnica, os impostos sobre a venda, a taxa de pagamento ou a comissão calculada sobre o lucro. Se o mesmo pagamento profissional já compõe o pró-labore, não o conte novamente como comissão.</p></dialog>
+  <dialog id="materialsHelp" aria-labelledby="materialsHelpTitle"><div class="dialog-heading"><h2 id="materialsHelpTitle">Como montar a ficha técnica?</h2><button type="button" class="icon-button" data-close aria-label="Fechar ajuda" title="Fechar"><i data-lucide="x"></i></button></div><p>Liste todos os materiais consumidos no procedimento. Use a mesma unidade para a quantidade da embalagem e a quantidade utilizada: unidades, mL, gramas ou kits.</p><div class="help-example"><h3>Exemplo: caixa de seringas</h3><p>Preço da caixa: <strong>R$ 100</strong><br>Quantidade na embalagem: <strong>50 unidades</strong><br>Quantidade utilizada: <strong>2 unidades</strong></p><p>Custo no procedimento: R$ 100 ÷ 50 × 2 = <strong>R$ 4</strong>.</p></div><ul><li>Inclua insumos principais, agulhas, cânulas, luvas, gazes e demais descartáveis efetivamente utilizados.</li><li>Considere perdas e sobras que não podem ser reaproveitadas na quantidade utilizada.</li><li>Para um item de uso único descartado após abrir, considere o custo inteiro.</li><li>Na duração, inclua o tempo de ocupação da sala, preparo e limpeza entre atendimentos, sem duplicar períodos.</li></ul><p>O custo de cada material é proporcional ao consumo. Não some novamente materiais já incluídos em outro item.</p></dialog>
+  <dialog id="ratesHelp" aria-labelledby="ratesHelpTitle"><div class="dialog-heading"><h2 id="ratesHelpTitle">Do preço ao lucro final</h2><button type="button" class="icon-button" data-close aria-label="Fechar ajuda" title="Fechar"><i data-lucide="x"></i></button></div><p><strong>A comissão incide somente sobre o lucro positivo que sobra depois de todos os custos informados.</strong></p><ol><li>Desconte materiais e tempo clínico do preço cobrado.</li><li>Desconte impostos e taxa de pagamento, calculados sobre o preço cobrado.</li><li>Divida o saldo entre profissional e clínica conforme a comissão.</li></ol><div class="help-example"><p>Preço de R$ 2.000 − R$ 800 de materiais e tempo − R$ 280 de impostos e taxas = <strong>R$ 920 para dividir</strong>.</p><p>Comissão de 50%: R$ 460 ao profissional e R$ 460 à clínica. Margem final da clínica: <strong>23% do preço cobrado</strong>.</p></div><p>A margem desejada é a parte da clínica <strong>após</strong> a comissão, sobre o preço de venda. O preço sugerido considera essa meta e é arredondado para cima. O preço de equilíbrio cobre os custos, sem lucro para dividir. Havendo prejuízo, a comissão simulada é zero.</p><p>Informe as alíquotas efetivas da sua operação, validadas com a contabilidade, e a taxa do meio de pagamento escolhido. Os percentuais de exemplo não são recomendações tributárias. Não desconte taxas duas vezes.</p></dialog>
+  <dialog id="privacyHelp" aria-labelledby="privacyHelpTitle"><div class="dialog-heading"><h2 id="privacyHelpTitle">Privacidade e premissas</h2><button type="button" class="icon-button" data-close aria-label="Fechar ajuda" title="Fechar"><i data-lucide="x"></i></button></div><p>Os cálculos acontecem neste navegador. Os valores digitados não são enviados ao DOC4DOCS nem salvos nos bancos das clínicas. Esta página pública não acessa pacientes, integrações ou dados financeiros do sistema.</p><p>A simulação não fica salva ao fechar ou recarregar a página. O PDF é gerado no seu dispositivo e contém os valores da simulação.</p><p>O rateio pressupõe salas com custo e capacidade equivalentes. Impostos e taxas são tratados como percentuais do preço cobrado. A margem é estimada conforme os custos informados; não substitui apuração contábil nem pesquisa de mercado.</p></dialog>
+  <dialog id="resetDialog" aria-labelledby="resetTitle"><form method="dialog"><div class="dialog-heading"><h2 id="resetTitle">Reiniciar simulação?</h2><button type="button" data-close class="icon-button" aria-label="Cancelar" title="Cancelar"><i data-lucide="x"></i></button></div><p>Os valores atuais serão substituídos pelos valores de exemplo. Baixe o PDF antes se precisar guardar a simulação.</p><div class="dialog-actions"><button value="cancel">Cancelar</button><button value="confirm" class="primary">Reiniciar</button></div></form></dialog>
+</body>
+</html>

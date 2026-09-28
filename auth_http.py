@@ -16,6 +16,8 @@ from access_policy import VIEW_MODULES, clinic_modules
 
 SESSION_COOKIE = "doc4docs_session"
 PUBLIC_FILES = {"/login.html", "/login.css", "/login.js", "/session.js", "/doc4docs-logo-white.png", "/doc4docs-favicon.png"}
+PUBLIC_FILES.update({"/pricing.html", "/pricing.css", "/pricing.js", "/pricing-math.js",
+                     "/pricing-pdf-lib.min.js", "/body-icons.js"})
 INTEGRATION_CALLBACKS = {"/auth/callback", "/webhooks/revoked"}
 ADMIN_API_PATHS = {"/api/settings", "/api/sync-all", "/api/clear-data", "/api/reset-kommo", "/api/sync", "/api/sync-clinica", "/auth/start"}
 
@@ -100,7 +102,7 @@ class SessionAuthMixin:
         parsed = urlsplit(self.path)
         path = parsed.path
         public_path = path.removeprefix("/static") if path.startswith("/static/") else path
-        if self.command in ("GET", "HEAD") and (public_path in PUBLIC_FILES or path == "/login"):
+        if self.command in ("GET", "HEAD") and (public_path in PUBLIC_FILES or path in {"/login", "/precificacao", "/precificacao/"}):
             return True
         if self.command == "GET" and path in INTEGRATION_CALLBACKS:
             return True
@@ -295,6 +297,8 @@ class SessionAuthMixin:
         parsed = urlsplit(self.path)
         if parsed.path == "/login":
             self.path = "/login.html"
+        elif parsed.path in ("/precificacao", "/precificacao/"):
+            self.path = "/pricing.html"
         elif parsed.path in ("/master", "/master/"):
             self.path = "/master.html"
         elif parsed.path.startswith("/static/"):

@@ -101,6 +101,24 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual({key.lower(): value for key, value in headers}["content-type"], "image/png")
             self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_pricing_page_and_assets_are_public_without_clinic_access(self):
+        paths = ("/precificacao", "/precificacao/", "/precificacao?clinic=inspire",
+                 "/pricing.html", "/static/pricing.html", "/pricing.css", "/pricing.js",
+                 "/pricing-math.js", "/body-icons.js", "/pricing-pdf-lib.min.js")
+        with patch.object(self.app, "db", side_effect=AssertionError("No clinic DB access")):
+            for path in paths:
+                self.assertEqual(self.request("GET", path)[0], 200, path)
+                self.assertEqual(self.request("HEAD", path)[0], 200, path)
+        self.report.assert_not_called()
+
+    def test_public_pricing_does_not_bypass_private_routes(self):
+        for path in ("/pricing/../index.html", "/precificacao/../master", "/static/../settings.html"):
+            self.assertEqual(self.request("GET", path)[0], 303, path)
+        for path in ("/api/report?clinic=inspire", "/api/master/users", "/api/settings"):
+            self.assertEqual(self.request("GET", path)[0], 401, path)
+        self.assertEqual(self.request("POST", "/precificacao", {})[0], 401)
+        self.report.assert_not_called()
+
     def test_login_cookie_and_existing_clinic_gate(self):
         cookie, headers = self.login()
         session_header = next(value for key, value in headers if key == "Set-Cookie" and value.startswith("doc4docs_session="))
