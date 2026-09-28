@@ -101,12 +101,14 @@ def build_receipts(conn, date_from, date_to, professional_uuids=()):
             merged = {**nested, **raw}
             status = row.get("status") or nested.get("status")
         kind = str(bill.get("type") or row.get("type") or merged.get("type") or "").lower()
-        if kind not in INCOME or str(status or "").lower() not in SETTLED:
+        status = str(status or "").lower()
+        # Experts uses "Conta" for both directions: "received" proves an inflow.
+        if status not in SETTLED or (kind not in INCOME and status != "received"):
             continue
 
         bill_raw = bill.get("raw") or record(merged.get("raw_bill"))
         seller = record(bill_raw.get("seller")).get("uuid")
-        if not seller:
+        if not seller and kind in INCOME:
             key = (record(bill_raw.get("person")).get("uuid"),
                    day(bill.get("emission_date") or bill_raw.get("emission_date")),
                    cents(bill_raw.get("final_amount")))

@@ -37,6 +37,20 @@ class ReceiptTests(unittest.TestCase):
     def report(self, *doctors):
         return build_receipts(self.conn, "2026-09-01", "2026-09-30", doctors)
 
+    def add_manual(self, key="manual", net=395505, paid="2026-09-10",
+                   status="received", seller=None, embedded=False, **extra):
+        raw = {"uuid": key, "status": status, "net_amount": net,
+               "fees_amount": 0, "compensation_date": paid, **extra}
+        bill = {"seller": {"uuid": seller}, "person": {"uuid": "patient"},
+                "emission_date": "2026-08-01", "final_amount": net}
+        if embedded:
+            bill["payment_methods"] = [{"parcels": [dict(raw)]}]
+            self.conn.execute("insert into clinica_bills values(?,'Conta',?,?,10)",
+                              ("bill-" + key, "2026-08-01", json.dumps(bill)))
+        raw["raw_bill"] = bill
+        self.conn.execute("insert into clinica_parcels values(?,?,'Conta',?,?,?,11)",
+                          (key, "bill-" + key, status, paid, json.dumps(raw)))
+
     def test_net_fees_not_double_deducted_and_old_sale_received_this_month(self):
         self.add()
         r = self.report("doctor-a")
@@ -148,9 +162,74 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(r["excluded"]["net_amount"], 1)
 
     def test_expenses_not_counted_as_receipts(self):
-        self.add()
+        self.add(status="paid")
         self.conn.execute("update clinica_bills set type='Conta'")
         self.assertEqual(self.report()["count"], 0)
+
+    def test_manual_receipts_reconcile_inspire_difference(self):
+        self.add(amount=16151572, net=16151572)
+        self.add_manual(net=395505, paid="2026-09-10")
+        self.add_manual(key="mentoring", net=1500000, paid="2026-09-23")
+        result = self.report()
+        self.assertEqual(result["net_total"], 180470.77)
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(result["status"], "complete")
+
+    def test_manual_receipts_require_received_status(self):
+        for status in ("paid", "settled", "done", "pago", "paga", "quitado",
+                       "quitada", "liquidado", "liquidada", "open", "late",
+                       "cancelled", "refunded"):
+            with self.subTest(status=status):
+                self.add_manual(key=status, status=status)
+                self.assertEqual(self.report()["count"], 0)
+        self.add_manual(status="Received")
+        self.assertEqual(self.report()["count"], 1)
+
+    def test_manual_receipt_without_professional_only_counts_for_clinic(self):
+        self.add_manual()
+        self.assertEqual(self.report()["net_total"], 3955.05)
+        for doctor in ("doctor-a", "doctor-b"):
+            result = self.report(doctor)
+            self.assertEqual(result["net_total"], 0)
+            self.assertEqual(result["excluded"]["professional"], 1)
+            self.assertEqual(result["status"], "partial")
+
+    def test_manual_receipt_with_explicit_professional_respects_filter(self):
+        for embedded in (False, True):
+            with self.subTest(embedded=embedded):
+                self.add_manual(key=str(embedded), seller="doctor-a", embedded=embedded)
+                result = self.report("doctor-a")
+                self.assertEqual(result["count"], 1 + int(embedded))
+                self.assertEqual(result["excluded"]["professional"], 0)
+                self.assertEqual(self.report("doctor-b")["count"], 0)
+
+    def test_manual_receipt_does_not_infer_professional_from_unrelated_sale(self):
+        self.add(amount=395505, net=395505)
+        self.add_manual()
+        result = self.report("doctor-a")
+        self.assertEqual(result["net_total"], 3955.05)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["excluded"]["professional"], 1)
+        self.assertEqual(self.report()["net_total"], 7910.10)
+
+    def test_manual_receipt_embedded_and_flat_is_counted_once(self):
+        self.add_manual(embedded=True)
+        self.assertEqual(self.report()["net_total"], 3955.05)
+        self.assertEqual(self.report()["count"], 1)
+        self.conn.execute("update clinica_parcels set status='open'")
+        self.assertEqual(self.report()["count"], 0)
+        self.conn.execute("update clinica_parcels set synced_at=9")
+        self.assertEqual(self.report()["count"], 1)
+
+    def test_manual_receipts_obey_actual_date_and_net_amount(self):
+        self.add_manual(key="previous", paid="2026-08-31")
+        self.add_manual(key="next", paid="2026-10-01")
+        self.add_manual(key="no-date", paid=None, calc_compensation_date="2026-09-15")
+        self.add_manual(key="no-net", net=None)
+        self.add_manual(key="net-fees", net=9700, final_amount=10000, fees_amount=300)
+        result = self.report()
+        self.assertEqual((result["net_total"], result["fees_total"], result["count"]), (97, 3, 1))
+        self.assertEqual(result["excluded"], {"professional": 0, "date": 1, "net_amount": 1})
 
 
 if __name__ == "__main__":

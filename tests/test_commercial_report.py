@@ -149,6 +149,30 @@ class CommercialReportTests(unittest.TestCase):
             panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30", doctor="Doutor A")["general_panel"]
             self.assertEqual(panel["receipts"]["net_total"], 0)
 
+    def test_general_receipts_include_manual_income_without_changing_sales_or_access(self):
+        with app.db() as conn:
+            for key, seller, status, net in (("unassigned", None, "received", 395505),
+                                             ("assigned", "a", "received", 1500000),
+                                             ("expense", "a", "paid", 900000)):
+                app.save_clinica_bill(conn, {
+                    "uuid": "bill-" + key, "type": "Conta", "emission_date": "2026-08-01",
+                    "seller": {"uuid": seller}, "person": {"uuid": key}, "final_amount": net,
+                    "payment_methods": [{"parcels": [{"uuid": "parcel-" + key,
+                        "status": status, "final_amount": net, "net_amount": net,
+                        "fees_amount": 0, "compensation_date": "2026-09-20"}]}],
+                }, 100)
+        for doctor, received, sold, excluded in ((None, 18955.05, 600, 0),
+                                                 ("Doutor A", 15000, 300, 1),
+                                                 ("Doutor B", 0, 300, 1)):
+            with self.subTest(doctor=doctor):
+                panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30", doctor=doctor)["general_panel"]
+                self.assertEqual(panel["receipts"]["net_total"], received)
+                self.assertEqual(panel["receipts"]["excluded"]["professional"], excluded)
+                self.assertEqual(panel["revenue"], sold)
+        with patch.object(app, "forced_professional_uuids", return_value=["b"]):
+            panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30")["general_panel"]
+            self.assertEqual(panel["receipts"]["net_total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
