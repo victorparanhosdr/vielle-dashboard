@@ -332,20 +332,11 @@ function applyClinicHeader() {
   document.getElementById("dashboardTitle").textContent = clinic.title;
   const isMidas = clinic.commercialSource === "midas";
   const connectBtn = document.getElementById("connectBtn");
-  const syncBtn = document.getElementById("syncBtn");
   if (connectBtn) connectBtn.textContent = isMidas ? "Configurar Midas" : "Conectar Kommo";
-  if (syncBtn && !syncBtn.disabled) syncBtn.textContent = isMidas ? "Atualizar Midas" : "Atualizar";
-  document.querySelectorAll("#syncBtn, #connectBtn").forEach(button => {
+  document.querySelectorAll("#connectBtn").forEach(button => {
     button.disabled = !clinic.connected;
     button.title = clinic.connected ? "" : "Configure as integrações desta clínica primeiro.";
   });
-  const syncClinicaBtn = document.getElementById("syncClinicaBtn");
-  if (syncClinicaBtn) {
-    syncClinicaBtn.disabled = !clinic.connected;
-    syncClinicaBtn.title = clinic.connected
-      ? ""
-      : "Configure as integrações desta clínica primeiro.";
-  }
   const settingsLink = document.getElementById("settingsLink");
   if (settingsLink) {
     settingsLink.href = `/settings.html?clinic=${encodeURIComponent(clinic.id)}`;
@@ -447,7 +438,8 @@ function applyActionPermissions() {
   });
   const controls = {openGoalsModalBtn:"dashboard.edit", saveMonthlyGoalBtn:"dashboard.edit", syncTrafficBtn:"paid_traffic.edit", exportPdfBtn:`${activeModule()}.export`};
   Object.entries(controls).forEach(([id,key]) => { const element=document.getElementById(id);if(element)element.hidden=!canAccess(key); });
-  ["syncBtn", "syncClinicaBtn", "connectBtn"].forEach(id=>{const element=document.getElementById(id);if(element)element.hidden=!sessionMaster;});
+  document.getElementById("connectBtn").hidden = !sessionMaster;
+  document.getElementById("syncBtn").hidden = !allowedClinics?.has(state.selectedClinic);
   document.querySelectorAll(".followupForm").forEach(form=>{
     const allowed=canAccess(form.classList.contains("quoteFollowupForm")?"budget_followup.create":"patient_followup.create");
     form.hidden=!allowed;const summary=form.closest("details")?.querySelector("summary");if(summary)summary.textContent=allowed?"Registrar novo contato":"Histórico de contatos";
@@ -460,6 +452,7 @@ function applyActionPermissions() {
 }
 
 function clearClinicSelection(message) {
+  dashboardRefresh.setClinic("");
   state.selectedClinic = "";
   state.report = null;
   localStorage.removeItem("selectedClinic");
@@ -548,6 +541,7 @@ function selectClinic(clinicId, updateUrl = true) {
   localStorage.setItem("selectedClinic", state.selectedClinic);
   showDashboard();
   applyClinicHeader();
+  dashboardRefresh.setClinic(clinicId);
   if (updateUrl) {
     const params = new URLSearchParams(window.location.search);
     params.set("clinic", state.selectedClinic);
@@ -3161,48 +3155,6 @@ async function loadReport() {
   }
 }
 
-async function syncNow() {
-  const clinic = clinics[state.selectedClinic] || clinics.vielle;
-  const btn = document.getElementById("syncBtn");
-  btn.disabled = true;
-  btn.textContent = "Atualizando...";
-  try {
-    const res = await fetch(`/api/sync${buildQuery()}`);
-    const payload = await res.json();
-    if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar.");
-    state.allPipelines = [];
-    await loadReport();
-  } catch (error) {
-    showNotice(error.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = clinic.commercialSource === "midas" ? "Atualizar Midas" : "Atualizar";
-  }
-}
-
-async function syncClinicaNow() {
-  const btn = document.getElementById("syncClinicaBtn");
-  btn.disabled = true;
-  btn.textContent = "Buscando historico...";
-  try {
-    const params = new URLSearchParams();
-    if (state.selectedClinic) params.set("clinic", state.selectedClinic);
-    params.set("historical", "1");
-    const res = await fetch(`/api/sync-clinica?${params.toString()}`);
-    const payload = await res.json();
-    if (!payload.ok) throw new Error(payload.error || "Nao foi possivel sincronizar Clínica Experts.");
-    showNotice(payload.message || "Sincronização histórica iniciada.");
-    await loadReport();
-    setTimeout(loadReport, 15000);
-  } catch (error) {
-    showNotice(friendlyError(error.message));
-    await loadReport();
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Atualizar Clínica Experts";
-  }
-}
-
 async function syncTrafficNow() {
   const btn = document.getElementById("syncTrafficBtn");
   if (!btn) return;
@@ -3304,8 +3256,21 @@ document.getElementById("connectBtn").addEventListener("click", () => {
   window.location.href = `/auth/start${buildQuery()}`;
 });
 
-document.getElementById("syncBtn").addEventListener("click", syncNow);
-document.getElementById("syncClinicaBtn").addEventListener("click", syncClinicaNow);
+const dashboardRefresh = new ClinicRefreshController({
+  button: document.getElementById("syncBtn"),
+  status: document.getElementById("refreshStatus"),
+  getPeriod: () => {
+    const params = new URLSearchParams(buildQuery());
+    const date_from = params.get("date_from"), date_to = params.get("date_to");
+    return date_from && date_to ? { date_from, date_to } : {};
+  },
+  onComplete: async clinic => {
+    if (state.selectedClinic !== clinic || !allowedClinics?.has(clinic)) return;
+    state.allPipelines = [];
+    await loadReport();
+  },
+});
+lucide.createIcons();
 document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTrafficNow);
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
 document.getElementById("followupLostFilter")?.addEventListener("change", event => {
@@ -3536,6 +3501,7 @@ document.getElementById("clinicAccessForm").addEventListener("submit", async eve
 });
 document.getElementById("clinicAccessClose").addEventListener("click", closeClinicAccessModal);
 document.getElementById("changeClinicBtn").addEventListener("click", () => {
+  dashboardRefresh.setClinic("");
   state.selectedClinic = "";
   state.report = null;
   state.followupOnlyMode = false;

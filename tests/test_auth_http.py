@@ -332,6 +332,63 @@ class HttpAuthTests(unittest.TestCase):
     def limit_permissions(self, permissions):
         self.store.update_user(self.user_id,"Usuario Local","teste",clinic_keys=["vielle"],permissions={"vielle":permissions})
 
+    def test_refresh_is_available_to_readonly_users_in_their_clinic(self):
+        self.limit_permissions(["commercial.view"])
+        cookie, _ = self.login()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        safe_result = {"ok": True, "clinic": "vielle", "running": True, "started": True}
+        with patch.object(self.app, "DASHBOARD_REFRESH_JOBS") as jobs, patch.object(self.app, "refresh_clinic_integrations") as refresh:
+            jobs.start.return_value = safe_result
+            jobs.status.return_value = safe_result
+            status, _, body = self.request("POST", "/api/refresh?clinic=vielle",
+                {"date_from": "2026-09-01", "date_to": "2026-09-30"}, cookie, headers)
+            self.assertEqual(status, 202, body)
+            self.assertEqual(json.loads(body), safe_result)
+            self.assertEqual(jobs.start.call_args.args[0], "vielle")
+            progress = lambda name: None
+            jobs.start.call_args.args[1](progress)
+            refresh.assert_called_once_with("vielle", "2026-09-01", "2026-09-30", progress)
+            self.assertEqual(self.request("GET", "/api/refresh?clinic=vielle", cookie=cookie)[0], 200)
+            jobs.status.assert_called_once_with("vielle")
+        self.assertEqual(self.request("GET", "/api/settings?clinic=vielle", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("POST", "/api/sync-all?clinic=vielle", {}, cookie, headers)[0], 403)
+
+    def test_refresh_requires_session_membership_and_csrf(self):
+        path = "/api/refresh?clinic=vielle"
+        headers = {"X-DOC4DOCS-Request": "1"}
+        with patch.object(self.app, "DASHBOARD_REFRESH_JOBS") as jobs:
+            for method in ("GET", "POST"):
+                self.assertEqual(self.request(method, path)[0], 401)
+            cookie, _ = self.login()
+            for method in ("GET", "POST"):
+                for query, code in (("?clinic=inspire", 403), ("", 400), ("?clinic=", 400),
+                                    ("?clinic=vielle&clinic=inspire", 400), ("?clinic=invalid", 400)):
+                    self.assertEqual(self.request(method, "/api/refresh" + query, cookie=cookie, headers=headers)[0], code, query)
+            self.assertEqual(self.request("POST", path, {}, cookie)[0], 403)
+            self.assertEqual(self.request("POST", path, {}, cookie, {**headers, "Origin": "https://other.test"})[0], 403)
+            self.assertEqual(self.request("HEAD", path, cookie=cookie)[0], 405)
+            self.store.set_user_active(self.user_id, False)
+            self.assertEqual(self.request("POST", path, {}, cookie, headers)[0], 401)
+            jobs.start.assert_not_called()
+            jobs.status.assert_not_called()
+
+    def test_refresh_rejects_reset_flags_and_invalid_periods(self):
+        cookie, _ = self.login()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        path = "/api/refresh?clinic=vielle"
+        with patch.object(self.app, "DASHBOARD_REFRESH_JOBS") as jobs:
+            for payload in ({"reset_data": True}, {"reset_oauth": True}, {"clinic": "inspire"},
+                            {"date_from": "2026-09-01"}, {"date_from": "2026-09-30", "date_to": "2026-09-01"},
+                            {"date_from": "2025-01-01", "date_to": "2026-09-30"}, "[]", "invalid"):
+                self.assertEqual(self.request("POST", path, payload, cookie, headers)[0], 400, payload)
+            self.assertEqual(self.request("POST", path, "", cookie, {**headers, "Content-Length": "-1"})[0], 400)
+            self.assertEqual(self.request("POST", path, " " * 1025, cookie, headers)[0], 400)
+            jobs.start.assert_not_called()
+            jobs.start.side_effect = RuntimeError("private backend detail")
+            status, _, body = self.request("POST", path, {}, cookie, headers)
+            self.assertEqual(status, 503)
+            self.assertNotIn(b"private backend detail", body)
+
     def test_excel_export_permissions_and_response(self):
         path = "/api/export-chart?clinic=vielle&chart=revenue_daily"
         self.assertEqual(self.request("GET", path)[0], 401)

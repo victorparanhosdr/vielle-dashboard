@@ -158,6 +158,15 @@ class SessionAuthMixin:
         path = parsed.path
         query = parse_qs(parsed.query, keep_blank_values=True)
         clinic = query.get("clinic", ["vielle"])[0]
+        if path == "/api/refresh":
+            if "clinic" not in query:
+                self.auth_json({"ok": False, "error": "Informe a clínica para atualizar."}, 400)
+                return False
+            # Membership was checked before reaching this non-destructive route.
+            if self.command not in {"GET", "POST"}:
+                self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
+                return False
+            return True
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
             return True
         normalized = posixpath.normpath(unquote(path)).removeprefix("/static")

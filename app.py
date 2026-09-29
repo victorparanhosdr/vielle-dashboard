@@ -29,6 +29,7 @@ from auth_store import AuthStore, auth_database_path
 from auth_http import LoginLimiter, SessionAuthMixin
 from master_api import MasterApiMixin
 from financial_receipts import build_receipts
+from clinic_refresh import ClinicRefreshJobs
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -50,6 +51,7 @@ from clinic_catalog import SUPPORTED_CLINICS, CLINIC_DISPLAY_NAMES
 from access_policy import MODULES, ACTION_LABELS, project_report
 CLINICA_BACKGROUND_SYNC_LOCK = threading.Lock()
 CLINICA_BACKGROUND_SYNC_STATE = {}
+DASHBOARD_REFRESH_JOBS = ClinicRefreshJobs()
 FOLLOWUP_CALLERS = ("Emerson", "Mariana", "Ayrton", "Victor")
 CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "brandao": "BRANDAO"}
 CLINIC_SCOPED_CONFIG_KEYS = {
@@ -2919,7 +2921,8 @@ def start_clinica_background_sync(clinic_id):
             )
             with CLINICA_BACKGROUND_SYNC_LOCK:
                 CLINICA_BACKGROUND_SYNC_STATE[clinic_id].update(
-                    {"running": False, "finished_at": int(time.time()), "ok": True, "message": message}
+                    {"running": False, "finished_at": int(time.time()), "ok": bool(result.get("ok")),
+                     "warnings": bool(result.get("warnings")), "message": message}
                 )
         except Exception as exc:
             with CLINICA_BACKGROUND_SYNC_LOCK:
@@ -2927,8 +2930,66 @@ def start_clinica_background_sync(clinic_id):
                     {"running": False, "finished_at": int(time.time()), "ok": False, "message": str(exc)}
                 )
 
-    threading.Thread(target=runner, daemon=True).start()
+    try:
+        threading.Thread(target=runner, daemon=True).start()
+    except Exception:
+        with CLINICA_BACKGROUND_SYNC_LOCK:
+            CLINICA_BACKGROUND_SYNC_STATE[clinic_id].update(running=False, ok=False)
+        raise
     return {"ok": True, "started": True, "running": True, "message": "Sincronização histórica iniciada em segundo plano."}
+
+
+def refresh_clinica_for_dashboard(clinic_id):
+    # Join an existing historical import instead of starting a duplicate.
+    start_clinica_background_sync(clinic_id)
+    while True:
+        with CLINICA_BACKGROUND_SYNC_LOCK:
+            status = dict(CLINICA_BACKGROUND_SYNC_STATE.get(clinic_id, {}))
+        if not status.get("running"):
+            return {"ok": bool(status.get("ok")), "warnings": bool(status.get("warnings"))}
+        time.sleep(1)
+
+
+def refresh_clinic_integrations(clinic_id, date_from, date_to, progress):
+    with clinic_context(clinic_id):
+        commercial = ("Midas", lambda: configured(config_value("MIDAS_API_TOKEN", "")), sync_midas) if clinic_id == "victor" else (
+            "Kommo", lambda: configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or bool(get_tokens()), sync_leads)
+        steps = [commercial,
+            ("Clínica Experts", lambda: configured(config_value("CLINICA_EXPERTS_TOKEN", "")),
+             lambda: refresh_clinica_for_dashboard(clinic_id)),
+            ("Meta Ads", lambda: configured(config_value("META_ACCESS_TOKEN", "")) and configured(config_value("META_AD_ACCOUNT_ID", "")),
+             lambda: sync_paid_traffic(date_from=date_from, date_to=date_to)),
+        ]
+        services = []
+        for name, connected, sync in steps:
+            try:
+                if not connected():
+                    status = "skipped"
+                else:
+                    progress(name)
+                    result = sync()
+                    status = "error" if not result.get("ok") else "warning" if result.get("warnings") else "done"
+            except Exception:
+                # Existing integration logs retain diagnostics; never expose raw
+                # provider responses or private records to a restricted user.
+                status = "error"
+            services.append({"name": name, "status": status})
+        return services
+
+
+def dashboard_refresh_period(payload):
+    if not isinstance(payload, dict) or set(payload) - {"date_from", "date_to"}:
+        raise ValueError("Parâmetros de atualização inválidos.")
+    if not payload:
+        return default_period()
+    start, end = payload.get("date_from", ""), payload.get("date_to", "")
+    try:
+        first, last = date.fromisoformat(start), date.fromisoformat(end)
+    except (TypeError, ValueError):
+        raise ValueError("Informe um período válido para atualizar.") from None
+    if start != first.isoformat() or end != last.isoformat() or not 0 <= (last - first).days <= 366:
+        raise ValueError("Selecione um período de até um ano para atualizar.")
+    return start, end
 
 
 def midas_api_base_url():
@@ -6912,6 +6973,8 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/refresh":
+            return json_response(self, DASHBOARD_REFRESH_JOBS.status(self.request_clinic_id(parsed)))
         if parsed.path in ("/precificacao", "/precificacao/"):
             self.path = "/pricing.html"
             return super().do_GET()
@@ -7154,6 +7217,20 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
                 return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
         if not self.require_dashboard_auth():
             return
+        if parsed.path == "/api/refresh":
+            try:
+                if not 0 <= int(self.headers.get("Content-Length", "0")) <= 1024:
+                    raise ValueError("Tamanho da solicitação de atualização inválido.")
+                date_from, date_to = dashboard_refresh_period(self.read_json_body())
+            except (TypeError, ValueError) as exc:
+                return json_response(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            clinic_id = self.request_clinic_id(parsed)
+            try:
+                result = DASHBOARD_REFRESH_JOBS.start(clinic_id,
+                    lambda progress: refresh_clinic_integrations(clinic_id, date_from, date_to, progress))
+            except Exception:
+                return json_response(self, {"ok": False, "error": "Não foi possível iniciar a atualização. Tente novamente."}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return json_response(self, result, HTTPStatus.ACCEPTED)
         if parsed.path == "/api/master/brain" or parsed.path.startswith("/api/master/brain/"):
             from system_brain import handle_request
             return handle_request(self, parsed, globals())

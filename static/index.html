@@ -6,7 +6,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
-    <link rel="stylesheet" href="/styles.css?v=receipts-grid-2">
+    <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
     <script src="/session.js"></script>
   </head>
   <body>
@@ -102,11 +102,11 @@
           <button id="exportPdfBtn" class="secondary" type="button">Exportar PDF</button>
           <a id="settingsLink" class="buttonLink secondary" href="/settings.html" data-master-only hidden>Configurações</a>
           <button id="connectBtn" class="secondary">Conectar Kommo</button>
-          <button id="syncBtn">Atualizar</button>
-          <button id="syncClinicaBtn" class="secondary">Atualizar Clínica Experts</button>
+          <button id="syncBtn" type="button" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i><span data-refresh-label>Atualizar tudo</span></button>
           <p id="clinicEyebrow" class="eyebrow clinicHeaderName">Vielle Clinic</p>
         </div>
       </header>
+      <p id="refreshStatus" class="refreshStatus" role="status" hidden></p>
       <section id="printStamp" class="printStamp"></section>
 
       <button id="mobileTabsToggle" class="mobileTabsToggle" type="button" aria-expanded="false" aria-controls="viewTabs">
@@ -937,6 +937,8 @@
         </section>
       </div>
     </main>
-    <script src="/app.js?v=brandao-1"></script>
+    <script src="/body-icons.js"></script>
+    <script src="/clinic-refresh.js?v=1"></script>
+    <script src="/app.js?v=refresh-all-1"></script>
   </body>
 </html>

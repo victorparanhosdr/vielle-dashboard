@@ -521,6 +521,15 @@ h2 {
   max-width: 760px;
 }
 
+#syncBtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 148px; }
+#syncBtn[hidden], .refreshStatus[hidden] { display: none; }
+#syncBtn svg { width: 17px; height: 17px; flex-shrink: 0; }
+#syncBtn[aria-busy="true"] svg { animation: refreshRotate 1.2s linear infinite; }
+.refreshStatus { margin: 0 0 16px; padding: 12px 16px; color: var(--doc-primary); background: #edf5f1; border-left: 3px solid #387a5a; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.refreshStatus[data-phase="partial"], .refreshStatus[data-phase="error"] { border-color: #b95555; background: #fff3f3; color: #813d3d; }
+@keyframes refreshRotate { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #syncBtn[aria-busy="true"] svg { animation: none; } }
+
 .topbar .actions button,
 .topbar .actions .buttonLink {
   min-height: 36px;
