@@ -6,20 +6,44 @@
   <meta name="theme-color" content="#102b25">
   <title>Tarefas · DOC4DOCS</title>
   <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
-  <link rel="stylesheet" href="/tasks.css?v=1">
+  <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
+  <link rel="stylesheet" href="/tasks.css?v=2">
   <script src="/session.js?v=tasks1" defer></script>
   <script src="/body-icons.js" defer></script>
-  <script src="/tasks.js?v=1" defer></script>
+  <script src="/clinic-refresh.js?v=1" defer></script>
+  <script src="/tasks.js?v=2" defer></script>
 </head>
-<body>
-  <header class="app-header">
-    <a class="brand" href="/" aria-label="DOC4DOCS, início"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></a>
-    <label class="clinic-label"><span class="sr-only">Clínica</span><select id="clinicSelect" aria-label="Clínica"></select></label>
-    <div class="account"><span data-session-user></span><a href="/master" data-master-only hidden title="Painel Master" aria-label="Painel Master"><i data-lucide="shield-user"></i></a><button type="button" data-logout title="Sair" aria-label="Sair"><i data-lucide="log-out"></i></button></div>
-  </header>
-  <nav class="module-nav" id="moduleNav" aria-label="Áreas da clínica"></nav>
-  <div class="mobile-module-nav"><select id="mobileModuleNav" aria-label="Área do sistema"></select></div>
-  <main>
+<body class="tasksPage">
+  <div class="sessionToolbar" aria-label="Conta">
+    <span id="sessionStatus" role="status"></span>
+    <span data-session-user>Conta</span>
+    <a href="/master" data-master-only hidden>Master</a>
+    <button type="button" data-logout>Sair</button>
+  </div>
+  <div class="ambient" aria-hidden="true"></div>
+  <main class="shell">
+    <header class="topbar">
+      <div class="topbarBrand">
+        <img src="/doc4docs-logo-white.png" alt="DOC4DOCS">
+        <div><h1>DOC4DOCS</h1></div>
+      </div>
+      <div class="actions">
+        <button id="changeClinicBtn" class="secondary" type="button">Trocar clínica</button>
+        <a id="settingsLink" class="buttonLink secondary" href="/settings.html" data-master-only hidden>Configurações</a>
+        <button id="connectBtn" class="secondary" type="button" data-master-only hidden>Conectar Kommo</button>
+        <button id="syncBtn" type="button" hidden>
+          <i data-lucide="refresh-cw" aria-hidden="true"></i>
+          <span data-refresh-label>Atualizar tudo</span>
+        </button>
+        <p id="clinicEyebrow" class="eyebrow clinicHeaderName">DOC4DOCS</p>
+      </div>
+    </header>
+    <p id="refreshStatus" class="refreshStatus" role="status" hidden></p>
+    <button id="mobileTabsToggle" class="mobileTabsToggle" type="button" aria-expanded="false" aria-controls="viewTabs">
+      <span>Tarefas</span><span aria-hidden="true">⌄</span>
+    </button>
+    <nav id="viewTabs" class="viewTabs" aria-label="Áreas do dashboard"></nav>
+    <section class="tasksContent" aria-label="Gerenciamento de tarefas">
     <div class="page-heading"><div><p class="eyebrow" id="clinicName">DOC4DOCS</p><h1>Tarefas <span id="totalCount" class="count"></span></h1></div><button type="button" class="primary" id="newTask" hidden><i data-lucide="plus"></i> Nova tarefa</button></div>
     <div class="toolbar">
       <div class="segments" role="group" aria-label="Visualização">
@@ -33,7 +57,7 @@
       <label class="toggle"><input type="checkbox" id="archivedFilter"> Arquivadas</label>
       <button type="button" class="icon-button" id="refresh" title="Atualizar tarefas" aria-label="Atualizar tarefas"><i data-lucide="refresh-cw"></i></button>
     </div>
-    <p id="notice" class="notice" role="status" hidden></p><span id="sessionStatus" role="status"></span>
+    <p id="notice" class="notice" role="status" hidden></p>
     <div class="workspace" id="workspace">
       <section class="task-space" aria-label="Tarefas">
         <div id="taskView" aria-busy="true"><p class="empty">Carregando tarefas...</p></div>
@@ -41,6 +65,7 @@
       </section>
       <aside id="inspector" class="inspector" aria-labelledby="detailHeading" hidden></aside>
     </div>
+    </section>
   </main>
   <div id="toast" role="status" hidden></div>
 </body>

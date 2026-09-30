@@ -10,6 +10,10 @@
     mode:"board", current:null, total:0, next:null, today:"", baseline:"", busy:false, listSeq:0, openSeq:0,
     month:new Date(new Date().getFullYear(), new Date().getMonth(), 1)};
   let searchTimer, toastTimer;
+  const clinicRefresh = new ClinicRefreshController({
+    button: $("syncBtn"), status: $("refreshStatus"), getPeriod: () => ({}),
+    onComplete: async clinic => { if(clinic === state.clinic) await loadTasks(); },
+  });
   const icons = () => window.lucide?.createIcons();
   const can = action => Boolean(state.session?.user.is_master || state.session?.permissions[state.clinic]?.includes(`tasks.${action}`));
   const dateLabel = (value, long=false) => value ? new Date(value.includes("T") ? value : value + "T12:00:00").toLocaleDateString("pt-BR", long ? {day:"2-digit",month:"short",year:"numeric"} : {day:"2-digit",month:"2-digit"}) : "Sem prazo";
@@ -42,14 +46,19 @@
     const previous=state.session?.permissions[state.clinic];
     state.session=data;
     const clinics=data.clinics || [];
-    $("clinicSelect").innerHTML=clinics.map(c=>`<option value="${esc(c.key)}">${esc(c.name)}</option>`).join("");
-    $("clinicSelect").value=state.clinic;
-    $("clinicName").textContent=clinics.find(c=>c.key===state.clinic)?.name || "DOC4DOCS";
-    $("moduleNav").innerHTML=Object.entries(data.modules).filter(([key]) => data.permissions[state.clinic]?.includes(`${key}.view`)).map(([key,module])=> {
+    const clinicAllowed=clinics.some(c=>c.key===state.clinic);
+    const clinicName=clinics.find(c=>c.key===state.clinic)?.name || "DOC4DOCS";
+    $("clinicName").textContent=clinicName;
+    $("clinicEyebrow").textContent=clinicName;
+    $("settingsLink").href=`/settings.html?clinic=${encodeURIComponent(state.clinic)}`;
+    $("syncBtn").hidden=!clinicAllowed;
+    clinicRefresh.setClinic(clinicAllowed ? state.clinic : "");
+    const moduleOrder=["dashboard","commercial","financial","patient_followup","budget_followup","whatsapp_review","paid_traffic","body_evolution","tasks"];
+    $("viewTabs").innerHTML=moduleOrder.filter(key => data.modules[key] && data.permissions[state.clinic]?.includes(`${key}.view`)).map(key=> {
+      const module=data.modules[key];
       const target=key==="tasks" ? `/tasks.html?clinic=${encodeURIComponent(state.clinic)}` : key==="body_evolution" ? `/body-evolution.html?clinic=${encodeURIComponent(state.clinic)}` : `/?clinic=${encodeURIComponent(state.clinic)}&view=${encodeURIComponent(module.view)}`;
-      return `<a href="${target}" ${key==="tasks" ? 'aria-current="page"' : ""}>${esc(module.label)}</a>`;
+      return `<button type="button" class="tabBtn${key==="tasks" ? " active" : ""}" data-target="${esc(target)}" data-view="${esc(module.view)}" ${key==="tasks" ? 'aria-current="page"' : ""}>${esc(module.label)}</button>`;
     }).join("");
-    $("mobileModuleNav").innerHTML=[...$("moduleNav").querySelectorAll("a")].map(a=>`<option value="${esc(a.getAttribute("href"))}" ${a.hasAttribute("aria-current")?"selected":""}>${esc(a.textContent)}</option>`).join("");
     $("newTask").hidden=!can("create");
     if (!clinics.some(c=>c.key===state.clinic) || !can("view")) deny("Seu usuário não tem acesso a Tarefas nesta clínica.");
     else if(state.current && !state.busy && previous && JSON.stringify(previous)!==JSON.stringify(data.permissions[state.clinic])) {renderDetail();toast("Permissões atualizadas");}
@@ -277,10 +286,25 @@
   $("search").oninput=()=> {clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadTasks(),300);};
   ["assigneeFilter","dueFilter","archivedFilter"].forEach(id=>$(id).onchange=()=>loadTasks());
   function navigate(href) {if(!mayLeave()) return false; state.baseline=""; location.href=href; return true;}
-  $("clinicSelect").onchange=event=> { if(!navigate(`/tasks.html?clinic=${encodeURIComponent(event.target.value)}`)) event.target.value=state.clinic; };
-  $("mobileModuleNav").onchange=event=> {if(!navigate(event.target.value)) event.target.value=`/tasks.html?clinic=${encodeURIComponent(state.clinic)}`;};
+  $("changeClinicBtn").onclick=()=> {
+    if(!mayLeave()) return;
+    state.baseline=""; localStorage.removeItem("selectedClinic"); location.href="/";
+  };
+  $("connectBtn").onclick=()=>navigate(`/auth/start?clinic=${encodeURIComponent(state.clinic)}`);
+  $("viewTabs").onclick=event=> {
+    const tab=event.target.closest("[data-target]");
+    if(tab && !tab.classList.contains("active")) navigate(tab.dataset.target);
+    closeTabs();
+  };
+  function closeTabs() { $("viewTabs").classList.remove("open"); $("mobileTabsToggle").setAttribute("aria-expanded","false"); }
+  $("mobileTabsToggle").onclick=event=> {
+    event.stopPropagation();
+    const open=$("viewTabs").classList.toggle("open");
+    $("mobileTabsToggle").setAttribute("aria-expanded",String(open));
+  };
+  document.addEventListener("click",event=> {if(!event.target.closest("#viewTabs,#mobileTabsToggle")) closeTabs();});
   window.addEventListener("beforeunload",event=> { if(dirty() || state.busy) {event.preventDefault();event.returnValue="";} });
-  document.addEventListener("keydown",event=> {if(event.key==="Escape" && !$("inspector").hidden) closeDetail();});
+  document.addEventListener("keydown",event=> {if(event.key==="Escape") {closeTabs();if(!$("inspector").hidden) closeDetail();}});
   window.addEventListener("doc4docs-session",event=> {if(state.session) applySession(event.detail);});
   window.addEventListener("doc4docs-clinic-forbidden",()=>deny("Seu acesso a esta clínica foi removido."));
   window.addEventListener("doc4docs-permission-denied",()=> { request("/api/auth/me").then(applySession).catch(()=>{}); });
