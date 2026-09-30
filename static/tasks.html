@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#102b25">
+  <title>Tarefas · DOC4DOCS</title>
+  <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
+  <link rel="stylesheet" href="/tasks.css?v=1">
+  <script src="/session.js?v=tasks1" defer></script>
+  <script src="/body-icons.js" defer></script>
+  <script src="/tasks.js?v=1" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="DOC4DOCS, início"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></a>
+    <label class="clinic-label"><span class="sr-only">Clínica</span><select id="clinicSelect" aria-label="Clínica"></select></label>
+    <div class="account"><span data-session-user></span><a href="/master" data-master-only hidden title="Painel Master" aria-label="Painel Master"><i data-lucide="shield-user"></i></a><button type="button" data-logout title="Sair" aria-label="Sair"><i data-lucide="log-out"></i></button></div>
+  </header>
+  <nav class="module-nav" id="moduleNav" aria-label="Áreas da clínica"></nav>
+  <div class="mobile-module-nav"><select id="mobileModuleNav" aria-label="Área do sistema"></select></div>
+  <main>
+    <div class="page-heading"><div><p class="eyebrow" id="clinicName">DOC4DOCS</p><h1>Tarefas <span id="totalCount" class="count"></span></h1></div><button type="button" class="primary" id="newTask" hidden><i data-lucide="plus"></i> Nova tarefa</button></div>
+    <div class="toolbar">
+      <div class="segments" role="group" aria-label="Visualização">
+        <button type="button" data-mode="board" aria-pressed="true"><i data-lucide="columns-3"></i> Quadro</button>
+        <button type="button" data-mode="list" aria-pressed="false"><i data-lucide="list"></i> Lista</button>
+        <button type="button" data-mode="calendar" aria-pressed="false"><i data-lucide="calendar-days"></i> Calendário</button>
+      </div>
+      <label class="search"><i data-lucide="search"></i><input id="search" type="search" placeholder="Buscar tarefa" aria-label="Buscar tarefa" maxlength="200"></label>
+      <label><span class="sr-only">Responsável</span><select id="assigneeFilter" aria-label="Filtrar por responsável"><option value="">Todos os responsáveis</option></select></label>
+      <label><span class="sr-only">Prazo</span><select id="dueFilter" aria-label="Filtrar por prazo"><option value="">Todos os prazos</option><option value="today">Vencem hoje</option><option value="overdue">Atrasadas</option><option value="none">Sem prazo</option></select></label>
+      <label class="toggle"><input type="checkbox" id="archivedFilter"> Arquivadas</label>
+      <button type="button" class="icon-button" id="refresh" title="Atualizar tarefas" aria-label="Atualizar tarefas"><i data-lucide="refresh-cw"></i></button>
+    </div>
+    <p id="notice" class="notice" role="status" hidden></p><span id="sessionStatus" role="status"></span>
+    <div class="workspace" id="workspace">
+      <section class="task-space" aria-label="Tarefas">
+        <div id="taskView" aria-busy="true"><p class="empty">Carregando tarefas...</p></div>
+        <div class="pagination"><span id="loadedCount"></span><button type="button" id="loadMore" hidden>Carregar mais</button></div>
+      </section>
+      <aside id="inspector" class="inspector" aria-labelledby="detailHeading" hidden></aside>
+    </div>
+  </main>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

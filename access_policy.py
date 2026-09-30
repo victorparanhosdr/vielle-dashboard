@@ -11,6 +11,7 @@ MODULES = {
     "paid_traffic": {"label": "Tráfego pago", "view": "trafficView", "actions": ["view", "edit", "export"]},
     "whatsapp_review": {"label": "Avaliação WhatsApp", "view": "whatsappAuditView", "actions": ["view", "edit", "export"]},
     "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "delete", "export"]},
+    "tasks": {"label": "Tarefas", "view": "tasksView", "actions": ["view", "create", "edit", "delete"]},
 }
 VIEW_MODULES = {item["view"]: key for key, item in MODULES.items()}
 ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "delete": "Excluir / restaurar", "export": "Exportar"}
@@ -51,7 +52,7 @@ def permission_map(clinics, permissions):
 
 
 def project_report(report, module):
-    if module == "body_evolution":
+    if module in {"body_evolution", "tasks"}:
         return {}
     result = {key: value for key, value in report.items() if key in REPORT_KEYS[module] | {"connected", "filters", "pipelines"}}
     if module == "commercial":

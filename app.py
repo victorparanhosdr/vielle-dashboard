@@ -6973,6 +6973,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
+            from task_api import handle_request
+            return handle_request(self, parsed)
         if parsed.path == "/api/refresh":
             return json_response(self, DASHBOARD_REFRESH_JOBS.status(self.request_clinic_id(parsed)))
         if parsed.path in ("/precificacao", "/precificacao/"):
@@ -7236,6 +7239,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             return handle_request(self, parsed, globals())
         if self.handle_master_api(parsed):
             return
+        if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
+            from task_api import handle_request
+            return handle_request(self, parsed)
         if parsed.path.startswith("/api/body/"):
             from body_evolution import handle_request
             with clinic_context(self.request_clinic_id(parsed)):

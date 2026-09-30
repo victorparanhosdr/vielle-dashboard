@@ -114,8 +114,9 @@ class SessionAuthMixin:
             else:
                 self.send_response(303)
                 destination = "/login?next=/master" if is_admin_path(path) else "/login"
-                if posixpath.normpath(unquote(path)).removeprefix("/static") == "/body-evolution.html":
-                    destination = "/login?next=" + quote("/body-evolution.html?" + parsed.query, safe="")
+                page = posixpath.normpath(unquote(path)).removeprefix("/static")
+                if page in {"/body-evolution.html", "/tasks.html"}:
+                    destination = "/login?next=" + quote(page + "?" + parsed.query, safe="")
                 self.send_header("Location", destination)
                 self.send_header("Set-Cookie", self.session_cookie())
                 self.send_header("Content-Length", "0")
@@ -170,6 +171,20 @@ class SessionAuthMixin:
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
             return True
         normalized = posixpath.normpath(unquote(path)).removeprefix("/static")
+        if path == "/api/tasks" or path.startswith("/api/tasks/") or normalized == "/tasks.html":
+            if "clinic" not in query:
+                self.auth_json({"ok": False, "error": "Informe a clínica."}, 400)
+                return False
+            if not self.require_permission(clinic, "tasks.view"):
+                return False
+            if self.command == "POST":
+                parts = path.strip("/").split("/")
+                action = "create" if path == "/api/tasks" else "delete" if len(parts) == 4 and parts[3] == "archive" else "edit"
+                return self.require_permission(clinic, "tasks." + action)
+            if self.command == "GET" or (self.command == "HEAD" and normalized == "/tasks.html"):
+                return True
+            self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
+            return False
         if path.startswith("/api/body/") or normalized == "/body-evolution.html":
             if clinic != "inspire":
                 self.auth_json({"ok": False, "error": "Evolução corporal disponível apenas na Inspire."}, 403)
@@ -262,7 +277,7 @@ class SessionAuthMixin:
         protected = {Path(self.directory).resolve() / name for name in ("master.html", "settings.html", "settings.js")}
         if target in protected and not self.require_master_auth():
             return None
-        if target.name == "body-evolution.html" and not self.require_request_permission(urlsplit(self.path)):
+        if target.name in {"body-evolution.html", "tasks.html"} and not self.require_request_permission(urlsplit(self.path)):
             return None
         return super().send_head()
 

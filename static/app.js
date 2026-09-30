@@ -366,6 +366,10 @@ function updateMobileTabsToggle() {
 function applyActiveViewState() {
   const views = permittedViews();
   if (!views.includes(state.activeView)) state.activeView = views[0] || "";
+  if (state.activeView === "tasksView") {
+    window.location.replace(`/tasks.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
+    return;
+  }
   if (state.activeView === "bodyEvolutionView") {
     window.location.replace(`/body-evolution.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
@@ -3118,7 +3122,7 @@ async function exportChart(button) {
 }
 
 async function loadReport() {
-  if (state.activeView === "bodyEvolutionView") return;
+  if (["bodyEvolutionView", "tasksView"].includes(state.activeView)) return;
   if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
     showClinicLanding();
