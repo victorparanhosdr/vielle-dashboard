@@ -1,4 +1,7 @@
-.tasksContent{--green:#102b25;--green-mid:#386550;--olive:#969a78;--text:#242b28;--muted:#727b76;--line:#dce2dc;--paper:#fff;--surface:#f3f5f2;--red:#b54d53;--shadow:0 6px 24px #193d2810;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);font-size:14px;letter-spacing:0;color-scheme:light;padding:18px 0 10px;min-width:0}
+.tasksPage{display:flex;flex-direction:column;min-height:100dvh}
+.tasksPage .tasksHeader{flex:none;padding-bottom:0;z-index:2}
+.tasksPage .tasksHeader::before{display:none}
+.tasksContent{--green:#102b25;--green-mid:#386550;--olive:#969a78;--text:#242b28;--muted:#727b76;--line:#dce2dc;--paper:#fff;--surface:#f3f5f2;--red:#b54d53;--shadow:0 6px 24px #193d2810;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);font-size:14px;letter-spacing:0;color-scheme:light;padding:24px 28px 40px;min-width:0;width:100%;flex:1;position:relative;z-index:1;background:var(--surface);border-top:1px solid var(--line)}
 .tasksContent *{box-sizing:border-box}
 .tasksContent button,.tasksContent input,.tasksContent select,.tasksContent textarea{font:inherit;letter-spacing:0}
 .tasksContent button,.tasksContent a,.tasksContent input,.tasksContent select,.tasksContent textarea{ -webkit-tap-highlight-color:transparent}
@@ -74,7 +77,7 @@
 .tasksContent .empty{font-size:13px;color:var(--muted);padding:24px 12px;text-align:center;font-weight:400}
 .tasksContent .lane .empty{border:1px dashed #cbd5ca;border-radius:6px;margin-top:6px}
 .tasksContent .pagination{display:flex;justify-content:center;align-items:center;gap:16px;padding-top:18px;color:var(--muted);font-size:12px}
-.tasksContent .inspector{background:white;border-left:1px solid var(--line);padding:0 0 0 22px;position:sticky;top:16px;max-height:calc(100dvh - 32px);overflow-y:auto;scrollbar-width:thin}
+.tasksContent .inspector{background:white;border:1px solid var(--line);border-radius:8px;padding:0 20px 24px;position:sticky;top:16px;max-height:calc(100dvh - var(--inspector-top,16px) - 16px);min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scroll-padding:70px 0 90px}
 .tasksContent .detail-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:18px;position:sticky;top:0;background:white;z-index:2}
 .tasksContent .detail-tools{display:flex;gap:5px}
 .tasksContent .detail-top h2{font-size:15px;font-weight:650}
@@ -94,7 +97,8 @@
 .tasksContent .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 12px}
 .tasksContent .section-heading h3{font-size:12px;font-weight:650;color:var(--green)}
 .tasksContent .section-heading button{font-size:11px;min-height:28px;padding:5px 8px}
-.tasksContent .form-actions{display:flex;gap:8px;border-bottom:1px solid var(--line);padding:16px 0 20px}
+.tasksContent .form-actions{display:flex;gap:8px;border-top:1px solid var(--line);padding:12px 0;position:sticky;bottom:0;background:white;z-index:3;box-shadow:0 -8px 18px white}
+.tasksContent .form-actions:empty{display:none}
 .tasksContent .form-actions .primary{flex:1}
 .tasksContent .form-error{font-size:12px;color:var(--red);line-height:1.5;overflow-wrap:anywhere}
 .tasksContent .muted{font-size:12px;color:var(--muted);line-height:1.5}
@@ -146,14 +150,16 @@
 .tasksContent .task-card{padding:18px}
 .tasksContent .board{gap:20px}
 }
-@media(max-width:1200px){.tasksContent .workspace.has-detail{grid-template-columns:minmax(0,1fr)}
+@media(max-width:1200px),(max-height:640px){.tasksPage.detail-open .tasksContent{z-index:240}
+.tasksContent .workspace.has-detail{grid-template-columns:minmax(0,1fr)}
 .tasksContent .workspace.has-detail .inspector{position:fixed;right:0;top:0;bottom:0;width:410px;max-height:none;z-index:20;padding:0 22px 24px;box-shadow:-20px 0 80px #102b2520}
 .tasksContent .workspace.has-detail:before{content:"";position:fixed;inset:0;background:#102b2518;z-index:19;pointer-events:none}
 .tasksContent .toolbar{gap:8px}
 .tasksContent .segments{margin-right:0}
 .tasksContent .search{flex:1;min-width:150px}
 }
-@media(max-width:700px){.tasksContent .page-heading{margin-bottom:18px}
+@media(max-width:700px){.tasksContent{padding:20px 14px 28px}
+.tasksContent .page-heading{margin-bottom:18px}
 .tasksContent h1{font-size:26px}
 .tasksContent .eyebrow{font-size:10px}
 .tasksContent .page-heading .primary{font-size:12px}

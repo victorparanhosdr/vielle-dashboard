@@ -7,11 +7,11 @@
   <title>Tarefas · DOC4DOCS</title>
   <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
   <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
-  <link rel="stylesheet" href="/tasks.css?v=2">
+  <link rel="stylesheet" href="/tasks.css?v=3">
   <script src="/session.js?v=tasks1" defer></script>
   <script src="/body-icons.js" defer></script>
   <script src="/clinic-refresh.js?v=1" defer></script>
-  <script src="/tasks.js?v=2" defer></script>
+  <script src="/tasks.js?v=3" defer></script>
 </head>
 <body class="tasksPage">
   <div class="sessionToolbar" aria-label="Conta">
@@ -21,7 +21,7 @@
     <button type="button" data-logout>Sair</button>
   </div>
   <div class="ambient" aria-hidden="true"></div>
-  <main class="shell">
+  <div class="shell tasksHeader">
     <header class="topbar">
       <div class="topbarBrand">
         <img src="/doc4docs-logo-white.png" alt="DOC4DOCS">
@@ -43,7 +43,8 @@
       <span>Tarefas</span><span aria-hidden="true">⌄</span>
     </button>
     <nav id="viewTabs" class="viewTabs" aria-label="Áreas do dashboard"></nav>
-    <section class="tasksContent" aria-label="Gerenciamento de tarefas">
+  </div>
+  <main class="tasksContent" aria-label="Gerenciamento de tarefas">
     <div class="page-heading"><div><p class="eyebrow" id="clinicName">DOC4DOCS</p><h1>Tarefas <span id="totalCount" class="count"></span></h1></div><button type="button" class="primary" id="newTask" hidden><i data-lucide="plus"></i> Nova tarefa</button></div>
     <div class="toolbar">
       <div class="segments" role="group" aria-label="Visualização">
@@ -65,7 +66,6 @@
       </section>
       <aside id="inspector" class="inspector" aria-labelledby="detailHeading" hidden></aside>
     </div>
-    </section>
   </main>
   <div id="toast" role="status" hidden></div>
 </body>

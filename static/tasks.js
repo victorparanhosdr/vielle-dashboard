@@ -9,7 +9,17 @@
   const state = {clinic:new URLSearchParams(location.search).get("clinic"), session:null, tasks:[], users:[],
     mode:"board", current:null, total:0, next:null, today:"", baseline:"", busy:false, listSeq:0, openSeq:0,
     month:new Date(new Date().getFullYear(), new Date().getMonth(), 1)};
-  let searchTimer, toastTimer;
+  let searchTimer, toastTimer, layoutFrame;
+  function updateInspectorViewport() {
+    layoutFrame=null;
+    const inspector=$("inspector");
+    if(inspector.hidden) return;
+    const top=Math.max(16,inspector.getBoundingClientRect().top);
+    inspector.style.setProperty("--inspector-top",`${Math.round(top)}px`);
+  }
+  function queueInspectorLayout() {
+    if(layoutFrame == null) layoutFrame=requestAnimationFrame(updateInspectorViewport);
+  }
   const clinicRefresh = new ClinicRefreshController({
     button: $("syncBtn"), status: $("refreshStatus"), getPeriod: () => ({}),
     onComplete: async clinic => { if(clinic === state.clinic) await loadTasks(); },
@@ -142,7 +152,7 @@
     if(!can("create") || !mayLeave()) return;
     state.openSeq++; state.current={title:"",description:"",status,priority:"normal",start_date:"",due_date:"",assignees:[],checklist:[],progress:0};
     const url=new URL(location.href); url.searchParams.delete("task"); history.replaceState(null,"",url);
-    renderDetail(); $("taskForm").elements.title.focus();
+    renderDetail(); $("taskForm").elements.title.focus({preventScroll:true});
   }
   function checkRow(item, enabled) {
     return `<div class="check-row" data-item="${esc(item.id)}"><input type="checkbox" ${item.done?"checked":""} ${enabled?"":"disabled"} aria-label="Concluir item"><input type="text" value="${esc(item.text)}" maxlength="300" required ${enabled?"":"disabled"} aria-label="Descrição do item"><button type="button" class="icon-button" data-remove-item ${enabled?"":"disabled"} title="Remover item" aria-label="Remover item">${icon("x")}</button></div>`;
@@ -164,6 +174,7 @@
       ${!isNew?`<div class="section-heading"><h3>Anexos <span id="fileCount"></span></h3>${enabled?`<button type="button" id="attachFile">${icon("paperclip")} Anexar</button><input type="file" id="filePicker" hidden multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.doc,.docx,.txt,.pptx,.zip">`:""}</div><p id="fileStatus" class="muted" role="status"></p><div id="attachments"></div>
       <div class="section-heading"><h3>Atividade</h3></div>${enabled?'<form class="comment-form" id="commentForm"><textarea name="comment" required maxlength="10000" aria-label="Comentário ou atualização" placeholder="Comentário ou atualização..."></textarea><button type="submit">Publicar atualização</button></form>':""}<div class="events" id="events"></div><button type="button" id="olderEvents" hidden>Ver histórico anterior</button>`:""}`;
     $("inspector").hidden=false; $("workspace").classList.add("has-detail"); document.body.classList.add("detail-open");
+    queueInspectorLayout();
     $("taskForm").addEventListener("submit",saveTask);
     $("taskForm").addEventListener("input",updateProgress);
     $("closeDetail").onclick=()=>closeDetail();
@@ -304,6 +315,10 @@
   };
   document.addEventListener("click",event=> {if(!event.target.closest("#viewTabs,#mobileTabsToggle")) closeTabs();});
   window.addEventListener("beforeunload",event=> { if(dirty() || state.busy) {event.preventDefault();event.returnValue="";} });
+  window.addEventListener("scroll",queueInspectorLayout,{passive:true});
+  window.addEventListener("resize",queueInspectorLayout);
+  const layoutObserver=new ResizeObserver(queueInspectorLayout);
+  [".tasksHeader",".sessionToolbar",".toolbar"].forEach(selector=>layoutObserver.observe(document.querySelector(selector)));
   document.addEventListener("keydown",event=> {if(event.key==="Escape") {closeTabs();if(!$("inspector").hidden) closeDetail();}});
   window.addEventListener("doc4docs-session",event=> {if(state.session) applySession(event.detail);});
   window.addEventListener("doc4docs-clinic-forbidden",()=>deny("Seu acesso a esta clínica foi removido."));
