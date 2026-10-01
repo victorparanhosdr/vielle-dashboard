@@ -3271,6 +3271,8 @@ document.getElementById("connectBtn").addEventListener("click", () => {
 const dashboardRefresh = new ClinicRefreshController({
   button: document.getElementById("syncBtn"),
   status: document.getElementById("refreshStatus"),
+  canReload: () => ![...document.querySelectorAll('form[data-refresh-draft="true"]')].some(element => element.getClientRects().length) &&
+    ![...document.querySelectorAll('[role="dialog"], #clinicAccessModal')].some(element => element.getClientRects().length),
   getPeriod: () => {
     const params = new URLSearchParams(buildQuery());
     const date_from = params.get("date_from"), date_to = params.get("date_to");
@@ -3282,6 +3284,12 @@ const dashboardRefresh = new ClinicRefreshController({
     await loadReport();
   },
 });
+for (const eventName of ["input", "change"]) {
+  document.addEventListener(eventName, event => {
+    const form = event.target.closest("form");
+    if (form) form.dataset.refreshDraft = "true";
+  });
+}
 lucide.createIcons();
 document.getElementById("syncTrafficBtn")?.addEventListener("click", syncTrafficNow);
 document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);

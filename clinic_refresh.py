@@ -24,7 +24,7 @@ class ClinicRefreshJobs:
         with self.lock:
             return self._snapshot(clinic)
 
-    def start(self, clinic, run):
+    def start(self, clinic, run, *, background=True, source="manual"):
         with self.lock:
             current = self._snapshot(clinic)
             if current["running"] or current["retry_after"]:
@@ -33,6 +33,7 @@ class ClinicRefreshJobs:
                 "job_id": uuid.uuid4().hex, "running": True, "phase": "running",
                 "message": "Atualização iniciada.", "services": [],
                 "started_at": int(time.time()), "finished_at": None,
+                "source": source,
             }
             accepted = {**self._snapshot(clinic), "started": True}
 
@@ -58,10 +59,13 @@ class ClinicRefreshJobs:
                     cooldown_until=time.monotonic() + self.cooldown)
 
         try:
-            threading.Thread(target=runner, daemon=True, name=f"refresh-{clinic}").start()
+            if background:
+                threading.Thread(target=runner, daemon=True, name=f"refresh-{clinic}").start()
+            else:
+                runner()
         except Exception:
             with self.lock:
                 self.jobs[clinic].update(running=False, phase="error", finished_at=int(time.time()),
                     message="Não foi possível iniciar a atualização. Tente novamente.")
             raise
-        return accepted
+        return accepted if background else {**self.status(clinic), "started": True}

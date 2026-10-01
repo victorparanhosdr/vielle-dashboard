@@ -1,12 +1,13 @@
 (function (root) {
   'use strict';
   class ClinicRefreshController {
-    constructor({ button, status, onComplete, getPeriod }) {
+    constructor({ button, status, onComplete, getPeriod, canReload = () => true }) {
       this.button = button;
       this.label = button.querySelector('[data-refresh-label]');
       this.status = status;
       this.onComplete = onComplete;
       this.getPeriod = getPeriod;
+      this.canReload = canReload;
       this.clinic = '';
       this.generation = 0;
       this.requestId = 0;
@@ -67,10 +68,12 @@
             this.button.title = 'Atualização recente. Aguarde um momento para atualizar novamente.';
             this.timer = setTimeout(() => this.request(false), data.retry_after * 1000 + 100);
           }
-          if (data.job_id && this.completed.get(clinic) !== data.job_id) {
+          if (data.job_id && this.completed.get(clinic) !== data.job_id && this.canReload()) {
             this.completed.set(clinic, data.job_id);
             await this.onComplete(clinic);
           }
+          if (generation !== this.generation || clinic !== this.clinic || requestId !== this.requestId) return;
+          if (!data.retry_after) this.timer = setTimeout(() => this.request(false), 30000);
         }
       } catch (error) {
         if (generation !== this.generation || clinic !== this.clinic || requestId !== this.requestId) return;
@@ -78,6 +81,7 @@
         this.status.hidden = false;
         this.status.dataset.phase = 'error';
         this.status.textContent = error.message || 'Falha de conexão. Tente atualizar novamente.';
+        this.timer = setTimeout(() => this.request(false), 30000);
       }
     }
   }

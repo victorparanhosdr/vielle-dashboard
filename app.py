@@ -30,6 +30,7 @@ from auth_http import LoginLimiter, SessionAuthMixin
 from master_api import MasterApiMixin
 from financial_receipts import build_receipts
 from clinic_refresh import ClinicRefreshJobs
+from periodic_sync import BRAZIL, STATE_KEY, ClinicSyncLocks, PeriodicClinicSync
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -52,6 +53,8 @@ from access_policy import MODULES, ACTION_LABELS, project_report
 CLINICA_BACKGROUND_SYNC_LOCK = threading.Lock()
 CLINICA_BACKGROUND_SYNC_STATE = {}
 DASHBOARD_REFRESH_JOBS = ClinicRefreshJobs()
+CLINIC_SYNC_LOCKS = ClinicSyncLocks()
+PERIODIC_SYNC = None
 FOLLOWUP_CALLERS = ("Emerson", "Mariana", "Ayrton", "Victor")
 CLINIC_ENV_PREFIXES = {"vielle": "", "inspire": "INSPIRE", "carla": "CARLA", "brandao": "BRANDAO"}
 CLINIC_SCOPED_CONFIG_KEYS = {
@@ -160,6 +163,8 @@ CONFIG_DEFAULTS = {
     "CLINICA_HISTORY_START": CLINICA_HISTORY_START,
     "CLINICA_RATE_LIMIT_DELAY": str(CLINICA_RATE_LIMIT_DELAY),
     "SYNC_INTERVAL_MINUTES": str(SYNC_INTERVAL_MINUTES),
+    "AUTO_SYNC_INTERVAL_MINUTES": os.getenv("AUTO_SYNC_INTERVAL_MINUTES", "5"),
+    "AUTO_SYNC_ENABLED": os.getenv("AUTO_SYNC_ENABLED", "true"),
     "APP_SECRET": APP_SECRET,
     "CLINICA_WEBHOOK_SECRET": CLINICA_WEBHOOK_SECRET,
     "DASHBOARD_USER": DASHBOARD_USER,
@@ -1567,6 +1572,7 @@ def meta_leads_from_actions(row):
     return total
 
 
+@CLINIC_SYNC_LOCKS.serialize(current_clinic_id)
 def sync_paid_traffic(date_from=None, date_to=None):
     if not date_from or not date_to:
         date_from, date_to = default_period()
@@ -2545,16 +2551,20 @@ def sync_clinica_list(path, preferred_keys, saver, max_pages=100):
     return total
 
 
-def sync_clinica_list_variants(paths, preferred_keys, saver, max_pages=100):
+def sync_clinica_list_variants(paths, preferred_keys, saver, max_pages=100, strict=False):
     total = 0
     seen = set()
     synced_at = int(time.time())
+    successful = False
     for path in paths:
         for page in range(1, max_pages + 1):
             sep = "&" if "?" in path else "?"
             try:
                 payload = clinica_request(f"{path}{sep}page={page}")
+                successful = True
             except RuntimeError:
+                if strict and page > 1:
+                    raise
                 break
             items = extract_items(payload, preferred_keys)
             if not items:
@@ -2568,6 +2578,11 @@ def sync_clinica_list_variants(paths, preferred_keys, saver, max_pages=100):
                         total += 1
             if len(items) < 100:
                 break
+        else:
+            if strict:
+                raise RuntimeError("Consulta financeira incompleta: limite de páginas atingido.")
+    if strict and not successful:
+        raise RuntimeError("Clínica Experts não respondeu às consultas do período recente.")
     return total
 
 
@@ -2604,8 +2619,8 @@ def expanded_financial_period(date_from, date_to, days=75):
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
 
-def sync_clinica_bills_period(date_from, date_to):
-    financial_from, financial_to = expanded_financial_period(date_from, date_to)
+def sync_clinica_bills_period(date_from, date_to, recent=False):
+    financial_from, financial_to = (date_from, date_to) if recent else expanded_financial_period(date_from, date_to)
     starts_at = f"{financial_from}T00:00:00-03:00"
     ends_at = f"{financial_to}T23:59:59-03:00"
     sort_columns = (
@@ -2622,11 +2637,11 @@ def sync_clinica_bills_period(date_from, date_to):
     for sort_column in sort_columns:
         suffix = f"&sort_column={sort_column}" if sort_column else ""
         paths.append(f"/bills?starts_at={starts_at}&ends_at={ends_at}{suffix}&per_page=100")
-    return sync_clinica_list_variants(paths, ["data", "bills"], save_clinica_bill)
+    return sync_clinica_list_variants(paths, ["data", "bills"], save_clinica_bill, strict=True) if recent else sync_clinica_list_variants(paths, ["data", "bills"], save_clinica_bill)
 
 
-def sync_clinica_parcels_period(date_from, date_to):
-    financial_from, financial_to = expanded_financial_period(date_from, date_to)
+def sync_clinica_parcels_period(date_from, date_to, recent=False):
+    financial_from, financial_to = (date_from, date_to) if recent else expanded_financial_period(date_from, date_to)
     starts_at = f"{financial_from}T00:00:00-03:00"
     ends_at = f"{financial_to}T23:59:59-03:00"
     sort_columns = (
@@ -2644,7 +2659,7 @@ def sync_clinica_parcels_period(date_from, date_to):
     for sort_column in sort_columns:
         suffix = f"&sort_column={sort_column}" if sort_column else ""
         paths.append(f"/parcels?starts_at={starts_at}&ends_at={ends_at}{suffix}&per_page=100")
-    return sync_clinica_list_variants(paths, ["data", "parcels"], save_clinica_parcel)
+    return sync_clinica_list_variants(paths, ["data", "parcels"], save_clinica_parcel, strict=True) if recent else sync_clinica_list_variants(paths, ["data", "parcels"], save_clinica_parcel)
 
 
 def sync_clinica_sale_quotes_period(date_from, date_to):
@@ -2689,7 +2704,7 @@ def month_ranges(date_from, date_to):
         current = next_month
 
 
-def sync_clinica_bookings_period(date_from, date_to):
+def sync_clinica_bookings_period(date_from, date_to, recent=False):
     starts_at = f"{date_from}T00:00:00-03:00"
     ends_at = f"{date_to}T23:59:59-03:00"
     paths = []
@@ -2708,11 +2723,11 @@ def sync_clinica_bookings_period(date_from, date_to):
             f"/bookings?{start_key}={starts_at}&{end_key}={ends_at}"
             f"&sort_column=created_at&per_page=100"
         )
-    return sync_clinica_list_variants(paths, ["data", "bookings"], save_clinica_booking)
+    return sync_clinica_list_variants(paths, ["data", "bookings"], save_clinica_booking, strict=True) if recent else sync_clinica_list_variants(paths, ["data", "bookings"], save_clinica_booking)
 
 
-def sync_clinica_period(date_from, date_to, quote_date_from=None):
-    bookings = sync_clinica_bookings_period(date_from, date_to)
+def sync_clinica_period(date_from, date_to, quote_date_from=None, recent=False):
+    bookings = sync_clinica_bookings_period(date_from, date_to, recent=True) if recent else sync_clinica_bookings_period(date_from, date_to)
     sales = sync_clinica_sales_period(date_from, date_to)
     sale_quote_warnings = []
     try:
@@ -2722,12 +2737,29 @@ def sync_clinica_period(date_from, date_to, quote_date_from=None):
             raise
         sale_quotes = 0
         sale_quote_warnings.append(str(exc))
-    bills = sync_clinica_bills_period(date_from, date_to)
-    parcels = sync_clinica_parcels_period(date_from, date_to)
+    bills = sync_clinica_bills_period(date_from, date_to, recent=True) if recent else sync_clinica_bills_period(date_from, date_to)
+    parcels = sync_clinica_parcels_period(date_from, date_to, recent=True) if recent else sync_clinica_parcels_period(date_from, date_to)
     return bookings, sales, sale_quotes, bills, parcels, sale_quote_warnings
 
 
-def sync_clinica_experts(date_from=None, date_to=None, historical=False):
+def seed_recent_clinica_patients(conn, started_at):
+    total = 0
+    for table in ("clinica_bookings", "clinica_sales"):
+        for row in conn.execute(f"select raw_json from {table} where synced_at >= ?", (started_at,)).fetchall():
+            raw = json.loads(row["raw_json"])
+            patient = first_value(raw, ["patient", "buyer"])
+            if not isinstance(patient, dict) or not first_value(patient, ["name", "full_name"]):
+                continue
+            uuid = first_value(patient, ["uuid", "id", "patient_uuid"])
+            if uuid and not conn.execute("select 1 from clinica_patients where uuid = ?", (str(uuid),)).fetchone():
+                total += bool(save_clinica_patient(conn, patient, started_at))
+    return total
+
+
+@CLINIC_SYNC_LOCKS.serialize(current_clinic_id)
+def sync_clinica_experts(date_from=None, date_to=None, historical=False, recent=False):
+    if recent and historical:
+        raise ValueError("Uma atualização não pode ser recente e histórica ao mesmo tempo.")
     started_at = int(time.time())
     with db() as conn:
         cur = conn.execute(
@@ -2743,11 +2775,13 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
         elif not date_from or not date_to:
             date_from, date_to = default_period()
 
-        patients = sync_clinica_list("/patients?per_page=100", ["data", "patients"], save_clinica_patient)
-        try:
-            procedures = sync_clinica_list("/procedures?per_page=100", ["data", "procedures"], save_clinica_procedure)
-        except Exception:
-            procedures = 0
+        patients = 0 if recent else sync_clinica_list("/patients?per_page=100", ["data", "patients"], save_clinica_patient)
+        procedures = 0
+        if not recent:
+            try:
+                procedures = sync_clinica_list("/procedures?per_page=100", ["data", "procedures"], save_clinica_procedure)
+            except Exception:
+                pass
         bookings = 0
         sales = 0
         sale_quotes = 0
@@ -2758,8 +2792,9 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
         if historical:
             periods = list(reversed(periods))
         for period_from, period_to in periods:
-            quote_date_from = period_from if historical else f"{period_to[:4]}-01-01"
-            period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = sync_clinica_period(period_from, period_to, quote_date_from=quote_date_from)
+            quote_date_from = period_from if historical or recent else f"{period_to[:4]}-01-01"
+            period_result = sync_clinica_period(period_from, period_to, quote_date_from=quote_date_from, recent=True) if recent else sync_clinica_period(period_from, period_to, quote_date_from=quote_date_from)
+            period_bookings, period_sales, period_sale_quotes, period_bills, period_parcels, period_warnings = period_result
             bookings += period_bookings
             sales += period_sales
             sale_quotes += period_sale_quotes
@@ -2769,7 +2804,10 @@ def sync_clinica_experts(date_from=None, date_to=None, historical=False):
             if historical:
                 time.sleep(0.25)
 
-        scope = "historico" if historical else "periodo"
+        if recent:
+            with db() as conn:
+                patients = seed_recent_clinica_patients(conn, started_at)
+        scope = "recente" if recent else "historico" if historical else "periodo"
         message = (
             f"{patients} pacientes, {procedures} procedimentos, {bookings} agendamentos, "
             f"{sales} vendas, {sale_quotes} orçamentos, "
@@ -2950,13 +2988,15 @@ def refresh_clinica_for_dashboard(clinic_id):
         time.sleep(1)
 
 
-def refresh_clinic_integrations(clinic_id, date_from, date_to, progress):
+def refresh_clinic_integrations(clinic_id, date_from, date_to, progress, mode="manual"):
     with clinic_context(clinic_id):
+        kommo_sync = (lambda: sync_leads(incremental=True)) if mode == "recent" else sync_leads
+        experts_sync = (lambda: sync_clinica_experts(date_from=date_from, date_to=date_to, recent=True)) if mode == "recent" else lambda: refresh_clinica_for_dashboard(clinic_id)
         commercial = ("Midas", lambda: configured(config_value("MIDAS_API_TOKEN", "")), sync_midas) if clinic_id == "victor" else (
-            "Kommo", lambda: configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or bool(get_tokens()), sync_leads)
+            "Kommo", lambda: configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or bool(get_tokens()), kommo_sync)
         steps = [commercial,
             ("Clínica Experts", lambda: configured(config_value("CLINICA_EXPERTS_TOKEN", "")),
-             lambda: refresh_clinica_for_dashboard(clinic_id)),
+             experts_sync),
             ("Meta Ads", lambda: configured(config_value("META_ACCESS_TOKEN", "")) and configured(config_value("META_AD_ACCOUNT_ID", "")),
              lambda: sync_paid_traffic(date_from=date_from, date_to=date_to)),
         ]
@@ -2975,6 +3015,32 @@ def refresh_clinic_integrations(clinic_id, date_from, date_to, progress):
                 status = "error"
             services.append({"name": name, "status": status})
         return services
+
+
+def periodic_sync_state(clinic_id, state=None):
+    with clinic_context(clinic_id), db() as conn:
+        if state is not None:
+            conn.execute("insert into app_settings (key, value, updated_at) values (?, ?, ?) "
+                         "on conflict(key) do update set value=excluded.value, updated_at=excluded.updated_at",
+                         (STATE_KEY, json.dumps(state), int(time.time())))
+            return
+        row = conn.execute("select value from app_settings where key = ?", (STATE_KEY,)).fetchone()
+        try:
+            return json.loads(row["value"]) if row else {}
+        except (ValueError, TypeError):
+            return {}
+
+
+def run_periodic_refresh(clinic_id, mode, progress):
+    today = datetime.now(BRAZIL).date()
+    start = today - timedelta(days=6) if mode == "recent" else today.replace(day=1)
+    return refresh_clinic_integrations(clinic_id, start.isoformat(), today.isoformat(), progress, mode=mode)
+
+
+def periodic_sync_settings(clinic_id):
+    with clinic_context(clinic_id):
+        return {"enabled": config_value("AUTO_SYNC_ENABLED", "true").lower() not in {"0", "false", "no", "off"},
+                "interval_seconds": max(5, min(1440, config_int("AUTO_SYNC_INTERVAL_MINUTES", 5))) * 60}
 
 
 def dashboard_refresh_period(payload):
@@ -3209,6 +3275,7 @@ def sync_midas_opportunities(location_id, history_start):
     return total
 
 
+@CLINIC_SYNC_LOCKS.serialize(current_clinic_id)
 def sync_midas():
     started_at = int(time.time())
     log_id = None
@@ -3337,7 +3404,7 @@ def save_interaction_event(conn, event, synced_at):
     )
 
 
-def sync_lead_interaction_events(access, start_ts=None, end_ts=None, max_pages=20):
+def sync_lead_interaction_events(access, start_ts=None, end_ts=None, max_pages=20, fail_on_limit=False):
     page = 1
     total = 0
     synced_at = int(time.time())
@@ -3347,6 +3414,8 @@ def sync_lead_interaction_events(access, start_ts=None, end_ts=None, max_pages=2
                 "limit": 250,
                 "page": page,
                 "filter[entity]": "lead",
+                **({"filter[created_at][from]": start_ts} if start_ts else {}),
+                **({"filter[created_at][to]": end_ts} if end_ts else {}),
             }
         )
         result = kommo_request(
@@ -3373,10 +3442,12 @@ def sync_lead_interaction_events(access, start_ts=None, end_ts=None, max_pages=2
         if len(events) < 250:
             break
         page += 1
+    if fail_on_limit and page > max_pages:
+        raise RuntimeError("Consulta de interações incompleta; o cursor não foi avançado.")
     return total
 
 
-def sync_status_events(access, start_ts=None, end_ts=None, max_pages=20):
+def sync_status_events(access, start_ts=None, end_ts=None, max_pages=20, fail_on_limit=False):
     page = 1
     total = 0
     synced_at = int(time.time())
@@ -3387,6 +3458,8 @@ def sync_status_events(access, start_ts=None, end_ts=None, max_pages=20):
                 "page": page,
                 "filter[type][]": "lead_status_changed",
                 "filter[entity]": "lead",
+                **({"filter[created_at][from]": start_ts} if start_ts else {}),
+                **({"filter[created_at][to]": end_ts} if end_ts else {}),
             }
         )
         result = kommo_request(
@@ -3413,11 +3486,29 @@ def sync_status_events(access, start_ts=None, end_ts=None, max_pages=20):
         if len(events) < 250:
             break
         page += 1
+    if fail_on_limit and page > max_pages:
+        raise RuntimeError("Consulta de fases incompleta; o cursor não foi avançado.")
     return total
 
 
-def sync_leads():
+def kommo_incremental_since(now):
+    with db() as conn:
+        row = conn.execute("select value from app_settings where key = '_KOMMO_INCREMENTAL_CURSOR'").fetchone()
+        if row:
+            try:
+                return max(0, min(int(row["value"]), now) - 120)
+            except (ValueError, TypeError):
+                pass
+        if not conn.execute("select 1 from leads limit 1").fetchone():
+            return None
+        row = conn.execute("select max(started_at) as started_at from sync_log where ok = 1").fetchone()
+        return max(0, min(int(row["started_at"] or now - 86400), now) - 120)
+
+
+@CLINIC_SYNC_LOCKS.serialize(current_clinic_id)
+def sync_leads(incremental=False):
     started_at = int(time.time())
+    since = kommo_incremental_since(started_at) if incremental else None
     log_id = None
     with db() as conn:
         cur = conn.execute(
@@ -3431,9 +3522,13 @@ def sync_leads():
         page = 1
         total = 0
         while True:
+            query = {"limit": 250, "page": page}
+            if since is not None:
+                query.update({"filter[updated_at][from]": since,
+                              "filter[updated_at][to]": started_at, "order[updated_at]": "asc"})
             result = kommo_request(
                 "GET",
-                f"/api/v4/leads?limit=250&page={page}",
+                f"/api/v4/leads?{urllib.parse.urlencode(query)}",
                 token=access["access_token"],
                 domain=access["account_domain"],
             )
@@ -3479,9 +3574,10 @@ def sync_leads():
             if len(leads) < 250:
                 break
             page += 1
-        events_start = int((datetime.now() - timedelta(days=180)).timestamp())
-        events_total = sync_status_events(access, events_start, int(time.time()))
-        interaction_events_total = sync_lead_interaction_events(access, events_start, int(time.time()))
+        events_start = since if since is not None else int((datetime.now() - timedelta(days=180)).timestamp())
+        event_options = {"max_pages": 100, "fail_on_limit": True} if since is not None else {}
+        events_total = sync_status_events(access, events_start, started_at, **event_options)
+        interaction_events_total = sync_lead_interaction_events(access, events_start, started_at, **event_options)
         with db() as conn:
             conn.execute(
                 "update sync_log set finished_at = ?, ok = 1, message = ? where id = ?",
@@ -3491,6 +3587,9 @@ def sync_leads():
                     log_id,
                 ),
             )
+            conn.execute("insert into app_settings (key, value, updated_at) values (?, ?, ?) "
+                         "on conflict(key) do update set value=excluded.value, updated_at=excluded.updated_at",
+                         ("_KOMMO_INCREMENTAL_CURSOR", str(started_at), int(time.time())))
         return {
             "ok": True,
             "synced": total,
@@ -6977,7 +7076,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             from task_api import handle_request
             return handle_request(self, parsed)
         if parsed.path == "/api/refresh":
-            return json_response(self, DASHBOARD_REFRESH_JOBS.status(self.request_clinic_id(parsed)))
+            clinic = self.request_clinic_id(parsed)
+            status = DASHBOARD_REFRESH_JOBS.status(clinic)
+            status["automatic"] = PERIODIC_SYNC.status(clinic) if PERIODIC_SYNC else None
+            return json_response(self, status)
         if parsed.path in ("/precificacao", "/precificacao/"):
             self.path = "/pricing.html"
             return super().do_GET()
@@ -7474,17 +7576,18 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
 
 
 def background_sync():
-    while True:
-        time.sleep(max(1, config_int("SYNC_INTERVAL_MINUTES", 30)) * 60)
-        for clinic_id in SUPPORTED_CLINICS:
-            try:
-                with clinic_context(clinic_id):
-                    if current_clinic_id() == "victor":
-                        continue
-                    if configured(config_value("KOMMO_LONG_LIVED_TOKEN", "")) or get_tokens():
-                        sync_leads()
-            except Exception:
-                pass
+    global PERIODIC_SYNC
+    if os.getenv("AUTO_SYNC_ENABLED", "true").lower() in {"0", "false", "no", "off"}:
+        return
+    try:
+        minutes = max(5, int(os.getenv("AUTO_SYNC_INTERVAL_MINUTES", "5")))
+        history_hour = max(0, min(23, int(os.getenv("AUTO_SYNC_HISTORY_HOUR", "3"))))
+    except ValueError:
+        minutes, history_hour = 5, 3
+    PERIODIC_SYNC = PeriodicClinicSync(SUPPORTED_CLINICS, DASHBOARD_REFRESH_JOBS,
+        run_periodic_refresh, periodic_sync_state, periodic_sync_state,
+        interval_seconds=minutes * 60, history_hour=history_hour, settings_getter=periodic_sync_settings)
+    PERIODIC_SYNC.serve(threading.Event())
 
 
 if __name__ == "__main__":

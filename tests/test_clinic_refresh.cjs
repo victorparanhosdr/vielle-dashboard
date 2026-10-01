@@ -72,10 +72,11 @@ test('changing clinic ignores stale responses and cancels polling', async t => {
   await f.reply(f.pending.shift(), { clinic: 'inspire', running: false });
   await f.reply(old, { running: true, message: 'Wrong clinic' });
   assert.equal(f.status.hidden, true);
-  assert.equal(f.timers.size, 0);
+  assert.equal(f.timers.size, 1);
   assert.equal(f.button.disabled, false);
   f.controller.setClinic('');
   assert.equal(f.button.disabled, true);
+  assert.equal(f.timers.size, 0);
 });
 
 test('failed request allows retry without starting automatically', async t => {
@@ -88,5 +89,36 @@ test('failed request allows retry without starting automatically', async t => {
   assert.equal(f.button.disabled, false);
   assert.equal(f.status.dataset.phase, 'error');
   assert.equal(f.status.textContent, 'Falha temporária');
-  assert.equal(f.timers.size, 0);
+  assert.equal(f.timers.size, 1);
+  assert.equal([...f.timers.values()][0].ms, 30000);
+});
+
+test('idle polling notices automatic completion without posting a refresh', async t => {
+  const f = fixture(t);
+  f.controller.setClinic('vielle');
+  await f.reply(f.pending.shift(), { running: false });
+  const timer = [...f.timers.values()][0];
+  assert.equal(timer.ms, 30000);
+  const poll = timer.fn();
+  const request = f.pending.shift();
+  assert.equal(request.options, undefined);
+  await f.reply(request, { running: false, phase: 'done', job_id: 'automatic1' });
+  await poll;
+  assert.deepEqual(f.completed, ['vielle']);
+});
+
+test('automatic completion waits for unfinished edits and reloads once afterwards', async t => {
+  const f = fixture(t);
+  f.controller.canReload = () => false;
+  f.controller.setClinic('vielle');
+  await f.reply(f.pending.shift(), { running: false, phase: 'done', job_id: 'automatic1' });
+  assert.deepEqual(f.completed, []);
+  f.controller.canReload = () => true;
+  const poll = f.controller.request(false);
+  await f.reply(f.pending.shift(), { running: false, phase: 'done', job_id: 'automatic1' });
+  await poll;
+  const again = f.controller.request(false);
+  await f.reply(f.pending.shift(), { running: false, phase: 'done', job_id: 'automatic1' });
+  await again;
+  assert.deepEqual(f.completed, ['vielle']);
 });

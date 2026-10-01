@@ -3919,6 +3919,14 @@ select {
   height: 42px;
 }
 
+.settingsForm input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  accent-color: var(--doc-primary);
+}
+
 .settingsHelp {
   min-height: 100%;
 }

@@ -6,7 +6,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configurações | DOC4DOCS</title>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=automatic-sync-1">
     <script src="/session.js"></script>
   </head>
   <body>
@@ -124,8 +124,12 @@
                 <input data-config="CLINICA_RATE_LIMIT_DELAY" type="number" min="1" step="1">
               </label>
               <label>
-                <span>Sincronização automática</span>
-                <input data-config="SYNC_INTERVAL_MINUTES" type="number" min="1" step="1">
+                <span>Atualização automática (minutos)</span>
+                <input data-config="AUTO_SYNC_INTERVAL_MINUTES" type="number" min="5" max="1440" step="1">
+              </label>
+              <label>
+                <span>Atualização automática ativada</span>
+                <input data-config="AUTO_SYNC_ENABLED" type="checkbox">
               </label>
             </div>
           </article>
@@ -193,6 +197,6 @@
         </section>
       </div>
     </main>
-    <script src="/settings.js?v=brandao-1"></script>
+    <script src="/settings.js?v=automatic-sync-1"></script>
   </body>
 </html>

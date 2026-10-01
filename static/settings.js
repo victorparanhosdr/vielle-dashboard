@@ -52,7 +52,8 @@ function fillSettings(data) {
       if (mask) mask.textContent = item.configured ? `Atual: ${item.masked || "configurado"}` : "Ainda não configurado";
       return;
     }
-    input.value = item.value || "";
+    if (input.type === "checkbox") input.checked = ["true", "1", "yes", "on"].includes(String(item.value).toLowerCase());
+    else input.value = item.value || "";
   });
 }
 
@@ -61,7 +62,7 @@ function collectSettings() {
   document.querySelectorAll("[data-config]").forEach(input => {
     const key = input.dataset.config;
     if (input.dataset.secret === "true" && !input.value.trim()) return;
-    values[key] = input.value.trim();
+    values[key] = input.type === "checkbox" ? String(input.checked) : input.value.trim();
   });
   return values;
 }
