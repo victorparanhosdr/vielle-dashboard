@@ -8,6 +8,7 @@
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
     <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
     <link rel="stylesheet" href="/financial-competence.css?v=2">
+    <link rel="stylesheet" href="/financial-validation.css?v=2">
     <script src="/session.js"></script>
   </head>
   <body>
@@ -326,16 +327,19 @@
               <strong id="financeReceivable">R$ 0</strong>
             </article>
             <article class="expense">
-              <span>Despesas</span>
+              <span>Despesas por competência</span>
               <strong id="financeExpenses">R$ 0</strong>
+              <small>Bruto · competência ou emissão</small>
             </article>
             <article class="expense">
-              <span>Pagas</span>
+              <span>Despesas pagas</span>
               <strong id="financePaidExpenses">R$ 0</strong>
+              <small>Líquido · pagamento efetivo</small>
             </article>
             <article>
-              <span>Em aberto</span>
+              <span>Despesas previstas</span>
               <strong id="financeOpenExpenses">R$ 0</strong>
+              <small>Saldo em aberto · vencimento</small>
             </article>
             <article>
               <span>Saldo de caixa</span>
@@ -350,6 +354,7 @@
               <strong id="financeAverageTicket">R$ 0</strong>
             </article>
           </div>
+          <div id="financeExpensesWarning" class="financialExpenseWarning" hidden><span id="financeExpensesWarningText"></span><button type="button" data-financial-validation="expenses">Ver pendências</button></div>
         </section>
 
         <section class="panel">
@@ -425,7 +430,10 @@
               </span>
             </button>
           </div>
-          <p id="competenceWarning" class="competenceWarning" role="status" hidden></p>
+          <div id="competenceWarning" class="competenceWarning" hidden>
+            <span id="competenceWarningText" role="status"></span>
+            <button id="competenceValidation" type="button" class="financialValidationTrigger" data-financial-validation="competence" hidden><i data-lucide="triangle-alert" aria-hidden="true"></i><span>Ver pendências</span></button>
+          </div>
           <div class="competenceTableWrap" tabindex="0" aria-label="Lançamentos por competência">
             <table class="competenceTable">
               <thead><tr>
@@ -477,11 +485,11 @@
                 <small id="generalGoalRateHint">Cadastre uma meta mensal</small>
                 <div class="featuredFinanceSplit">
                   <div>
-                    <span>Total de saídas</span>
+                    <span>Despesas por competência</span>
                     <b id="generalFeaturedExpenses">R$ 0</b>
                   </div>
                   <div>
-                    <span>Vendido − saídas</span>
+                    <span>Vendido − competência</span>
                     <b id="generalFeaturedBalance">R$ 0</b>
                   </div>
                 </div>
@@ -494,6 +502,7 @@
                   <span id="generalReceivedCount">0 parcelas recebidas</span>
                   <small id="generalReceivedBasis">Pela data de compensação</small>
                   <small id="generalReceivedWarning" role="status" hidden></small>
+                  <button id="generalReceivedValidation" type="button" class="financialValidationTrigger" data-financial-validation="receipts" hidden><i data-lucide="triangle-alert" aria-hidden="true"></i><span>Ver pendências</span></button>
                 </div>
               </article>
               <article class="generalMetric emphasisMargin">
@@ -614,21 +623,23 @@
                   </div>
                   <div class="generalFinanceTotals">
                     <div class="expenseHeroValue">
-                      <span>Total de saídas</span>
+                      <span>Despesas por competência</span>
                       <strong id="generalExpensesTotal">R$ 0</strong>
+                      <small>Bruto · competência informada ou emissão</small>
                     </div>
                     <div class="expenseMiniGrid">
-                      <span>Pago/recebido <b id="generalExpensesPaid">R$ 0</b></span>
-                      <span>Em aberto <b id="generalExpensesPending">R$ 0</b></span>
-                      <span>Vendido − saídas <b id="generalBalance">R$ 0</b></span>
+                      <span>Despesas pagas <b id="generalExpensesPaid">R$ 0</b><small>Líquido · pagamento efetivo</small></span>
+                      <span>Despesas previstas <b id="generalExpensesPending">R$ 0</b><small>Saldo em aberto · vencimento</small></span>
+                      <span>Vendido − competência <b id="generalBalance">R$ 0</b></span>
                     </div>
+                    <div id="generalExpensesWarning" class="financialExpenseWarning" hidden><span id="generalExpensesWarningText"></span><button type="button" data-financial-validation="expenses">Ver pendências</button></div>
                   </div>
                 </article>
 
                 <article class="panel generalExpenseCategoryPanel">
                   <div class="panelHead">
-                    <h2>Saídas por categoria</h2>
-                    <span class="metaText">Valor + participação</span>
+                    <h2>Despesas por categoria</h2>
+                    <span class="metaText">Competência · bruto</span>
                   </div>
                   <div id="generalExpenseCategories" class="generalExpenseCategories"></div>
                 </article>
@@ -643,8 +654,8 @@
 
                 <article class="panel generalExpenseDailyPanel">
                   <div class="panelHead">
-                    <h2>Saídas por dia</h2>
-                    <span class="metaText">Passe o mouse para detalhar</span>
+                    <h2>Despesas por dia</h2>
+                    <span class="metaText">Competência ou emissão · bruto</span>
                   </div>
                   <div id="generalExpenseDailyChart" class="generalExpenseBars"></div>
                 </article>
@@ -1000,10 +1011,26 @@
           <div id="monthlyGoalsList" class="monthlyGoalsList"></div>
         </section>
       </div>
+      <dialog id="financialValidationDialog" class="financialValidationDialog" aria-labelledby="financialValidationTitle">
+        <header class="validationHeader">
+          <div><h2 id="financialValidationTitle">Pendências financeiras</h2><p id="financialValidationContext"></p></div>
+          <button type="button" class="validationIconButton" data-validation-close aria-label="Fechar validação" title="Fechar validação"><i data-lucide="x" aria-hidden="true"></i></button>
+        </header>
+        <div class="validationToolbar">
+          <label><span>Buscar registro</span><input id="financialValidationSearch" type="search" placeholder="Descrição, contato ou identificação"></label>
+          <label><span>Motivo</span><select id="financialValidationReason"><option value="">Todos os motivos</option></select></label>
+        </div>
+        <div id="financialValidationRows" class="validationRows" aria-live="polite"></div>
+        <footer class="validationFooter">
+          <span id="financialValidationCount"></span>
+          <div><span id="financialValidationPage"></span><button id="financialValidationPrevious" type="button" class="validationIconButton" aria-label="Página anterior de pendências" title="Página anterior"><i data-lucide="chevron-left" aria-hidden="true"></i></button><button id="financialValidationNext" type="button" class="validationIconButton" aria-label="Próxima página de pendências" title="Próxima página"><i data-lucide="chevron-right" aria-hidden="true"></i></button></div>
+        </footer>
+      </dialog>
     </main>
     <script src="/body-icons.js"></script>
     <script src="/clinic-refresh.js?v=automatic-1"></script>
-    <script src="/financial-competence.js?v=2"></script>
-    <script src="/app.js?v=automatic-sync-1"></script>
+  <script src="/financial-validation.js?v=2"></script>
+  <script src="/financial-competence.js?v=validation-2"></script>
+  <script src="/app.js?v=financial-bases-2"></script>
   </body>
 </html>

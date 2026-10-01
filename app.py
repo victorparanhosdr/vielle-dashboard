@@ -29,6 +29,7 @@ from auth_store import AuthStore, auth_database_path
 from auth_http import LoginLimiter, SessionAuthMixin
 from master_api import MasterApiMixin
 from financial_receipts import build_receipts
+from financial_expenses import build_expenses
 from clinic_refresh import ClinicRefreshJobs
 from periodic_sync import BRAZIL, STATE_KEY, ClinicSyncLocks, PeriodicClinicSync
 
@@ -3670,27 +3671,17 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             ).fetchall()
     considered_pipeline_ids = [row["id"] for row in considered_pipeline_rows]
     effective_pipeline_ids = [pid for pid in pipeline_ids if pid in considered_pipeline_ids] if pipeline_ids else considered_pipeline_ids
-    effective_pipeline_doctors = sorted({
-        pipeline_doctor_map.get(row["name"])
-        for row in considered_pipeline_rows
-        if row["id"] in effective_pipeline_ids and pipeline_doctor_map.get(row["name"])
-    })
     if selected_doctor:
         effective_professional_uuids = [doctor_professionals[selected_doctor]]
-    elif effective_pipeline_doctors:
-        effective_professional_uuids = [
-            doctor_professionals[doctor_name]
-            for doctor_name in effective_pipeline_doctors
-            if doctor_name in doctor_professionals
-        ]
     else:
+        # Kommo funnel filters never define the financial scope of a clinic.
         effective_professional_uuids = []
     if forced_clinica_professional_uuids:
         if effective_professional_uuids:
             effective_professional_uuids = [
                 uuid for uuid in effective_professional_uuids
                 if uuid in forced_clinica_professional_uuids
-            ]
+            ] or ["__no_allowed_professional__"]
         else:
             effective_professional_uuids = forced_clinica_professional_uuids
     effective_professional_names = [
@@ -4387,6 +4378,15 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             """,
             [date_from, date_to, *financial_parcel_extra_params],
         ).fetchall()
+        receipts = build_receipts(conn, date_from, date_to, effective_professional_uuids)
+        expense_summary = build_expenses(conn, date_from, date_to, effective_professional_uuids, export=bool(export_chart))
+        financial_expense_row = {"amount": expense_summary["competence_gross"],
+            "settled": expense_summary["paid_net"], "open_amount": expense_summary["planned_net"],
+            "total": len(expense_summary["details"])}
+        financial_expense_by_category = expense_summary["categories"]
+        financial_expense_by_day = expense_summary["daily"]
+        financial_detail_expenses = expense_summary["details"]
+        financial_recent_expenses = financial_detail_expenses[:6]
         financial_income_total = (financial_income_row["amount"] or 0) + (financial_manual_income_row["amount"] or 0)
         financial_expense_total = financial_expense_row["amount"] or 0
         financial_expense_categories = [dict(row) for row in financial_expense_by_category]
@@ -4397,7 +4397,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             if normalize_lookup_text(row.get("category")).replace("ó", "o") not in margin_1_excluded_categories
         )
         margin_2_expenses = financial_expense_total
-        financial_income_settled = (financial_income_row["settled"] or 0) + (financial_manual_income_row["settled"] or 0)
+        financial_income_settled = receipts["net_total"]
         financial_income_open = (financial_income_row["open_amount"] or 0) + (financial_manual_income_row["open_amount"] or 0)
         financial_expense_settled = financial_expense_row["settled"] or 0
         financial_expense_open = financial_expense_row["open_amount"] or 0
@@ -4647,10 +4647,6 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
         else:
             elapsed_days = 1
         sales_revenue = clinica_totals["sales_total"]
-        receipt_professionals = effective_professional_uuids
-        if forced_clinica_professional_uuids and not receipt_professionals:
-            receipt_professionals = ["__no_allowed_professional__"]
-        receipts = build_receipts(conn, date_from, date_to, receipt_professionals)
         projected_revenue = (sales_revenue / elapsed_days) * month_days if elapsed_days else sales_revenue
         sales_ticket_daily = []
         sales_performance_by_day = {item["day"]: item for item in sales_performance}
@@ -4967,7 +4963,8 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "background_sync": clinica_background_sync,
         },
         "financial": {
-            "basis": "Clínica Experts: vendas e contas financeiras",
+            "basis": "Despesas: competência/emissão; pagas: pagamento efetivo; previstas: vencimento",
+            "expense_summary": expense_summary,
             "expense_source": "categorias",
             "totals": {
                 "income": financial_income_total,
@@ -5006,6 +5003,7 @@ def report_data(pipeline_ids=None, date_from=None, date_to=None, doctor=None, se
             "goal_entries": month_goal_entries,
             "revenue": sales_revenue,
             "receipts": receipts,
+            "expense_summary": expense_summary,
             "expenses_total": financial_expense_total,
             "expenses_paid": financial_expense_settled,
             "expenses_pending": financial_expense_open,

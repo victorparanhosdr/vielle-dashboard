@@ -290,7 +290,7 @@ function render() {
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
   if (state.activeView === "financialView") {
-    competenceReport.sync({clinic: state.selectedClinic, doctor: state.selectedDoctor,
+    competenceReport.sync({clinic: state.selectedClinic, clinicName: clinics[state.selectedClinic]?.name, doctor: state.selectedDoctor,
       dateFrom: state.dateFrom, dateTo: state.dateTo, doctors: state.allDoctors,
       canExport: canAccess("financial.export")});
   } else {
@@ -740,6 +740,13 @@ function renderFinancial(financial) {
   document.getElementById("financeCashBalance").textContent = brl.format(totals.cash_balance || 0);
   document.getElementById("financeBalance").textContent = brl.format(totals.balance || 0);
   document.getElementById("financeAverageTicket").textContent = brl.format(totals.average_ticket || 0);
+  if (state.activeView === "financialView") {
+    const pending = financial.expense_summary?.pending || [];
+    document.getElementById("financeExpensesWarning").hidden = !pending.length;
+    document.getElementById("financeExpensesWarningText").textContent = `${pending.length} parcelas sem informação suficiente para confirmar pagamento ou previsão.`;
+    financialValidation.set("expenses", pending, {clinic: clinics[state.selectedClinic]?.name,
+      from: state.dateFrom, to: state.dateTo, doctor: state.selectedDoctor});
+  }
   renderFinanceDailyChart(financial.daily || [], financial.daily_details || {});
   renderFinanceList("financeIncomeTypes", financial.income_by_type || [], "amount");
   renderFinanceList("financeExpenseTypes", financial.expenses_by_category || [], "amount", "category", {
@@ -785,10 +792,10 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalAverageTicket").textContent = brl.format(panel.average_ticket || 0);
   document.getElementById("generalMarginOne").textContent = formatPercent(panel.margin_1_rate);
   document.getElementById("generalMarginOneProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_1_expenses || 0))}`;
-  document.getElementById("generalMarginOne").title = `Base: total vendido. Saídas consideradas: ${brl.format(panel.margin_1_expenses || 0)}`;
+  document.getElementById("generalMarginOne").title = `Base: total vendido. Despesas brutas por competência: ${brl.format(panel.margin_1_expenses || 0)}`;
   document.getElementById("generalMarginTwo").textContent = formatPercent(panel.margin_2_rate);
   document.getElementById("generalMarginTwoProfit").textContent = `Lucro: ${brl.format(revenue - Number(panel.margin_2_expenses || 0))}`;
-  document.getElementById("generalMarginTwo").title = `Base: total vendido. Todas as saídas: ${brl.format(panel.margin_2_expenses || 0)}`;
+  document.getElementById("generalMarginTwo").title = `Base: total vendido. Despesas brutas por competência: ${brl.format(panel.margin_2_expenses || 0)}`;
   const activeRevenueAverage = activeDays ? revenue / activeDays : 0;
   const dailyAverage = monthDays ? revenue / monthDays : 0;
   const revenueDays = dailyFinancial.filter(item => Number(item.income || 0) > 0);
@@ -810,6 +817,11 @@ function renderGeneralPanel(panel) {
   document.getElementById("generalExpensesTotal").textContent = brl.format(panel.expenses_total || 0);
   document.getElementById("generalExpensesPaid").textContent = brl.format(panel.expenses_paid || 0);
   document.getElementById("generalExpensesPending").textContent = brl.format(panel.expenses_pending || 0);
+  const expensePending = panel.expense_summary?.pending || [];
+  document.getElementById("generalExpensesWarning").hidden = !expensePending.length;
+  document.getElementById("generalExpensesWarningText").textContent = `${expensePending.length} parcelas sem informação suficiente para confirmar pagamento ou previsão.`;
+  if (state.activeView === "generalView") financialValidation.set("expenses", expensePending, {clinic: clinic.name,
+    from: state.dateFrom, to: state.dateTo, doctor: state.selectedGeneralDoctor});
   document.getElementById("generalBalance").textContent = brl.format(panel.balance || 0);
   renderMonthlyGoalRows(panel.goal_entries || []);
   renderGeneralRevenueBarChart(dailyFinancial);
@@ -828,6 +840,7 @@ function renderGeneralReceipts(receipts) {
   const count = document.getElementById("generalReceivedCount");
   const basis = document.getElementById("generalReceivedBasis");
   const warning = document.getElementById("generalReceivedWarning");
+  const validation = document.getElementById("generalReceivedValidation");
   const available = receipts && Number.isFinite(receipts.net_total);
   value.textContent = available
     ? brlCents.format(receipts.net_total)
@@ -844,6 +857,10 @@ function renderGeneralReceipts(receipts) {
   if (excluded.date) messages.push(`${excluded.date} sem data de recebimento na base`);
   warning.hidden = !messages.length;
   warning.textContent = messages.length ? `Total parcial: ${messages.join("; ")}.` : "";
+  validation.hidden = !receipts?.pending?.length;
+  validation.querySelector("span").textContent = `Ver pendências (${receipts?.pending?.length || 0})`;
+  financialValidation.set("receipts", receipts?.pending, {clinic: clinics[state.selectedClinic]?.name || state.selectedClinic,
+    from: state.dateFrom, to: state.dateTo, doctor: state.selectedGeneralDoctor});
 }
 
 function renderMonthlyGoalRows(entries) {
@@ -1656,6 +1673,9 @@ function financeListSubtitle(item) {
 }
 
 function financeSettlementText(item) {
+  if (item.direction === "saida" && item.source === "clinica_bills") {
+    return item.date_source === "emission_date" ? "Data de emissão · competência" : "Data de competência";
+  }
   const settled = item.settled || 0;
   const open = item.open_amount || 0;
   if (!settled && !open) return "quitado";

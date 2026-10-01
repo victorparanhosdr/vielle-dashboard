@@ -28,7 +28,7 @@ LABELS = {
     "amount": "Valor considerado (R$)", "total": "Total de origem (R$)",
     "settled": "Pago/recebido (R$)", "open_amount": "Em aberto (R$)",
     "description": "Descrição", "detail": "Categoria considerada", "category_name": "Categoria original",
-    "account_name": "Conta", "type": "Tipo", "status": "Status", "direction": "Movimento",
+    "account_name": "Conta", "type": "Tipo", "status": "Status", "direction": "Movimento", "date_source": "Campo de data considerado",
     "name": "Nome", "price": "Valor (R$)", "pipeline_name": "Funil", "status_name": "Etapa",
     "responsible_user_id": "ID responsável", "registry_user_name": "Registrado por",
     "source": "Fonte", "created_at": "Criação (timestamp Kommo)",
@@ -138,7 +138,8 @@ def build_workbook(chart, panel, context):
         ["Origem", "Base sincronizada do sistema; mesmos filtros e regras do gráfico."],
         ["Detalhamento", "Todos os registros considerados, sem limite de linhas da interface."],
         ["Data de referência", "Leads: criação Kommo. Agendamentos: registered_at ou created_at; se ausentes, o gráfico atual usa starts_at. Confira Dia considerado e as datas originais."
-         if chart == "leads_bookings" else "Vendas: data da venda. Financeiro: pagamento, vencimento ou emissão, conforme o gráfico."],
+         if chart == "leads_bookings" else "Despesas: título completo, valor bruto, competência informada ou emissão. Parcelas pagas e previstas são apuradas separadamente."
+         if chart.startswith("expense_") else "Vendas: data da venda."],
     ])
     output = io.BytesIO()
     wb.save(output)

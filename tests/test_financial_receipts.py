@@ -26,7 +26,7 @@ class ReceiptTests(unittest.TestCase):
                           (buyer, sale_day, amount / 100, json.dumps(sale)))
         parcel = {"uuid": key, "status": status, "final_amount": amount,
                   "net_amount": net, "fees_amount": amount - (net or 0), "due_date": "2026-09-01"}
-        bill = {"person": {"uuid": buyer}, "final_amount": amount,
+        bill = {"person": {"uuid": buyer}, "emission_date": sale_day, "final_amount": amount,
                 "payment_methods": [{"parcels": [parcel]}]}
         self.conn.execute("insert into clinica_bills values(?,'Venda',?,?,10)",
                           ("bill-" + key, sale_day, json.dumps(bill)))
@@ -92,6 +92,37 @@ class ReceiptTests(unittest.TestCase):
         self.add()
         self.conn.execute("update clinica_sales set type='sale_quote'")
         self.assertEqual(self.report("doctor-a")["excluded"]["professional"], 1)
+
+    def test_explicit_professional_in_parcel_recovers_missing_bill_owner(self):
+        self.add()
+        self.conn.execute("delete from clinica_sales")
+        self.conn.execute("update clinica_parcels set raw_json=json_set(raw_json,'$.professional.uuid','doctor-a')")
+        self.assertEqual(self.report("doctor-a")["net_total"], 97)
+        self.assertEqual(self.report("doctor-b")["net_total"], 0)
+
+    def test_direct_sale_uuid_is_safe_when_patient_date_amount_cannot_match(self):
+        self.add()
+        self.conn.execute("update clinica_sales set raw_json=json_set(raw_json,'$.uuid','sale-id')")
+        self.conn.execute("update clinica_bills set raw_json=json_set(raw_json,'$.sale.uuid','sale-id','$.person.uuid','other')")
+        result = self.report("doctor-a")
+        self.assertEqual(result["net_total"], 97)
+        self.assertEqual(result["resolved"]["professional"], 1)
+
+    def test_date_recovered_from_same_embedded_parcel_not_parent_title(self):
+        self.add(paid=None)
+        self.conn.execute("update clinica_bills set raw_json=json_set(raw_json,'$.payment_methods[0].parcels[0].received_at','2026-09-20')")
+        result = self.report("doctor-a")
+        self.assertEqual(result["net_total"], 97)
+        self.assertEqual(result["resolved"]["date"], 1)
+
+    def test_conflicting_owners_and_deleted_sales_never_establish_ownership(self):
+        self.add()
+        self.conn.execute("update clinica_sales set raw_json=json_set(raw_json,'$.status','deleted')")
+        self.assertEqual(self.report("doctor-a")["net_total"], 0)
+        self.conn.execute("update clinica_bills set raw_json=json_set(raw_json,'$.seller.uuid','doctor-a')")
+        self.conn.execute("update clinica_parcels set raw_json=json_set(raw_json,'$.professional.uuid','doctor-b')")
+        self.assertEqual(self.report("doctor-a")["net_total"], 0)
+        self.assertEqual(self.report("doctor-b")["net_total"], 0)
 
     def test_compensation_not_sale_execution_or_due_date(self):
         self.add(paid="2026-10-01", execution_date="2026-09-15")
@@ -230,6 +261,32 @@ class ReceiptTests(unittest.TestCase):
         result = self.report()
         self.assertEqual((result["net_total"], result["fees_total"], result["count"]), (97, 3, 1))
         self.assertEqual(result["excluded"], {"professional": 0, "date": 1, "net_amount": 1})
+
+    def test_pending_details_match_counters_and_never_enter_total(self):
+        self.add(key="valid")
+        self.add_manual(key="no-date", paid=None, calc_compensation_date="2026-09-15")
+        self.add_manual(key="no-net", net=None, seller="doctor-a")
+        self.add_manual(key="no-owner", seller=None)
+        result = self.report("doctor-a")
+        self.assertEqual(result["net_total"], 97)
+        self.assertEqual({item["id"]: item["reason"] for item in result["pending"]},
+                         {"no-date": "date", "no-net": "net_amount", "no-owner": "professional"})
+        self.assertEqual(len(result["pending"]), sum(result["excluded"].values()))
+        self.assertTrue(all(item["source"] == "parcel" for item in result["pending"]))
+        self.assertIsNone(next(item for item in result["pending"] if item["id"] == "no-date")["date"])
+
+    def test_pending_do_not_include_other_professional_or_other_month(self):
+        self.add_manual(key="other-month", paid="2026-08-15")
+        self.add_manual(key="other-owner", paid=None, seller="doctor-b")
+        self.assertEqual(self.report("doctor-a")["pending"], [])
+
+    def test_cancelled_parent_with_stale_received_parcel_is_not_counted(self):
+        for status in ("cancelled", "deleted", "refunded", "excluido"):
+            self.add(key=status)
+            self.conn.execute("update clinica_bills set raw_json=json_set(raw_json,'$.status',?) where uuid=?",
+                              (status, "bill-" + status))
+        self.assertEqual(self.report()["net_total"], 0)
+        self.assertEqual(self.report()["pending"], [])
 
 
 if __name__ == "__main__":

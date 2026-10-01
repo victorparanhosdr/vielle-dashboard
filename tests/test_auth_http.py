@@ -435,7 +435,8 @@ class HttpAuthTests(unittest.TestCase):
         with patch.object(self.app, "db"), \
                 patch.object(self.app, "clinic_doctor_professionals", return_value={"Teste A": "a"}), \
                 patch.object(self.app, "forced_professional_uuids", return_value=[]), \
-                patch("financial_competence.build_report", return_value={"items": [], "totals": {"income": 0, "expense": 0, "balance": 0}, "basis": "teste", "excluded": {}}) as build:
+                patch("financial_competence.build_report", return_value={"items": [], "totals": {"income": 0, "expense": 0, "balance": 0,
+                      "income_gross": 0, "expense_gross": 0, "balance_gross": 0}, "basis": "teste", "excluded": {}, "pending": []}) as build:
             self.assertEqual(self.request("GET", path, cookie=cookie)[0], 200)
             self.assertEqual(build.call_args.args[2], [])
             self.assertEqual(self.request("GET", path + "&doctor=Teste%20A", cookie=cookie)[0], 200)

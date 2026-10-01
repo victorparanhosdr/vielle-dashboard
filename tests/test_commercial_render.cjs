@@ -10,6 +10,7 @@ assert(start >= 0 && end > start);
 const calls = [];
 const state = { activeView: 'commercialView', selectedClinic: 'vielle', selectedPipelines: new Set() };
 const context = { state, document: { getElementById: () => ({}) },
+  competenceReport: {suspend() {}},
   clinics: { vielle: { connected: true } },
   renderSalesIntelligence: data => calls.push(data),
   filteredBookingDailyItems: rows => rows,

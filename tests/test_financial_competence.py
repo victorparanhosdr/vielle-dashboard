@@ -161,6 +161,27 @@ class CompetenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 query_options(params)
 
+    def test_pending_identify_problem_records_without_counting_them(self):
+        self.add(uuid="valid")
+        self.add(uuid="no-date", emission_date=None)
+        self.add(uuid="no-amount", net=None)
+        self.add(uuid="unknown-direction", kind="Transferência")
+        self.add(uuid="cancelled", status="cancelled")
+        report = self.report()
+        self.assertEqual(report["totals"]["income"], 97)
+        self.assertEqual({item["id"]: item["reason"] for item in report["pending"]},
+                         {"no-date": "date", "no-amount": "amount", "unknown-direction": "direction"})
+        self.assertEqual(len(report["pending"]), sum(report["excluded"].values()))
+        self.assertEqual(report["pending"][0]["contact"], "Contato fictício no-date")
+
+    def test_pending_professional_and_dates_respect_report_scope(self):
+        self.add(uuid="unknown", seller=None)
+        self.add(uuid="other", net=None, seller={"uuid": "doctor-b"})
+        self.add(uuid="other-undated", emission_date=None, seller={"uuid": "doctor-b"})
+        self.add(uuid="last-month", day="2026-08-10")
+        report = build_report(self.conn, self.options, ["doctor-a"])
+        self.assertEqual([(item["id"], item["reason"]) for item in report["pending"]], [("unknown", "professional")])
+
 
 if __name__ == "__main__":
     unittest.main()

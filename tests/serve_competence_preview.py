@@ -1,5 +1,6 @@
 """Synthetic local preview; never reads patient databases or external APIs."""
 import os
+import json
 from pathlib import Path
 import secrets
 import sys
@@ -36,10 +37,32 @@ def main():
                     "payment_methods": [{"parcels": [{"uuid": "parcel-" + str(number), "status": "open",
                         "due_date": "2026-10-20", "final_amount": 123450 + number, "net_amount": 120000 + number}]}],
                 }, 100)
-        app.report_data = lambda **args: {"connected": True, "filters": {
-            "date_from": args.get("date_from") or "2026-09-01", "date_to": args.get("date_to") or "2026-09-30",
-            "doctor": args.get("doctor") or "", "doctors": list(app.clinic_doctor_professionals(None)),
-        }, "financial": {}}
+            for key, extra in (("date", {"emission_date": None}), ("amount", {"net_amount": None}),
+                               ("professional", {"seller": None}), ("direction", {"type": "Transferência"})):
+                app.save_clinica_bill(conn, {"uuid": "pending-" + key, "type": "Venda", "emission_date": "2026-09-15",
+                    "description": "Registro fictício para validação - " + key, "person": {"uuid": "test", "name": "Contato de teste"},
+                    "seller": {"uuid": "a"}, "final_amount": 123400, "net_amount": 120000, **extra}, 100)
+            for key, extra in (("date", {"compensation_date": None}), ("net", {"net_amount": None})):
+                raw = {"uuid": "received-pending-" + key, "status": "received", "compensation_date": "2026-09-15",
+                    "net_amount": 120000, "description": "Recebimento fictício para validação - " + key,
+                    "raw_bill": {"uuid": "pending-parent-" + key, "seller": {"uuid": "a"}, "person": {"name": "Contato de teste"}}, **extra}
+                conn.execute("insert into clinica_parcels(uuid,bill_uuid,type,status,raw_json,synced_at) values(?,?,'Conta','received',?,100)",
+                             (raw["uuid"], raw["raw_bill"]["uuid"], json.dumps(raw)))
+            for key, status, value in (("paga", "paid", 20000), ("prevista", "open", 15000)):
+                app.save_clinica_bill(conn, {"uuid": "expense-" + key, "type": "Conta", "emission_date": "2026-08-15",
+                    "seller": {"uuid": "a"}, "description": "Despesa de teste " + key,
+                    "final_amount": value, "net_amount": value,
+                    "payment_methods": [{"parcels": [{"uuid": "expense-parcel-" + key, "status": status,
+                        "final_amount": value, "net_amount": value, "due_date": "2026-09-20",
+                        "compensation_date": "2026-09-15" if status == "paid" else None}]}]}, 100)
+
+        original_report = app.report_data
+        def preview_report(**args):
+            report = original_report(**args)
+            report["connected"] = True
+            return report
+
+        app.report_data = preview_report
         store = AuthStore(Path(directory) / "auth.sqlite3")
         store.initialize()
         password = secrets.token_urlsafe(24)

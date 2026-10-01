@@ -5,10 +5,11 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from financial_receipts import record, cents, day
+from financial_receipts import record, cents, day, SaleOwners, cancelled
+from financial_validation import issue
 
 SORT_KEYS = {"date", "description", "contact", "gross", "net"}
-CANCELLED = {"cancelled", "canceled", "deleted", "void", "cancelado", "cancelada"}
+CANCELLED = {"cancelled", "canceled", "deleted", "void", "cancelado", "cancelada", "excluido", "excluida", "refunded"}
 INCOME_TYPES = {"venda", "sale", "receita", "income", "receivable", "a receber"}
 EXPENSE_TYPES = {"despesa", "expense", "payable", "a pagar"}
 
@@ -114,46 +115,44 @@ def financial_titles(conn):
 
 def build_report(conn, options, professional_uuids=(), export=False):
     professionals = set(professional_uuids)
-    sales = defaultdict(set)
-    if professionals:
-        for row in conn.execute("select patient_uuid, sale_date, raw_json from clinica_sales where type = 'sale'"):
-            raw = record(row["raw_json"])
-            if normalized(raw.get("status")) in CANCELLED:
-                continue
-            buyer = record(raw.get("buyer")).get("uuid") or row["patient_uuid"]
-            sales[(buyer, day(row["sale_date"]), cents(raw.get("final_amount")))].add(
-                record(raw.get("seller")).get("uuid"))
+    owners = SaleOwners(conn)
 
     excluded = {"date": 0, "amount": 0, "direction": 0, "professional": 0}
+    pending = []
     items = []
     for uuid, raw, statuses in financial_titles(conn):
-        if normalized(raw.get("status")) in CANCELLED or (statuses and statuses <= CANCELLED):
+        if cancelled(raw) or (statuses and statuses <= CANCELLED):
             continue
         if normalized(raw.get("type")) in {"saldo inicial", "initial balance"}:
             continue
+        explicit_owner = (record(raw.get("seller")).get("uuid")
+                          or record(raw.get("professional")).get("uuid")
+                          or raw.get("professional_uuid"))
+        if professionals and explicit_owner and explicit_owner not in professionals:
+            continue
         competence, date_source = competence_day(raw)
+        detail = dict(date=competence, date_source=date_source,
+                      status=raw.get("status") or ", ".join(sorted(statuses)),
+                      gross=raw.get("final_amount"), net=raw.get("net_amount"))
         if not competence:
             excluded["date"] += 1
+            pending.append(issue(uuid, "date", raw, **detail))
             continue
         if not options["date_from"] <= competence <= options["date_to"]:
             continue
         direction = title_direction(raw, statuses)
         if not direction:
             excluded["direction"] += 1
+            pending.append(issue(uuid, "direction", raw, **detail))
             continue
         person = record(raw.get("person"))
         if professionals:
-            owner = (record(raw.get("seller")).get("uuid")
-                     or record(raw.get("professional")).get("uuid")
-                     or raw.get("professional_uuid"))
+            owner, _ = owners.resolve(raw, income=direction == "income", bill_id=uuid)
             if not owner and direction == "expense" and person.get("uuid") in professionals:
                 owner = person["uuid"]
-            if not owner and direction == "income":
-                candidates = sales.get((person.get("uuid"), day(raw.get("emission_date")),
-                                        cents(raw.get("final_amount"))), set())
-                owner = next(iter(candidates)) if len(candidates) == 1 else None
             if not owner:
                 excluded["professional"] += 1
+                pending.append(issue(uuid, "professional", raw, **detail))
                 continue
             if owner not in professionals:
                 continue
@@ -164,6 +163,7 @@ def build_report(conn, options, professional_uuids=(), export=False):
             net = gross - fees
         if gross is None or net is None or gross < 0 or net < 0:
             excluded["amount"] += 1
+            pending.append(issue(uuid, "amount", raw, **detail))
             continue
         contact = person.get("name") or person.get("full_name") or "Sem contato"
         items.append({"uuid": uuid, "date": competence, "date_source": date_source,
@@ -208,7 +208,7 @@ def build_report(conn, options, professional_uuids=(), export=False):
                                            "expense_gross": float(expense_gross / 100),
                                            "balance_gross": float((income_gross - expense_gross) / 100)},
             "count": count, "page": page, "pages": pages, "page_size": page_size,
-            "options": filter_options, "excluded": excluded,
+            "options": filter_options, "excluded": excluded, "pending": pending,
             "basis": "Competência informada no título; quando ausente, emissão (emission_date). "
                      "Valores brutos e líquidos do título, incluindo os valores em aberto, sem repetir parcelas. "
                      "Não utiliza vencimento, criação ou pagamento como competência."}

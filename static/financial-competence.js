@@ -1,7 +1,7 @@
 class FinancialCompetenceReport {
   constructor() {
     this.root = document.getElementById("competenceReport");
-    this.elements = Object.fromEntries(["From", "To", "Doctor", "Search", "Contact", "Category", "Type", "Export", "Count", "Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "Rows", "Warning", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
+    this.elements = Object.fromEntries(["From", "To", "Doctor", "Search", "Contact", "Category", "Type", "Export", "Count", "Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "Rows", "Warning", "WarningText", "Validation", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
     this.filters = {direction: "all", sort: "date", order: "desc", page: 1};
     this.money = new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"});
     this.context = null;
@@ -57,6 +57,7 @@ class FinancialCompetenceReport {
     clearTimeout(this.searchTimer);
     this.request?.abort();
     this.ready = false;
+    financialValidation.clear("competence");
   }
 
   query() {
@@ -65,6 +66,11 @@ class FinancialCompetenceReport {
       doctor: this.elements.Doctor.value, search: this.elements.Search.value,
       contact: this.elements.Contact.value, category: this.elements.Category.value,
       title_type: this.elements.Type.value, ...this.filters});
+  }
+
+  validationContext() {
+    return {clinic: this.context.clinicName || this.context.clinic,
+      from: this.elements.From.value, to: this.elements.To.value, doctor: this.elements.Doctor.value};
   }
 
   async load(resetPage = false) {
@@ -79,6 +85,8 @@ class FinancialCompetenceReport {
     this.elements.Export.disabled = true;
     this.elements.Previous.disabled = this.elements.Next.disabled = true;
     this.elements.Warning.hidden = true;
+    this.elements.Validation.hidden = true;
+    financialValidation.prepare("competence", this.validationContext());
     this.elements.Count.textContent = "Carregando...";
     ["Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross"].forEach(key => { this.elements[key].textContent = "-"; });
     this.message("Carregando relatório...");
@@ -92,6 +100,7 @@ class FinancialCompetenceReport {
       this.ready = true;
     } catch (error) {
       if (error.name !== "AbortError" && this.request === request) {
+        financialValidation.clear("competence");
         this.message(error.message);
         this.elements.Count.textContent = "Relatório indisponível";
       }
@@ -142,8 +151,11 @@ class FinancialCompetenceReport {
     });
     const labels = {date: "sem data de competência/emissão", amount: "sem valores completos", direction: "sem movimento identificado", professional: "sem vínculo seguro com o profissional"};
     const warnings = Object.entries(report.excluded).filter(([, count]) => count).map(([key, count]) => `${count} ${labels[key]}`);
-    this.elements.Warning.textContent = warnings.length ? `Resultado parcial. Títulos não incluídos: ${warnings.join("; ")}.` : "";
+    this.elements.WarningText.textContent = warnings.length ? `Resultado parcial. Títulos não contabilizados: ${warnings.join("; ")}.` : "";
     this.elements.Warning.hidden = !warnings.length;
+    this.elements.Validation.hidden = !report.pending?.length;
+    this.elements.Validation.querySelector("span").textContent = `Ver pendências (${report.pending?.length || 0})`;
+    financialValidation.set("competence", report.pending, this.validationContext());
     if (!report.items.length) this.message("Nenhum lançamento encontrado para os filtros selecionados.");
     else this.elements.Rows.replaceChildren(...report.items.map(item => {
       const row = document.createElement("tr");
@@ -187,7 +199,8 @@ class FinancialCompetenceReport {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
-      this.elements.Warning.textContent = error.message;
+      this.elements.WarningText.textContent = error.message;
+      this.elements.Validation.hidden = true;
       this.elements.Warning.hidden = false;
     } finally {
       this.busy = false;

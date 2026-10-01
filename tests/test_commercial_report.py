@@ -78,8 +78,11 @@ class CommercialReportTests(unittest.TestCase):
         with app.db() as conn:
             conn.execute("insert into clinica_bills(uuid,type,due_date,amount,raw_json,synced_at) values('bill','sale','2026-09-02',900,'{}',0)")
             conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,raw_json,synced_at) values('manual','other','received','2026-09-02',50,'{}',0)")
-            conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('expense','expense','paid','2026-09-02',30,'Aluguel','{}',0)")
-            conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('owner','expense','paid','2026-09-03',20,'Pró-labore','{}',0)")
+            for key, amount, category, day in (("expense", 3000, "Aluguel", "2026-09-02"), ("owner", 2000, "Pró-labore", "2026-09-03")):
+                app.save_clinica_bill(conn, {"uuid": key, "type": "Conta", "emission_date": day,
+                    "final_amount": amount, "net_amount": amount, "category": {"name": category},
+                    "payment_methods": [{"parcels": [{"uuid": "p-" + key, "status": "paid",
+                        "final_amount": amount, "net_amount": amount, "compensation_date": day}]}]}, 100)
         app.save_monthly_goal("2026-09", 1000)
         with patch.object(app, "datetime", wraps=datetime) as clock:
             clock.now.return_value = datetime(2026, 9, 15)
@@ -172,6 +175,14 @@ class CommercialReportTests(unittest.TestCase):
         with patch.object(app, "forced_professional_uuids", return_value=["b"]):
             panel = app.report_data(date_from="2026-09-01", date_to="2026-09-30")["general_panel"]
             self.assertEqual(panel["receipts"]["net_total"], 0)
+
+    def test_all_professionals_does_not_inherit_kommo_pipeline_ownership(self):
+        with patch.object(app, "clinic_pipeline_doctor_map", return_value={"Teste": "Doutor A"}):
+            all_report = app.report_data(pipeline_ids=[1], date_from="2026-09-01", date_to="2026-09-30")
+            a_report = app.report_data(pipeline_ids=[1], date_from="2026-09-01", date_to="2026-09-30", doctor="Doutor A")
+        self.assertEqual(all_report["general_panel"]["revenue"], 600)
+        self.assertEqual(a_report["general_panel"]["revenue"], 300)
+        self.assertEqual(all_report["clinica_experts"]["totals"]["sales_total"], 600)
 
 
 if __name__ == "__main__":

@@ -47,7 +47,10 @@ class ChartExportTests(unittest.TestCase):
                     conn.execute("insert into clinica_bills(uuid,type,due_date,amount,raw_json,synced_at) values(?,?,?,?,?,0)",
                                  (f"bill{i}", "sale", day, 999, '{"final_amount":12345}'))
                 conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('extra','other','received','2026-09-01',20,'Manual','{}',0)")
-                conn.execute("insert into clinica_parcels(uuid,type,status,due_date,amount,category_name,raw_json,synced_at) values('expense','expense','paid','2026-09-01',999,'Aluguel','{\"final_amount\":3000}',0)")
+                app.save_clinica_bill(conn, {"uuid": "expense", "type": "Conta", "emission_date": "2026-09-01",
+                    "final_amount": 3000, "net_amount": 3000, "category": {"name": "Aluguel"},
+                    "payment_methods": [{"parcels": [{"uuid": "expense-p", "status": "paid", "final_amount": 3000,
+                        "net_amount": 3000, "compensation_date": "2026-09-01"}]}]}, 100)
                 for i in range(12):
                     raw = json.dumps({"status": "active", "final_amount": 10000, "buyer": {"name": f"Teste {i}"}})
                     conn.execute("insert into clinica_sales(uuid,patient_uuid,sale_date,total,raw_json,synced_at) values(?,?,?,?,?,0)",
@@ -58,6 +61,9 @@ class ChartExportTests(unittest.TestCase):
             panel = app.report_data(**args, export_chart="leads_bookings")["general_panel"]
             self.assertNotIn("export_details", regular)
             details = panel.pop("export_details")
+            self.assertEqual(details["expenses"][0]["raw_json"]["uuid"], "expense")
+            for item in panel["expense_summary"]["details"]:
+                item.pop("raw_json", None)
             self.assertEqual(regular, panel)
             self.assertAlmostEqual(sum(r["amount"] for r in details["income"]), 143.45)
             self.assertAlmostEqual(sum(r["income"] for r in panel["financial_daily"]), 1200)

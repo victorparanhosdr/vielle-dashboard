@@ -6,8 +6,9 @@ const code = fs.readFileSync(path.join(__dirname, '../static/app.js'), 'utf8');
 const start = code.indexOf('function renderGeneralReceipts(');
 const end = code.indexOf('\nfunction ', start + 1);
 const nodes = Object.fromEntries(['generalReceived', 'generalReceivedCount', 'generalReceivedBasis',
-  'generalReceivedWarning'].map(id => [id, {}]));
+  'generalReceivedWarning', 'generalReceivedValidation'].map(id => [id, {querySelector: () => ({})}]));
 const context = vm.createContext({brlCents: new Intl.NumberFormat('pt-BR', {style: 'currency', currency: 'BRL'}),
+  financialValidation: {set() {}}, clinics: {vielle: {name:'Vielle Clinic'}}, state: {selectedClinic:'vielle'},
   document: {getElementById: id => nodes[id]}});
 vm.runInContext(code.slice(start, end), context);
 context.renderGeneralReceipts({net_total: 9750.55, count: 2, excluded: {}, basis: 'Teste'});

@@ -1,0 +1,61 @@
+.financialValidationTrigger { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--doc-warning); border-radius: 6px; background: var(--doc-warning-bg); color: var(--doc-text-primary); box-shadow: none; font: inherit; font-size: 13px; font-weight: 650; }
+.financialValidationTrigger svg, .validationIconButton svg { flex: 0 0 auto; width: 18px; height: 18px; }
+.receivedDetails .financialValidationTrigger { justify-content: flex-start; margin-top: 8px; color: #fff; border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .09); }
+.receivedDetails .financialValidationTrigger span { font-size: 13px; }
+.competenceWarning { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.competenceWarning .financialValidationTrigger { flex: 0 0 auto; }
+.financialValidationDialog { box-sizing: border-box; width: min(900px, calc(100% - 32px)); max-height: 90vh; max-height: 90dvh; margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--doc-border); border-radius: 8px; background: var(--doc-surface); color: var(--doc-text-primary); box-shadow: 0 24px 80px rgba(16, 43, 37, .22); }
+.financialValidationDialog[open] { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.financialValidationDialog::backdrop { background: rgba(16, 43, 37, .55); backdrop-filter: blur(6px); }
+body:has(.financialValidationDialog[open]) { overflow: hidden; }
+.validationHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--doc-border); }
+.validationHeader h2 { margin: 0; color: var(--doc-primary); font-size: 21px; letter-spacing: 0; text-transform: none; }
+.validationHeader p { margin: 7px 0 0; color: var(--doc-text-secondary); font-size: 13px; line-height: 1.5; }
+.validationIconButton { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; padding: 8px; border: 1px solid var(--doc-border); border-radius: 6px; background: var(--doc-surface); color: var(--doc-primary); box-shadow: none; }
+.validationIconButton:hover:not(:disabled) { background: var(--doc-surface-secondary); }
+.validationIconButton:focus-visible, .financialValidationTrigger:focus-visible { outline: 2px solid var(--doc-olive); outline-offset: 2px; }
+.validationToolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, .8fr); gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--doc-border); }
+.validationToolbar label { display: grid; min-width: 0; gap: 6px; font-size: 12px; color: var(--doc-text-secondary); font-weight: 650; }
+.validationToolbar input, .validationToolbar select { box-sizing: border-box; width: 100%; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid var(--doc-border); border-radius: 6px; background: var(--doc-surface); color: var(--doc-text-primary); font: inherit; font-size: 14px; }
+.validationRows { display: grid; gap: 14px; align-content: start; overflow: auto; overscroll-behavior: contain; padding: 18px 24px; }
+.validationRecord { min-width: 0; padding: 18px; border: 1px solid var(--doc-border); border-radius: 6px; }
+.validationRecord header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.validationRecord h3 { margin: 0; color: var(--doc-primary); font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.validationBadge { flex: 0 0 auto; padding: 4px 6px; background: var(--doc-warning-bg); color: var(--doc-text-primary); font-size: 11px; }
+.validationContact { margin: 6px 0 16px; color: var(--doc-text-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.validationRecord dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.validationRecord dt { margin: 0 0 4px; font-size: 11px; color: var(--doc-text-secondary); }
+.validationRecord dd { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.validationProblem { margin-top: 16px; padding-left: 12px; border-left: 3px solid var(--doc-warning); font-size: 13px; line-height: 1.5; }
+.validationProblem strong { font-size: 13px; }
+.validationProblem p { margin: 4px 0 0; color: var(--doc-text-secondary); }
+.validationRecord footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--doc-border); }
+.validationRecord footer > div { display: grid; gap: 5px; min-width: 0; }
+.validationRecord code { color: var(--doc-text-secondary); font-size: 11px; overflow-wrap: anywhere; }
+.validationFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px 24px; border-top: 1px solid var(--doc-border); color: var(--doc-text-secondary); font-size: 12px; }
+.validationFooter > div { display: flex; align-items: center; gap: 8px; }
+.validationEmpty { margin: 28px 0; text-align: center; color: var(--doc-text-secondary); }
+.financialValidationTrigger[hidden], .financialValidationDialog[hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .competenceWarning { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .financialValidationDialog { width: calc(100% - 20px); max-height: 94vh; max-height: 94dvh; }
+  .validationHeader { padding: 18px 14px; gap: 8px; }
+  .validationHeader h2 { font-size: 18px; }
+  .validationToolbar { grid-template-columns: 1fr; padding: 14px; }
+  .validationRows { padding: 14px; }
+  .validationRecord { padding: 14px; }
+  .validationRecord header { flex-wrap: wrap; gap: 7px; }
+  .validationRecord dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .validationFooter { padding: 12px 14px; }
+}
+.expenseHeroValue small, .expenseMiniGrid small, .financeGrid small {
+  color: #65736e;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.financeGrid small { display: block; margin-top: 6px; }
+.financialExpenseWarning { color: #655637; font-size: 12px; line-height: 1.5; }
+.financialExpenseWarning button { margin-top: 8px; font-size: 12px; }
