@@ -422,6 +422,38 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(self.request("GET","/api/report?clinic=vielle&view=commercialView&include_whatsapp_audit=1",cookie=cookie)[0],400)
         self.report.assert_not_called()
 
+    def test_competence_report_permissions_and_export(self):
+        path = "/api/financial-competence?clinic=vielle&date_from=2026-09-01&date_to=2026-09-30"
+        export_path = path.replace("?", "/export?")
+        self.assertEqual(self.request("GET", path)[0], 401)
+        cookie, _ = self.login()
+        self.limit_permissions(["commercial.view"])
+        self.assertEqual(self.request("GET", path, cookie=cookie)[0], 403)
+        self.limit_permissions(["financial.view"])
+        self.assertEqual(self.request("GET", export_path, cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", path.replace("vielle", "inspire"), cookie=cookie)[0], 403)
+        with patch.object(self.app, "db"), \
+                patch.object(self.app, "clinic_doctor_professionals", return_value={"Teste A": "a"}), \
+                patch.object(self.app, "forced_professional_uuids", return_value=[]), \
+                patch("financial_competence.build_report", return_value={"items": [], "totals": {"income": 0, "expense": 0, "balance": 0}, "basis": "teste", "excluded": {}}) as build:
+            self.assertEqual(self.request("GET", path, cookie=cookie)[0], 200)
+            self.assertEqual(build.call_args.args[2], [])
+            self.assertEqual(self.request("GET", path + "&doctor=Teste%20A", cookie=cookie)[0], 200)
+            self.assertEqual(build.call_args.args[2], ["a"])
+            self.assertEqual(self.request("GET", path + "&doctor=unknown", cookie=cookie)[0], 400)
+            self.assertEqual(self.request("GET", path.replace("2026-09-01", "2026-10-01"), cookie=cookie)[0], 400)
+            self.limit_permissions(["financial.view", "financial.export"])
+            status, headers, body = self.request("GET", export_path, cookie=cookie)
+            self.assertEqual(status, 200, body)
+            self.assertTrue(body.startswith(b"PK"))
+            self.assertEqual(dict(headers)["Cache-Control"], "no-store")
+            self.assertTrue(build.call_args.kwargs["export"])
+            self.assertEqual(self.request("HEAD", path, cookie=cookie)[0], 405)
+            with patch("financial_competence.build_report", side_effect=RuntimeError("private details")):
+                status, _, body = self.request("GET", path, cookie=cookie)
+                self.assertEqual(status, 500)
+                self.assertNotIn(b"private details", body)
+
     def test_view_url_export_and_action_permissions(self):
         self.limit_permissions(["patient_followup.view","commercial.view"])
         cookie,_=self.login();headers={"X-DOC4DOCS-Request":"1"}

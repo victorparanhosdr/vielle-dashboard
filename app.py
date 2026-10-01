@@ -6992,6 +6992,37 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
                 return handle_request(self, parsed, db, lambda: config_value("CLINICA_EXPERTS_TOKEN", ""))
         if parsed.path == "/api/export-authorize":
             return self.auth_json({"ok": True})
+        if parsed.path in {"/api/financial-competence", "/api/financial-competence/export"}:
+            from financial_competence import query_options, build_report, export_workbook
+            clinic = self.request_clinic_id(parsed)
+            exporting = parsed.path.endswith("/export")
+            try:
+                options = query_options(urllib.parse.parse_qs(parsed.query, keep_blank_values=True))
+                with clinic_context(clinic), db() as conn:
+                    doctors = clinic_doctor_professionals(conn)
+                    if options["doctor"] and options["doctor"] not in doctors:
+                        raise ValueError("Profissional inválido para esta clínica.")
+                    forced = forced_professional_uuids(conn)
+                    professionals = [doctors[options["doctor"]]] if options["doctor"] else forced
+                    if forced and any(uuid not in forced for uuid in professionals):
+                        raise ValueError("Profissional indisponível para esta clínica.")
+                    report = build_report(conn, options, professionals, export=exporting)
+                    if not exporting:
+                        return self.auth_json(report)
+                    content = export_workbook(report, options, CLINIC_DISPLAY_NAMES[clinic])
+            except ValueError as exc:
+                return self.auth_json({"ok": False, "error": str(exc)}, 400)
+            except Exception:
+                return self.auth_json({"ok": False, "error": "Não foi possível carregar o relatório de competência."}, 500)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="doc4docs-{clinic}-competencia.xlsx"')
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if parsed.path == "/api/export-chart":
             from chart_export import CHARTS, build_workbook
             params = urllib.parse.parse_qs(parsed.query)

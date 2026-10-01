@@ -1,0 +1,72 @@
+.competenceReport { margin-bottom: 24px; background: var(--doc-surface); border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; }
+.competenceReport button.secondary { background: var(--doc-surface) !important; color: var(--doc-primary) !important; border-color: var(--doc-border) !important; box-shadow: none; }
+.competenceReport button.secondary:hover:not(:disabled) { background: var(--doc-surface-secondary) !important; }
+.competenceHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--doc-border); }
+.competenceHeader > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; }
+.competenceHeader h2 { margin: 0; font-size: 19px; letter-spacing: 0; text-transform: none; color: var(--doc-primary); }
+.competenceHeader span, .competenceFooter { font-size: 13px; color: var(--doc-text-secondary); }
+.competenceExport { display: inline-flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+.competenceExcelIcon { position: relative; display: block; width: 30px; height: 30px; overflow: hidden; border-radius: 50%; }
+.competenceExport img { position: absolute; width: 218.3333%; height: 200%; max-width: none; left: -58%; top: -52%; object-fit: fill; }
+.competenceExport span { color: var(--doc-primary); font-weight: 700; }
+.competenceToolbar { display: grid; grid-template-columns: 160px 160px minmax(200px, 1fr) minmax(200px, 1fr); align-items: end; gap: 12px; padding: 20px 24px; }
+.competenceToolbar label { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.competenceToolbar label > span { font-size: 12px; font-weight: 700; color: var(--doc-text-secondary); }
+.competenceToolbar input, .competenceToolbar select { box-sizing: border-box; width: 100%; min-width: 0; height: 44px; border: 1px solid var(--doc-border); border-radius: 6px; padding: 0 10px; background: var(--doc-surface); color: var(--doc-text-primary); font: inherit; font-size: 14px; }
+.competenceFiltersToggle { display: flex; align-items: center; justify-content: center; gap: 8px; grid-column: 1 / -1; justify-self: start; width: fit-content; min-width: 100px; height: 44px; padding: 0 15px; font-size: 14px; }
+.competenceReport .competenceFiltersToggle[aria-expanded="true"] { border-color: var(--doc-olive) !important; background: var(--doc-success-bg) !important; }
+.competenceFilterFields { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--doc-border); }
+.competenceFilterFields button { min-height: 44px; }
+.competenceTotals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--doc-border); border-bottom: 1px solid var(--doc-border); }
+.competenceTotals button { display: grid; grid-template-columns: 10px minmax(0, 1fr); align-content: center; align-items: center; gap: 8px 10px; min-height: 104px; margin: 0; padding: 20px 24px; border: 0; border-bottom: 3px solid transparent; border-color: transparent !important; border-radius: 0; background: transparent !important; box-shadow: none !important; text-align: left; color: var(--doc-text-primary) !important; }
+.competenceTotals button + button { border-left: 1px solid var(--doc-border); border-left-color: var(--doc-border) !important; }
+.competenceTotals button[aria-pressed="true"] { background: var(--doc-surface-secondary) !important; border-bottom-color: var(--doc-olive) !important; }
+.competenceTotals strong { grid-column: 2; font-size: 24px; font-weight: 750; overflow-wrap: anywhere; letter-spacing: 0; }
+.competenceTotals button > span:not(.competenceDot) { font-size: 14px; font-weight: 600; }
+.competenceDot { width: 8px; height: 8px; border-radius: 50%; background: var(--doc-info); }
+.competenceDot.income { background: var(--doc-success); }
+.competenceDot.expense { background: var(--doc-danger); }
+.competenceWarning { margin: 12px 24px; padding: 12px 14px; background: var(--doc-warning-bg); color: var(--doc-text-primary); border-left: 3px solid var(--doc-warning); font-size: 13px; line-height: 1.5; }
+.competenceTableWrap { overflow: auto; max-height: 640px; }
+.competenceTable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.competenceTable th, .competenceTable td { padding: 16px 20px; border-bottom: 1px solid var(--doc-border); text-align: left; vertical-align: middle; }
+.competenceTable th { position: sticky; top: 0; z-index: 1; background: var(--doc-surface-secondary); font-size: 12px; color: var(--doc-primary); white-space: nowrap; }
+.competenceTable th button { display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 0; padding: 0; background: transparent !important; box-shadow: none !important; color: inherit !important; font: inherit; font-weight: 700; }
+.competenceTable th button span { color: var(--doc-olive); }
+.competenceTable td.money, .competenceTable th.money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.competenceTable .income .money { color: var(--doc-success); }
+.competenceTable .expense .money { color: var(--doc-danger); }
+.competenceTable tr td:first-child { border-left: 3px solid var(--doc-success); white-space: nowrap; }
+.competenceTable tr.expense td:first-child { border-left-color: var(--doc-danger); }
+.competenceTable td.description { max-width: 360px; min-width: 180px; overflow-wrap: anywhere; }
+.competenceTable td.contact { max-width: 260px; min-width: 160px; overflow-wrap: anywhere; }
+.competenceTable td small { display: block; margin-top: 5px; color: var(--doc-text-secondary); font-size: 11px; }
+.competenceTable tbody tr:hover { background: var(--doc-surface-secondary); }
+.competenceTable td.competenceEmpty { border-left: 0; padding: 40px 24px; text-align: center; color: var(--doc-text-secondary); white-space: normal; }
+.competenceFooter { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 24px; }
+.competenceFooter > div { display: flex; align-items: center; gap: 10px; }
+.competenceFooter button { width: 36px; height: 36px; padding: 0; font-size: 24px; }
+.competenceReport [hidden] { display: none !important; }
+.competenceReport button:focus-visible { outline: 2px solid var(--doc-olive); outline-offset: 2px; }
+@media (max-width: 1100px) { .competenceToolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .competenceFilterFields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .competenceHeader { padding: 18px 14px; align-items: flex-start; }
+  .competenceHeader h2 { font-size: 17px; }
+  .competenceHeader > div { display: grid; gap: 6px; }
+  .competenceExport { padding: 6px; width: 44px; min-width: 44px; height: 44px; justify-content: center; }
+  .competenceExport .competenceExportText { display: none; }
+  .competenceToolbar { padding: 16px 14px; gap: 12px 8px; }
+  .competenceProfessional, .competenceSearch { grid-column: 1 / -1; }
+  .competenceFilterFields { grid-template-columns: 1fr; }
+  .competenceTotals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .competenceTotals button { padding: 16px 14px; grid-template-columns: 1fr; gap: 8px; min-height: 90px; align-content: start; }
+  .competenceTotals button:last-child { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--doc-border); }
+  .competenceTotals .competenceDot { display: none; }
+  .competenceTotals strong { grid-column: 1; font-size: 19px; }
+  .competenceTotals button > span:not(.competenceDot) { font-size: 12px; }
+  .competenceTable { min-width: 840px; }
+  .competenceTable th, .competenceTable td { padding: 14px; }
+  .competenceWarning { margin: 10px 14px; }
+  .competenceFooter { padding: 12px 14px; font-size: 11px; }
+}
+@media print { .competenceToolbar, .competenceExport, .competenceFooter button { display: none; } .competenceTableWrap { max-height: none; overflow: visible; } .competenceTable th { position: static; } }

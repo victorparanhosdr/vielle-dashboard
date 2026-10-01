@@ -206,6 +206,13 @@ class SessionAuthMixin:
         if path == "/api/export-chart":
             return (self.require_permission(clinic, "dashboard.view")
                     and self.require_permission(clinic, "dashboard.export"))
+        if path in {"/api/financial-competence", "/api/financial-competence/export"}:
+            if self.command != "GET":
+                self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
+                return False
+            return (self.require_permission(clinic, "financial.view")
+                    and (path != "/api/financial-competence/export"
+                         or self.require_permission(clinic, "financial.export")))
         actions = {
             "/api/monthly-goal": "dashboard.edit" if self.command == "POST" else "dashboard.view",
             "/api/patient-followup-contact": "patient_followup.create",

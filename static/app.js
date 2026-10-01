@@ -37,6 +37,7 @@ const state = {
 };
 
 let pendingAutoPrint = false;
+const competenceReport = new FinancialCompetenceReport();
 const FOLLOWUP_CALLERS = ["Emerson", "Mariana", "Ayrton", "Victor"];
 const DISABLED_WHATSAPP_AUDIT_FAILURES = new Set(["Prontidão no Atendimento"]);
 const WHATSAPP_AUDIT_RUBRIC = [
@@ -288,6 +289,13 @@ function render() {
   renderClinicaExperts(report.clinica_experts || {});
   renderDoctorCross(report.clinica_experts?.doctor_cross || []);
   renderFinancial(report.financial || {});
+  if (state.activeView === "financialView") {
+    competenceReport.sync({clinic: state.selectedClinic, doctor: state.selectedDoctor,
+      dateFrom: state.dateFrom, dateTo: state.dateTo, doctors: state.allDoctors,
+      canExport: canAccess("financial.export")});
+  } else {
+    competenceReport.suspend();
+  }
   renderSalesIntelligence(report.sales_intelligence || report.financial?.sales_intelligence || {});
   renderPaidTraffic(report.paid_traffic || {});
   renderGeneralDoctorFilter();
