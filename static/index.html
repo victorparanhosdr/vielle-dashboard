@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
     <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
-    <link rel="stylesheet" href="/financial-competence.css?v=1">
+    <link rel="stylesheet" href="/financial-competence.css?v=2">
     <script src="/session.js"></script>
   </head>
   <body>
@@ -403,9 +403,27 @@
             </div>
           </div>
           <div class="competenceTotals" role="group" aria-label="Movimentos">
-            <button type="button" data-competence-direction="income" aria-pressed="false"><span class="competenceDot income"></span><span>Receitas</span><strong id="competenceIncome">R$ 0,00</strong></button>
-            <button type="button" data-competence-direction="expense" aria-pressed="false"><span class="competenceDot expense"></span><span>Despesas</span><strong id="competenceExpense">R$ 0,00</strong></button>
-            <button type="button" data-competence-direction="all" aria-pressed="true"><span class="competenceDot balance"></span><span>Total do período</span><strong id="competenceBalance">R$ 0,00</strong></button>
+            <button type="button" data-competence-direction="income" aria-pressed="false">
+              <span class="competenceDot income"></span><span>Receitas</span>
+              <span class="competenceAmounts">
+                <span class="competenceAmount"><small>Líquido</small><strong id="competenceIncome">R$ 0,00</strong></span>
+                <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceIncomeGross">R$ 0,00</strong></span>
+              </span>
+            </button>
+            <button type="button" data-competence-direction="expense" aria-pressed="false">
+              <span class="competenceDot expense"></span><span>Despesas</span>
+              <span class="competenceAmounts">
+                <span class="competenceAmount"><small>Líquido</small><strong id="competenceExpense">R$ 0,00</strong></span>
+                <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceExpenseGross">R$ 0,00</strong></span>
+              </span>
+            </button>
+            <button type="button" data-competence-direction="all" aria-pressed="true">
+              <span class="competenceDot balance"></span><span>Total do período</span>
+              <span class="competenceAmounts">
+                <span class="competenceAmount"><small>Líquido</small><strong id="competenceBalance">R$ 0,00</strong></span>
+                <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceBalanceGross">R$ 0,00</strong></span>
+              </span>
+            </button>
           </div>
           <p id="competenceWarning" class="competenceWarning" role="status" hidden></p>
           <div class="competenceTableWrap" tabindex="0" aria-label="Lançamentos por competência">
@@ -985,7 +1003,7 @@
     </main>
     <script src="/body-icons.js"></script>
     <script src="/clinic-refresh.js?v=automatic-1"></script>
-    <script src="/financial-competence.js?v=1"></script>
+    <script src="/financial-competence.js?v=2"></script>
     <script src="/app.js?v=automatic-sync-1"></script>
   </body>
 </html>

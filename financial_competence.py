@@ -186,6 +186,8 @@ def build_report(conn, options, professional_uuids=(), export=False):
                 and (not search or search in normalized(" ".join(str(item[key]) for key in ("description", "contact", "category", "title_type"))))]
     income = sum((item["net"] for item in filtered if item["direction"] == "income"), Decimal(0))
     expense = -sum((item["net"] for item in filtered if item["direction"] == "expense"), Decimal(0))
+    income_gross = sum((item["gross"] for item in filtered if item["direction"] == "income"), Decimal(0))
+    expense_gross = sum((item["gross"] for item in filtered if item["direction"] == "expense"), Decimal(0))
     direction = options.get("direction", "all")
     visible = [item for item in filtered if direction == "all" or item["direction"] == direction]
     sort = options.get("sort", "date")
@@ -201,11 +203,14 @@ def build_report(conn, options, professional_uuids=(), export=False):
         item["gross"] = float(item["gross"] / 100)
         item["net"] = float(item["net"] / 100)
     return {"items": visible, "totals": {"income": float(income / 100), "expense": float(expense / 100),
-                                           "balance": float((income - expense) / 100)},
+                                           "balance": float((income - expense) / 100),
+                                           "income_gross": float(income_gross / 100),
+                                           "expense_gross": float(expense_gross / 100),
+                                           "balance_gross": float((income_gross - expense_gross) / 100)},
             "count": count, "page": page, "pages": pages, "page_size": page_size,
             "options": filter_options, "excluded": excluded,
             "basis": "Competência informada no título; quando ausente, emissão (emission_date). "
-                     "Valores líquidos do título, incluindo os valores em aberto, sem repetir parcelas. "
+                     "Valores brutos e líquidos do título, incluindo os valores em aberto, sem repetir parcelas. "
                      "Não utiliza vencimento, criação ou pagamento como competência."}
 
 
@@ -220,9 +225,9 @@ def export_workbook(report, options, clinic_name):
                 "Receita" if item["direction"] == "income" else "Despesa", item["gross"], item["net"],
                 item["uuid"], item["contact_id"], item["emission_date"], item["status"], item["date_source"]]
                for item in report["items"]], [7, 8])
-    add_sheet(wb, "Resumo", ["Indicador", "Valor (R$)"],
-              [["Receitas", report["totals"]["income"]], ["Despesas", report["totals"]["expense"]],
-               ["Total do período", report["totals"]["balance"]]], [2])
+    add_sheet(wb, "Resumo", ["Indicador", "Bruto (R$)", "Líquido (R$)"],
+              [[label, report["totals"][key + "_gross"], report["totals"][key]]
+               for label, key in (("Receitas", "income"), ("Despesas", "expense"), ("Total do período", "balance"))], [2, 3])
     add_sheet(wb, "Filtros e critérios", ["Campo", "Valor"], [
         ["Clínica", clinic_name], *options.items(), ["Critério", report["basis"]],
         *[["Excluídos: " + key, value] for key, value in report["excluded"].items()]])

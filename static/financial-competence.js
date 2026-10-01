@@ -1,7 +1,7 @@
 class FinancialCompetenceReport {
   constructor() {
     this.root = document.getElementById("competenceReport");
-    this.elements = Object.fromEntries(["From", "To", "Doctor", "Search", "Contact", "Category", "Type", "Export", "Count", "Income", "Expense", "Balance", "Rows", "Warning", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
+    this.elements = Object.fromEntries(["From", "To", "Doctor", "Search", "Contact", "Category", "Type", "Export", "Count", "Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "Rows", "Warning", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
     this.filters = {direction: "all", sort: "date", order: "desc", page: 1};
     this.money = new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"});
     this.context = null;
@@ -80,7 +80,7 @@ class FinancialCompetenceReport {
     this.elements.Previous.disabled = this.elements.Next.disabled = true;
     this.elements.Warning.hidden = true;
     this.elements.Count.textContent = "Carregando...";
-    ["Income", "Expense", "Balance"].forEach(key => { this.elements[key].textContent = "-"; });
+    ["Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross"].forEach(key => { this.elements[key].textContent = "-"; });
     this.message("Carregando relatório...");
     try {
       const response = await fetch(`/api/financial-competence?${this.query()}`, {signal: request.signal});
@@ -124,7 +124,10 @@ class FinancialCompetenceReport {
   render(report) {
     this.filters.page = report.page;
     this.elements.Count.textContent = `${report.count} ${report.count === 1 ? "registro" : "registros"}`;
-    ["Income", "Expense", "Balance"].forEach(key => { this.elements[key].textContent = this.money.format(report.totals[key.toLowerCase()]); });
+    ["Income", "Expense", "Balance"].forEach(key => {
+      this.elements[key].textContent = this.money.format(report.totals[key.toLowerCase()]);
+      this.elements[key + "Gross"].textContent = this.money.format(report.totals[key.toLowerCase() + "_gross"]);
+    });
     this.selectOptions("Contact", report.options.contacts, "Todos os contatos");
     this.selectOptions("Category", report.options.categories.map(name => ({id: name, name})), "Todas as categorias");
     this.selectOptions("Type", report.options.title_types.map(name => ({id: name, name})), "Todos os tipos");

@@ -21,8 +21,12 @@
 .competenceTotals button { display: grid; grid-template-columns: 10px minmax(0, 1fr); align-content: center; align-items: center; gap: 8px 10px; min-height: 104px; margin: 0; padding: 20px 24px; border: 0; border-bottom: 3px solid transparent; border-color: transparent !important; border-radius: 0; background: transparent !important; box-shadow: none !important; text-align: left; color: var(--doc-text-primary) !important; }
 .competenceTotals button + button { border-left: 1px solid var(--doc-border); border-left-color: var(--doc-border) !important; }
 .competenceTotals button[aria-pressed="true"] { background: var(--doc-surface-secondary) !important; border-bottom-color: var(--doc-olive) !important; }
-.competenceTotals strong { grid-column: 2; font-size: 24px; font-weight: 750; overflow-wrap: anywhere; letter-spacing: 0; }
-.competenceTotals button > span:not(.competenceDot) { font-size: 14px; font-weight: 600; }
+.competenceAmounts { display: grid; grid-column: 2; gap: 14px; min-width: 0; margin-top: 4px; }
+.competenceAmount { display: grid; gap: 3px; min-width: 0; }
+.competenceAmount small { color: var(--doc-text-secondary); font-size: 12px; font-weight: 500; }
+.competenceTotals strong { font-size: 24px; font-weight: 750; overflow-wrap: anywhere; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.competenceAmount.gross strong { color: var(--doc-text-secondary); font-size: 19px; font-weight: 600; }
+.competenceTotals button > span:not(.competenceDot):not(.competenceAmounts) { font-size: 14px; font-weight: 600; }
 .competenceDot { width: 8px; height: 8px; border-radius: 50%; background: var(--doc-info); }
 .competenceDot.income { background: var(--doc-success); }
 .competenceDot.expense { background: var(--doc-danger); }
@@ -62,8 +66,10 @@
   .competenceTotals button { padding: 16px 14px; grid-template-columns: 1fr; gap: 8px; min-height: 90px; align-content: start; }
   .competenceTotals button:last-child { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--doc-border); }
   .competenceTotals .competenceDot { display: none; }
-  .competenceTotals strong { grid-column: 1; font-size: 19px; }
-  .competenceTotals button > span:not(.competenceDot) { font-size: 12px; }
+  .competenceAmounts { grid-column: 1; gap: 12px; }
+  .competenceTotals strong { font-size: 19px; }
+  .competenceAmount.gross strong { font-size: 16px; }
+  .competenceTotals button > span:not(.competenceDot):not(.competenceAmounts) { font-size: 12px; }
   .competenceTable { min-width: 840px; }
   .competenceTable th, .competenceTable td { padding: 14px; }
   .competenceWarning { margin: 10px 14px; }

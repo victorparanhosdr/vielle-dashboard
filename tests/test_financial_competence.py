@@ -57,7 +57,8 @@ class CompetenceTests(unittest.TestCase):
         self.add(uuid="expense", kind="Conta", amount=6000, net=6000, status="paid")
         self.add(uuid="manual", kind="Conta", amount=4000, net=4000, status="received")
         report = self.report(direction="expense")
-        self.assertEqual(report["totals"], {"income": 137, "expense": 60, "balance": 77})
+        self.assertEqual(report["totals"], {"income": 137, "expense": 60, "balance": 77,
+                                           "income_gross": 140, "expense_gross": 60, "balance_gross": 80})
         self.assertEqual(report["count"], 1)
         self.assertEqual(report["items"][0]["net"], -60)
         self.assertEqual(report["items"][0]["gross"], 60)
@@ -65,7 +66,23 @@ class CompetenceTests(unittest.TestCase):
     def test_open_expenses_and_manual_receivable(self):
         self.add(kind="Conta", status="open")
         self.add(uuid="income", kind="Conta", status="open", description="Título a receber de teste")
-        self.assertEqual(self.report()["totals"], {"income": 97, "expense": 97, "balance": 0})
+        self.assertEqual(self.report()["totals"], {"income": 97, "expense": 97, "balance": 0,
+                                                 "income_gross": 100, "expense_gross": 100, "balance_gross": 0})
+
+    def test_gross_and_net_totals_follow_filters_before_direction_and_pagination(self):
+        for number in range(61):
+            self.add(uuid=str(number), amount=10001, net=9701, seller={"uuid": "doctor-a"})
+        self.add(uuid="expense", kind="Conta", amount=6001, net=5501, seller={"uuid": "doctor-a"})
+        self.add(uuid="other-doctor", amount=90000, net=80000, seller={"uuid": "doctor-b"})
+        self.add(uuid="other-month", day="2026-08-10", seller={"uuid": "doctor-a"})
+        report = build_report(self.conn, {**self.options, "direction": "income", "page": 2}, ["doctor-a"])
+        self.assertEqual(len(report["items"]), 11)
+        self.assertEqual(report["totals"], {"income": 5917.61, "expense": 55.01, "balance": 5862.60,
+                                           "income_gross": 6100.61, "expense_gross": 60.01, "balance_gross": 6040.60})
+        contact = build_report(self.conn, {**self.options, "contact": "person-expense"}, ["doctor-a"])
+        self.assertEqual(contact["totals"], {"income": 0, "expense": 55.01, "balance": -55.01,
+                                            "income_gross": 0, "expense_gross": 60.01, "balance_gross": -60.01})
+        self.assertEqual(self.report(search="inexistente")["totals"], dict.fromkeys(report["totals"], 0))
 
     def test_cancelled_initial_balance_and_unknown_direction(self):
         self.add(status="cancelled")
@@ -132,7 +149,10 @@ class CompetenceTests(unittest.TestCase):
         self.assertEqual(workbook["Competência"].max_row, 62)
         self.assertEqual(workbook["Competência"]["B2"].data_type, "s")
         self.assertEqual(sum(row[7] for row in workbook["Competência"].iter_rows(min_row=2, values_only=True)), 61 * 97)
-        self.assertEqual(workbook["Resumo"]["B2"].value, 61 * 97)
+        self.assertEqual(workbook["Resumo"]["B2"].value, 61 * 100)
+        self.assertEqual(workbook["Resumo"]["C2"].value, 61 * 97)
+        self.assertEqual(workbook["Resumo"]["B4"].value, report["totals"]["balance_gross"])
+        self.assertEqual(workbook["Resumo"]["C4"].value, report["totals"]["balance"])
 
     def test_invalid_dates_filters_sort_page_and_duplicate_parameters(self):
         for params in ({"date_from": ["2026-09-31"]}, {"date_from": ["2026-10-02"], "date_to": ["2026-10-01"]},
