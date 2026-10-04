@@ -99,15 +99,7 @@ if (typeof document !== "undefined") (() => {
   }
   function showLanding() {
     state.scope++;state.request++;state.settingsRequest++;clearTimeout(state.polling);
-    state.report=null;state.settings=null;
-    $("instituteApp").hidden=true;$("instituteLanding").hidden=false;
-    $("landingStatus").textContent=state.catalog.length?"":"Nenhum instituto liberado para seu usuário. Fale com o Master.";
-    $("instituteCards").innerHTML=state.catalog.map(institute=>`<article class="institute-card"><div class="institute-card-mark"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></div><div class="institute-card-content"><h2>${esc(institute.name)}</h2><p class="course-count">${integer(institute.courses.length)} ${institute.courses.length===1?"curso":"cursos"}</p><p class="course-names">${institute.courses.map(c=>esc(c.name)).join("<br>")}</p><button type="button" class="primary" data-institute-select="${esc(institute.key)}" ${institute.courses.length?"":"disabled"}><span>${institute.courses.length?"Acessar instituto":"Sem cursos cadastrados"}</span><i data-lucide="arrow-right"></i></button></div></article>`).join("");
-    history.replaceState(null,"","/institutos");icons();
-  }
-  function openInstitute(key) {
-    if(!state.catalog.some(institute=>institute.key===key&&institute.courses.length))return;
-    $("institute").value=key;courses();switchTab("overview",false);selectCourse();
+    location.assign("/?area=institutes");
   }
   function selectCourse() {
     state.scope++;state.settingsRequest++;clearTimeout(state.polling);
@@ -174,7 +166,6 @@ if (typeof document !== "undefined") (() => {
   document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
   $("campaignDetails").addEventListener("click",()=>switchTab("leads"));
   $("switchInstitute").addEventListener("click",showLanding);
-  $("instituteCards").addEventListener("click",event=>{const button=event.target.closest("[data-institute-select]");if(button&&!button.disabled)openInstitute(button.dataset.instituteSelect);});
   $("institute").addEventListener("change",()=>{clearTimeout(state.polling);courses();selectCourse();});$("course").addEventListener("change",()=>{clearTimeout(state.polling);selectCourse();});
   $("filters").addEventListener("submit",event=>{event.preventDefault();state.page=1;load();});
   let debounce;["salesSearch","leadsSearch"].forEach(id=>$(id).addEventListener("input",()=>{clearTimeout(debounce);debounce=setTimeout(()=>{state.page=1;load();},300);}));
@@ -183,6 +174,10 @@ if (typeof document !== "undefined") (() => {
   $("validation").addEventListener("click",()=>$("validationDialog").showModal());$("definitions").addEventListener("click",()=>$("definitionsDialog").showModal());document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>b.closest("dialog").close()));
   window.addEventListener("doc4docs-session",event=>{if(state.master&&!event.detail.user.is_master)location.reload();});
   async function initialize() {
+    if (!new URLSearchParams(location.search).has("institute")) {
+      location.replace("/?area=institutes");
+      return;
+    }
     try{const meResponse=await fetch("/api/auth/me"),me=await meResponse.json();if(!meResponse.ok)throw new Error(me.error);state.master=Boolean(me.user.is_master);document.querySelectorAll("[data-master-only]").forEach(e=>e.hidden=!state.master);
       state.catalog=(await api("",undefined,false)).institutes;
       $("institute").innerHTML=state.catalog.map(i=>`<option value="${esc(i.key)}">${esc(i.name)}</option>`).join("");const params=new URLSearchParams(location.search);if(state.catalog.some(i=>i.key===params.get("institute")))$("institute").value=params.get("institute");courses();if([...$("course").options].some(c=>c.value===params.get("course")))$("course").value=params.get("course");

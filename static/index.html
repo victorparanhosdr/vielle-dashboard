@@ -6,18 +6,18 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
-    <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
+    <link rel="stylesheet" href="/styles.css?v=workspace-landing-1">
     <link rel="stylesheet" href="/financial-competence.css?v=settlement-1">
     <link rel="stylesheet" href="/financial-validation.css?v=2">
     <script src="/session.js"></script>
-    <script src="/institute-entry.js" defer></script>
+    <script src="/institute-entry.js?v=workspace-landing-1" defer></script>
   </head>
   <body>
     <div class="sessionToolbar" aria-label="Conta">
       <span id="sessionStatus" role="status"></span>
       <span data-session-user>Conta</span>
       <a href="/master" data-master-only hidden>Master</a>
-      <a href="/institutos" data-institute-entry hidden>Institutos</a>
+      <a href="/?area=institutes" data-institute-entry hidden>Institutos</a>
       <button type="button" data-logout>Sair</button>
     </div>
     <div class="ambient" aria-hidden="true"></div>
@@ -28,6 +28,12 @@
           <p class="eyebrow">Criado por doutores. Para doutores.</p>
         </header>
 
+        <nav class="landingAreaTabs" role="tablist" aria-label="Área do sistema">
+          <button id="selectClinicArea" type="button" role="tab" aria-selected="true" aria-controls="clinicAccounts" data-landing-area="clinics"><i data-lucide="hospital" aria-hidden="true"></i>Clínicas</button>
+          <button id="selectInstituteArea" type="button" role="tab" aria-selected="false" aria-controls="instituteAccounts" tabindex="-1" data-landing-area="institutes"><i data-lucide="graduation-cap" aria-hidden="true"></i>Institutos</button>
+        </nav>
+
+        <div id="clinicAccounts" role="tabpanel" aria-labelledby="selectClinicArea">
         <p id="clinicAccessState" role="status">Carregando clínicas permitidas...</p>
         <button id="retryClinicAccess" class="secondary" type="button" hidden>Tentar novamente</button>
         <div class="clinicCards">
@@ -74,6 +80,12 @@
             <button type="button" data-clinic-select="brandao">Acessar Brandão</button>
           </article>
 
+        </div>
+        </div>
+        <div id="instituteAccounts" role="tabpanel" aria-labelledby="selectInstituteArea" hidden>
+          <p id="instituteAccessState" role="status">Carregando institutos permitidos...</p>
+          <button id="retryInstituteAccess" type="button" hidden>Tentar novamente</button>
+          <div id="landingInstituteCards" class="clinicCards"></div>
         </div>
       </div>
     </section>
@@ -1045,6 +1057,6 @@
     <script src="/clinic-refresh.js?v=automatic-1"></script>
   <script src="/financial-validation.js?v=settlement-1"></script>
   <script src="/financial-competence.js?v=settlement-1"></script>
-  <script src="/app.js?v=financial-bases-2"></script>
+  <script src="/app.js?v=workspace-landing-1"></script>
   </body>
 </html>

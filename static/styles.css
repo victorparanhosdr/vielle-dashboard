@@ -135,6 +135,81 @@ body {
   gap: 16px;
 }
 
+.landingAreaTabs {
+  display: flex;
+  justify-self: center;
+  width: min(400px, 100%);
+  padding: 5px;
+  gap: 5px;
+  border: 1px solid var(--doc-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .72);
+}
+
+.landingAreaTabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  min-height: 50px;
+  padding: 10px 14px;
+  border-radius: 5px;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.landingAreaTabs button[aria-selected="false"] {
+  background: transparent !important;
+  color: var(--doc-primary) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.landingAreaTabs button:focus-visible {
+  outline: 2px solid var(--doc-olive);
+  outline-offset: 2px;
+}
+
+.landingAreaTabs svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.choosingWorkspace .sessionToolbar [data-institute-entry],
+#clinicAccounts[hidden], #instituteAccounts[hidden],
+#retryInstituteAccess[hidden] {
+  display: none !important;
+}
+
+.choosingWorkspace .clinicLanding { align-items: start; }
+
+#clinicAccessState:empty, #instituteAccessState:empty {
+  display: none;
+}
+
+#instituteAccessState, #clinicAccessState {
+  margin: 0 0 16px;
+}
+
+#landingInstituteCards .clinicAccessCard h2 {
+  font-size: 32px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+#landingInstituteCards .buttonLink {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+}
+
+@media (max-width: 600px) {
+  #landingInstituteCards .clinicAccessCard h2 { font-size: 26px; }
+}
+
 .clinicAccessCard {
   position: relative;
   min-height: 310px;

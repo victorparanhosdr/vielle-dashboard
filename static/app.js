@@ -352,11 +352,13 @@ function applyClinicHeader() {
 }
 
 function showClinicLanding() {
+  document.body.classList.add("choosingWorkspace");
   document.getElementById("clinicLanding").classList.remove("hidden");
   document.getElementById("dashboardShell").classList.add("dashboardHidden");
 }
 
 function showDashboard() {
+  document.body.classList.remove("choosingWorkspace");
   document.getElementById("clinicLanding").classList.add("hidden");
   document.getElementById("dashboardShell").classList.remove("dashboardHidden");
   applyActiveViewState();
@@ -502,7 +504,7 @@ async function initializeClinicAccess() {
     const requested = new URLSearchParams(window.location.search).get("clinic");
     if (requested && !allowedClinics.has(requested)) {
       clearClinicSelection("Você não possui acesso a esta clínica. Selecione uma das clínicas liberadas.");
-    } else if (requested || allowedClinics.size === 1) {
+    } else if (requested || (allowedClinics.size === 1 && !new URLSearchParams(window.location.search).has("area"))) {
       requestClinicAccess(requested || [...allowedClinics][0], !requested, accessModeKey());
     } else {
       showClinicLanding();
