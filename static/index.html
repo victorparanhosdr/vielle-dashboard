@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DOC4DOCS | Sistema operacional para clínicas</title>
     <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
-    <link rel="stylesheet" href="/financial-competence.css?v=2">
+    <link rel="stylesheet" href="/financial-competence.css?v=settlement-1">
     <link rel="stylesheet" href="/financial-validation.css?v=2">
     <script src="/session.js"></script>
   </head>
@@ -399,7 +399,11 @@
             <label><span>Até</span><input id="competenceTo" type="date" required></label>
             <label class="competenceProfessional"><span>Profissional</span><select id="competenceDoctor"><option value="">Todos os profissionais</option></select></label>
             <label class="competenceSearch"><span>Buscar</span><input id="competenceSearch" type="search" placeholder="Descrição ou contato"></label>
-            <button id="competenceFiltersToggle" class="secondary competenceFiltersToggle" type="button" aria-expanded="false" aria-controls="competenceFilterFields">Filtros <span id="competenceFilterCount" hidden>0</span></button>
+            <div class="competenceModeFilters">
+              <label><span>Data usada</span><select id="competenceDateBasis"><option value="competence">Competência</option><option value="receipt">Recebimento / pagamento</option></select></label>
+              <label><span>Situação do título</span><select id="competencePaymentStatus"><option value="all">Todas as situações</option><option value="received">Recebidos / pagos integralmente</option><option value="partial">Parcialmente recebidos / pagos</option><option value="not_received">Não recebidos / não pagos</option><option value="pending">Dados pendentes</option></select></label>
+              <button id="competenceFiltersToggle" class="secondary competenceFiltersToggle" type="button" aria-expanded="false" aria-controls="competenceFilterFields">Filtros <span id="competenceFilterCount" hidden>0</span></button>
+            </div>
             <div id="competenceFilterFields" class="competenceFilterFields" hidden>
               <label><span>Contato</span><select id="competenceContact"><option value="">Todos os contatos</option></select></label>
               <label><span>Categoria</span><select id="competenceCategory"><option value="">Todas as categorias</option></select></label>
@@ -407,26 +411,30 @@
               <button id="competenceClear" class="secondary" type="button">Limpar filtros</button>
             </div>
           </div>
+          <p id="competenceBasisNote" class="competenceBasisNote">Competência / emissão · títulos completos</p>
           <div class="competenceTotals" role="group" aria-label="Movimentos">
             <button type="button" data-competence-direction="income" aria-pressed="false">
               <span class="competenceDot income"></span><span>Receitas</span>
               <span class="competenceAmounts">
-                <span class="competenceAmount"><small>Líquido</small><strong id="competenceIncome">R$ 0,00</strong></span>
+                <span class="competenceAmount"><small id="competenceIncomeLabel">Total por competência · líquido</small><strong id="competenceIncome">R$ 0,00</strong></span>
                 <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceIncomeGross">R$ 0,00</strong></span>
+                <span class="competenceSettlement"><span><small>Recebido líquido</small><strong id="competenceIncomeReceived">R$ 0,00</strong></span><span><small>Não recebido · bruto</small><strong id="competenceIncomeOpen">R$ 0,00</strong></span></span>
               </span>
             </button>
             <button type="button" data-competence-direction="expense" aria-pressed="false">
               <span class="competenceDot expense"></span><span>Despesas</span>
               <span class="competenceAmounts">
-                <span class="competenceAmount"><small>Líquido</small><strong id="competenceExpense">R$ 0,00</strong></span>
+                <span class="competenceAmount"><small id="competenceExpenseLabel">Total por competência · líquido</small><strong id="competenceExpense">R$ 0,00</strong></span>
                 <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceExpenseGross">R$ 0,00</strong></span>
+                <span class="competenceSettlement"><span><small>Pago líquido</small><strong id="competenceExpensePaid">R$ 0,00</strong></span><span><small>Não pago · bruto</small><strong id="competenceExpenseOpen">R$ 0,00</strong></span></span>
               </span>
             </button>
             <button type="button" data-competence-direction="all" aria-pressed="true">
               <span class="competenceDot balance"></span><span>Total do período</span>
               <span class="competenceAmounts">
-                <span class="competenceAmount"><small>Líquido</small><strong id="competenceBalance">R$ 0,00</strong></span>
+                <span class="competenceAmount"><small id="competenceBalanceLabel">Total por competência · líquido</small><strong id="competenceBalance">R$ 0,00</strong></span>
                 <span class="competenceAmount gross"><small>Bruto</small><strong id="competenceBalanceGross">R$ 0,00</strong></span>
+                <span class="competenceSettlement"><span><small>Recebido − pago · líquido</small><strong id="competenceBalanceReceived">R$ 0,00</strong></span></span>
               </span>
             </button>
           </div>
@@ -437,18 +445,22 @@
           <div class="competenceTableWrap" tabindex="0" aria-label="Lançamentos por competência">
             <table class="competenceTable">
               <thead><tr>
-                <th scope="col" aria-sort="descending"><button type="button" data-competence-sort="date">Competência <span aria-hidden="true">↓</span></button></th>
+                <th scope="col" aria-sort="descending"><button type="button" data-competence-sort="date"><b id="competenceDateLabel">Competência</b> <span aria-hidden="true">↓</span></button></th>
                 <th scope="col"><button type="button" data-competence-sort="description">Descrição <span aria-hidden="true">↕</span></button></th>
                 <th scope="col"><button type="button" data-competence-sort="contact">Contato <span aria-hidden="true">↕</span></button></th>
                 <th scope="col">Categoria</th>
                 <th scope="col" class="money"><button type="button" data-competence-sort="gross">Valor bruto (R$) <span aria-hidden="true">↕</span></button></th>
                 <th scope="col" class="money"><button type="button" data-competence-sort="net">Valor líquido (R$) <span aria-hidden="true">↕</span></button></th>
+                <th scope="col" class="money">Taxas (R$)</th>
+                <th scope="col" class="money" data-competence-accrual>Recebido / pago líquido (R$)</th>
+                <th scope="col" class="money" data-competence-accrual>Em aberto bruto (R$)</th>
+                <th scope="col">Situação do título</th>
               </tr></thead>
-              <tbody id="competenceRows"><tr><td colspan="6" class="competenceEmpty">Carregando relatório...</td></tr></tbody>
+              <tbody id="competenceRows"><tr><td colspan="10" class="competenceEmpty">Carregando relatório...</td></tr></tbody>
             </table>
           </div>
           <footer class="competenceFooter">
-            <span title="Data de competência informada no título; quando ausente, data de emissão. Não utiliza pagamento ou vencimento.">Competência · emissão do título</span>
+            <span id="competenceBasisCaption">Competência · emissão do título</span>
             <div><span id="competencePage">Página 1 de 1</span><button id="competencePrevious" class="secondary" type="button" aria-label="Página anterior" title="Página anterior" disabled>‹</button><button id="competenceNext" class="secondary" type="button" aria-label="Próxima página" title="Próxima página" disabled>›</button></div>
           </footer>
         </section>
@@ -1029,8 +1041,8 @@
     </main>
     <script src="/body-icons.js"></script>
     <script src="/clinic-refresh.js?v=automatic-1"></script>
-  <script src="/financial-validation.js?v=2"></script>
-  <script src="/financial-competence.js?v=validation-2"></script>
+  <script src="/financial-validation.js?v=settlement-1"></script>
+  <script src="/financial-competence.js?v=settlement-1"></script>
   <script src="/app.js?v=financial-bases-2"></script>
   </body>
 </html>

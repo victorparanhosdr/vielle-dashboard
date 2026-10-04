@@ -27,16 +27,31 @@ def main():
             for number in range(64):
                 expense = number % 3 == 0
                 day = "2026-09-" + str(number % 20 + 10).zfill(2)
+                gross, net = 123450 + number, 120000 + number
+                status = ("paid" if expense else "received") if number % 4 < 2 else "open"
+                partial = number % 4 == 1
+                paid_gross, paid_net = (gross // 2, net // 2) if partial else (gross, net)
+                parcels = [{"uuid": "parcel-" + str(number), "status": status,
+                    "due_date": "2026-10-20", "final_amount": paid_gross, "net_amount": paid_net,
+                    "compensation_date": day if status != "open" else None}]
+                if partial:
+                    parcels.append({"uuid": "open-parcel-" + str(number), "status": "open",
+                        "final_amount": gross - paid_gross, "net_amount": net - paid_net, "due_date": "2026-10-20"})
                 app.save_clinica_bill(conn, {
                     "uuid": "title-" + str(number), "type": "Conta" if expense else "Venda", "emission_date": day,
                     "description": "Título a pagar para fornecedor de teste" if expense else "Venda de consulta - paciente fictício",
                     "person": {"uuid": "contact-" + str(number % 5), "name": "Fornecedor de teste" if expense else "Paciente fictício " + str(number % 5)},
                     "seller": {"uuid": "a" if number % 2 else "b"},
                     "category": {"name": "Serviços da clínica" if expense else "Consultas"},
-                    "final_amount": 123450 + number, "net_amount": 120000 + number,
-                    "payment_methods": [{"parcels": [{"uuid": "parcel-" + str(number), "status": "open",
-                        "due_date": "2026-10-20", "final_amount": 123450 + number, "net_amount": 120000 + number}]}],
+                    "final_amount": gross, "net_amount": net,
+                    "payment_methods": [{"parcels": parcels}],
                 }, 100)
+            app.save_clinica_bill(conn, {"uuid": "manual-income", "type": "Conta", "emission_date": "2026-08-15",
+                "description": "Título a receber avulso de teste", "seller": {"uuid": "a"},
+                "person": {"uuid": "test-manual", "name": "Contato fictício avulso"},
+                "final_amount": 600000, "net_amount": 600000, "payment_methods": [{"parcels": [
+                    {"uuid": "manual-parcel", "status": "received", "final_amount": 600000, "net_amount": 600000,
+                     "compensation_date": "2026-09-24"}]}]}, 100)
             for key, extra in (("date", {"emission_date": None}), ("amount", {"net_amount": None}),
                                ("professional", {"seller": None}), ("direction", {"type": "Transferência"})):
                 app.save_clinica_bill(conn, {"uuid": "pending-" + key, "type": "Venda", "emission_date": "2026-09-15",

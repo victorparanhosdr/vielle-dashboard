@@ -1,7 +1,7 @@
 class FinancialCompetenceReport {
   constructor() {
     this.root = document.getElementById("competenceReport");
-    this.elements = Object.fromEntries(["From", "To", "Doctor", "Search", "Contact", "Category", "Type", "Export", "Count", "Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "Rows", "Warning", "WarningText", "Validation", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
+    this.elements = Object.fromEntries(["Title", "From", "To", "Doctor", "Search", "Contact", "Category", "Type", "DateBasis", "PaymentStatus", "BasisNote", "BasisCaption", "DateLabel", "Export", "Count", "Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "IncomeLabel", "ExpenseLabel", "BalanceLabel", "IncomeReceived", "ExpensePaid", "IncomeOpen", "ExpenseOpen", "BalanceReceived", "Rows", "Warning", "WarningText", "Validation", "Page", "Previous", "Next", "Clear", "FilterCount", "FiltersToggle", "FilterFields"].map(key => [key, document.getElementById("competence" + key)]));
     this.filters = {direction: "all", sort: "date", order: "desc", page: 1};
     this.money = new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"});
     this.context = null;
@@ -12,7 +12,7 @@ class FinancialCompetenceReport {
       this.elements.FilterFields.hidden = !expanded;
       this.elements.FiltersToggle.setAttribute("aria-expanded", String(expanded));
     });
-    ["From", "To", "Doctor", "Contact", "Category", "Type"].forEach(key => this.elements[key].addEventListener("change", () => this.load(true)));
+    ["From", "To", "Doctor", "Contact", "Category", "Type", "DateBasis", "PaymentStatus"].forEach(key => this.elements[key].addEventListener("change", () => this.load(true)));
     this.elements.Search.addEventListener("input", () => {
       clearTimeout(this.searchTimer);
       this.searchTimer = setTimeout(() => this.load(true), 250);
@@ -31,6 +31,7 @@ class FinancialCompetenceReport {
     this.elements.Next.addEventListener("click", () => { this.filters.page++; this.load(); });
     this.elements.Clear.addEventListener("click", () => {
       ["Search", "Contact", "Category", "Type"].forEach(key => { this.elements[key].value = ""; });
+      this.elements.PaymentStatus.value = "all";
       this.load(true);
     });
     this.elements.Export.addEventListener("click", () => this.export());
@@ -45,6 +46,8 @@ class FinancialCompetenceReport {
       if (this.context?.clinic !== context.clinic) {
         ["Search", "Contact", "Category", "Type"].forEach(key => { this.elements[key].value = ""; });
         this.filters.direction = "all";
+        this.elements.DateBasis.value = "competence";
+        this.elements.PaymentStatus.value = "all";
       }
       this.filters.page = 1;
     }
@@ -65,12 +68,14 @@ class FinancialCompetenceReport {
       date_from: this.elements.From.value, date_to: this.elements.To.value,
       doctor: this.elements.Doctor.value, search: this.elements.Search.value,
       contact: this.elements.Contact.value, category: this.elements.Category.value,
-      title_type: this.elements.Type.value, ...this.filters});
+      title_type: this.elements.Type.value, date_basis: this.elements.DateBasis.value,
+      payment_status: this.elements.PaymentStatus.value, ...this.filters});
   }
 
   validationContext() {
     return {clinic: this.context.clinicName || this.context.clinic,
-      from: this.elements.From.value, to: this.elements.To.value, doctor: this.elements.Doctor.value};
+      from: this.elements.From.value, to: this.elements.To.value, doctor: this.elements.Doctor.value,
+      dateBasis: this.elements.DateBasis.value, paymentStatus: this.elements.PaymentStatus.value};
   }
 
   async load(resetPage = false) {
@@ -88,7 +93,7 @@ class FinancialCompetenceReport {
     this.elements.Validation.hidden = true;
     financialValidation.prepare("competence", this.validationContext());
     this.elements.Count.textContent = "Carregando...";
-    ["Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross"].forEach(key => { this.elements[key].textContent = "-"; });
+    ["Income", "Expense", "Balance", "IncomeGross", "ExpenseGross", "BalanceGross", "IncomeReceived", "ExpensePaid", "IncomeOpen", "ExpenseOpen", "BalanceReceived"].forEach(key => { this.elements[key].textContent = "-"; });
     this.message("Carregando relatório...");
     try {
       const response = await fetch(`/api/financial-competence?${this.query()}`, {signal: request.signal});
@@ -122,7 +127,7 @@ class FinancialCompetenceReport {
 
   message(text) {
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = this.elements.DateBasis.value === "receipt" ? 8 : 10;
     td.className = "competenceEmpty";
     td.textContent = text;
     const tr = document.createElement("tr");
@@ -131,11 +136,27 @@ class FinancialCompetenceReport {
   }
 
   render(report) {
+    const cash = report.date_basis === "receipt";
+    this.root.dataset.dateBasis = report.date_basis;
+    this.elements.Title.textContent = cash ? "Relatório de recebimentos e pagamentos" : "Relatório de competência";
+    this.elements.BasisCaption.textContent = cash ? "Compensação · recebimento / pagamento" : "Competência · emissão do título";
+    this.elements.BasisCaption.title = report.basis;
+    this.elements.DateLabel.textContent = cash ? "Recebimento / pagamento" : "Competência";
+    this.elements.BasisNote.textContent = cash
+      ? "Somente pagamentos efetivos no período · valores em aberto e compensações futuras não entram."
+      : "Títulos completos por competência / emissão · recebido e pago confirmados até hoje, independentemente do mês do pagamento.";
+    this.root.querySelectorAll("[data-competence-accrual]").forEach(element => { element.hidden = cash; });
+    const cashLabels = {Income: "Recebido líquido", Expense: "Pago líquido", Balance: "Recebido − pago · líquido"};
+    ["Income", "Expense", "Balance"].forEach(key => { this.elements[key + "Label"].textContent = cash ? cashLabels[key] : "Total por competência · líquido"; });
     this.filters.page = report.page;
     this.elements.Count.textContent = `${report.count} ${report.count === 1 ? "registro" : "registros"}`;
     ["Income", "Expense", "Balance"].forEach(key => {
       this.elements[key].textContent = this.money.format(report.totals[key.toLowerCase()]);
       this.elements[key + "Gross"].textContent = this.money.format(report.totals[key.toLowerCase() + "_gross"]);
+    });
+    ["IncomeReceived", "ExpensePaid", "IncomeOpen", "ExpenseOpen", "BalanceReceived"].forEach(key => {
+      const field = key.replace(/[A-Z]/g, (letter, index) => (index ? "_" : "") + letter.toLowerCase());
+      this.elements[key].textContent = this.money.format(report.settlement_totals[field]);
     });
     this.selectOptions("Contact", report.options.contacts, "Todos os contatos");
     this.selectOptions("Category", report.options.categories.map(name => ({id: name, name})), "Todas as categorias");
@@ -149,22 +170,30 @@ class FinancialCompetenceReport {
       button.closest("th").setAttribute("aria-sort", active ? (this.filters.order === "asc" ? "ascending" : "descending") : "none");
       button.querySelector("span").textContent = active ? (this.filters.order === "asc" ? "↑" : "↓") : "↕";
     });
-    const labels = {date: "sem data de competência/emissão", amount: "sem valores completos", direction: "sem movimento identificado", professional: "sem vínculo seguro com o profissional"};
+    const labels = {date: cash ? "sem data efetiva de recebimento/pagamento" : "sem data de competência/emissão", amount: "sem valores completos", net_amount: "sem líquido confirmado", direction: "sem movimento identificado", professional: "sem vínculo seguro com o profissional"};
     const warnings = Object.entries(report.excluded).filter(([, count]) => count).map(([key, count]) => `${count} ${labels[key]}`);
-    this.elements.WarningText.textContent = warnings.length ? `Resultado parcial. Títulos não contabilizados: ${warnings.join("; ")}.` : "";
-    this.elements.Warning.hidden = !warnings.length;
-    this.elements.Validation.hidden = !report.pending?.length;
-    this.elements.Validation.querySelector("span").textContent = `Ver pendências (${report.pending?.length || 0})`;
-    financialValidation.set("competence", report.pending, this.validationContext());
+    const warningsText = warnings.length ? `Resultado parcial. Registros não contabilizados: ${warnings.join("; ")}.` : "";
+    const paymentCount = report.payment_pending?.length || 0;
+    const paymentText = paymentCount ? ` Liquidação parcial: ${paymentCount} ${paymentCount === 1 ? "título" : "títulos"} com recebimento ou saldo não confirmado.` : "";
+    const grossText = report.gross_incomplete ? ` Bruto parcial: ${report.gross_incomplete} pagamentos sem bruto confirmado; o líquido efetivo permanece contabilizado.` : "";
+    this.elements.WarningText.textContent = (warningsText + paymentText + grossText).trim();
+    this.elements.Warning.hidden = !this.elements.WarningText.textContent;
+    const pending = [...(report.pending || []), ...(report.payment_pending || [])];
+    this.elements.Validation.hidden = !pending.length;
+    this.elements.Validation.querySelector("span").textContent = `Ver pendências (${pending.length})`;
+    financialValidation.set("competence", pending, this.validationContext());
     if (!report.items.length) this.message("Nenhum lançamento encontrado para os filtros selecionados.");
     else this.elements.Rows.replaceChildren(...report.items.map(item => {
       const row = document.createElement("tr");
       row.className = item.direction;
-      const values = [item.date.split("-").reverse().join("/"), item.description, item.contact, item.category, this.money.format(item.gross), this.money.format(item.net)];
+      const value = amount => amount == null ? "-" : this.money.format(amount);
+      const values = [item.date.split("-").reverse().join("/"), item.description, item.contact, item.category,
+        value(item.gross), value(item.net), value(item.fees), value(item.received), value(item.open)];
       values.forEach((value, index) => {
         const cell = document.createElement("td");
         cell.textContent = value;
         cell.className = index >= 4 ? "money" : index === 1 ? "description" : index === 2 ? "contact" : "";
+        if (index === 7 || index === 8) cell.hidden = cash;
         if (index === 1) {
           const type = document.createElement("small");
           type.textContent = item.title_type;
@@ -172,6 +201,15 @@ class FinancialCompetenceReport {
         }
         row.append(cell);
       });
+      const status = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "competenceStatus " + item.payment_state;
+      const labels = item.direction === "income"
+        ? {received: "Recebido", partial: "Parcialmente recebido", not_received: "Não recebido", pending: "Dados pendentes"}
+        : {received: "Pago", partial: "Parcialmente pago", not_received: "Não pago", pending: "Dados pendentes"};
+      badge.textContent = labels[item.payment_state] || "Dados pendentes";
+      status.append(badge);
+      row.append(status);
       return row;
     }));
     this.elements.Page.textContent = `Página ${report.page} de ${report.pages}`;
@@ -193,7 +231,7 @@ class FinancialCompetenceReport {
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
       link.href = url;
-      link.download = `doc4docs-${query.get("clinic")}-competencia-${query.get("date_from")}-${query.get("date_to")}.xlsx`;
+      link.download = `doc4docs-${query.get("clinic")}-${query.get("date_basis") === "receipt" ? "recebimentos" : "competencia"}-${query.get("date_from")}-${query.get("date_to")}.xlsx`;
       document.body.append(link);
       link.click();
       link.remove();

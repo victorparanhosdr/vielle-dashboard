@@ -11,7 +11,7 @@ from financial_validation import issue
 
 def build_expenses(conn, date_from, date_to, professional_uuids=(), export=False):
     options = dict(date_from=date_from, date_to=date_to, direction="expense", sort="date", order="desc", page=1)
-    competence = build_report(conn, options, professional_uuids, export=True)
+    competence = build_report(conn, options, professional_uuids, export=True, include_settlement=False)
     categories = defaultdict(lambda: {"total": 0, "amount": 0})
     daily = defaultdict(float)
     details = []

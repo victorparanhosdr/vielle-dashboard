@@ -10,6 +10,7 @@ class FinancialValidation {
       amount: {label: "Valores incompletos", action: "Conferir o valor bruto, o valor líquido e as taxas do título no Clínica Experts."},
       net_amount: {label: "Valor líquido não confirmado", action: "Conferir o valor líquido recebido ou o valor bruto e as taxas da parcela no Clínica Experts."},
       direction: {label: "Movimento não identificado", action: "Conferir se o título representa uma receita ou uma despesa e revisar seu tipo no Clínica Experts."},
+      payment: {label: "Liquidação não confirmada", action: "Conferir os valores, status e datas das parcelas no Clínica Experts. O título permanece no total de competência, mas apenas pagamentos efetivos comprovados entram no recebido/pago."},
     };
     document.addEventListener("click", event => {
       const trigger = event.target.closest("[data-financial-validation]");
@@ -88,7 +89,7 @@ class FinancialValidation {
       && (!search || this.normalized([item.description, item.contact, item.id, item.title_id].join(" ")).includes(search)));
     const pages = Math.max(1, Math.ceil(items.length / 25));
     this.page = Math.min(this.page, pages);
-    this.elements.Count.textContent = `${items.length} ${items.length === 1 ? "registro não contabilizado" : "registros não contabilizados"}`;
+    this.elements.Count.textContent = `${items.length} ${items.length === 1 ? "registro com pendência" : "registros com pendências"}`;
     const visible = items.slice((this.page - 1) * 25, this.page * 25);
     this.elements.Rows.replaceChildren(...visible.map(item => this.row(item)));
     if (!visible.length) {
@@ -114,7 +115,7 @@ class FinancialValidation {
     title.textContent = item.description || "Registro financeiro sem descrição";
     const badge = document.createElement("span");
     badge.className = "validationBadge";
-    badge.textContent = "Fora do total";
+    badge.textContent = item.scope === "settlement" ? "Liquidação a validar" : "Fora do total";
     header.append(title, badge);
     const contact = document.createElement("p");
     contact.className = "validationContact";

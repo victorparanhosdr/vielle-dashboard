@@ -436,11 +436,17 @@ class HttpAuthTests(unittest.TestCase):
                 patch.object(self.app, "clinic_doctor_professionals", return_value={"Teste A": "a"}), \
                 patch.object(self.app, "forced_professional_uuids", return_value=[]), \
                 patch("financial_competence.build_report", return_value={"items": [], "totals": {"income": 0, "expense": 0, "balance": 0,
-                      "income_gross": 0, "expense_gross": 0, "balance_gross": 0}, "basis": "teste", "excluded": {}, "pending": []}) as build:
+                      "income_gross": 0, "expense_gross": 0, "balance_gross": 0},
+                      "settlement_totals": {"income_received": 0, "expense_paid": 0, "income_open": 0, "expense_open": 0},
+                      "basis": "teste", "excluded": {}, "pending": []}) as build:
             self.assertEqual(self.request("GET", path, cookie=cookie)[0], 200)
             self.assertEqual(build.call_args.args[2], [])
             self.assertEqual(self.request("GET", path + "&doctor=Teste%20A", cookie=cookie)[0], 200)
             self.assertEqual(build.call_args.args[2], ["a"])
+            self.assertEqual(self.request("GET", path + "&date_basis=receipt&payment_status=partial", cookie=cookie)[0], 200)
+            self.assertEqual(build.call_args.args[1]["date_basis"], "receipt")
+            self.assertEqual(build.call_args.args[1]["payment_status"], "partial")
+            self.assertEqual(self.request("GET", path + "&date_basis=invalid", cookie=cookie)[0], 400)
             self.assertEqual(self.request("GET", path + "&doctor=unknown", cookie=cookie)[0], 400)
             self.assertEqual(self.request("GET", path.replace("2026-09-01", "2026-10-01"), cookie=cookie)[0], 400)
             self.limit_permissions(["financial.view", "financial.export"])

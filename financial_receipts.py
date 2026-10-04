@@ -152,7 +152,27 @@ class SaleOwners:
         return (next(iter(candidates)), "patient_date_amount") if len(candidates) == 1 and None not in candidates else (None, "ambiguous")
 
 
-def build_receipts(conn, date_from, date_to, professional_uuids=()):
+def payment_item(uuid, row, bill, parent, raw, status, kind, when, date_source, net, direction):
+    """Public payment details without exposing source JSON or integration credentials."""
+    gross, fees = cents(raw.get("final_amount")), cents(raw.get("fees_amount"))
+    if gross is None and fees is not None:
+        gross = net + fees
+    if fees is None and gross is not None and gross >= net:
+        fees = gross - net
+    person = record(parent.get("person"))
+    contact = person.get("name") or person.get("full_name") or "Sem contato"
+    title_id = row.get("bill_uuid") or bill.get("uuid") or parent.get("uuid") or uuid
+    return {"uuid": uuid, "title_id": title_id, "date": when, "date_source": date_source,
+            "description": parent.get("description") or raw.get("description") or "Título financeiro",
+            "contact": contact, "contact_id": str(person.get("uuid") or normalized(contact)),
+            "category": record(parent.get("category") or parent.get("financial_category")).get("name") or "Sem categoria",
+            "title_type": str(parent.get("type") or bill.get("type") or row.get("type") or kind),
+            "direction": direction, "gross": float(gross / 100) if gross is not None else None,
+            "net": float(net / 100), "fees": float(fees / 100) if fees is not None else None,
+            "emission_date": day(parent.get("emission_date") or bill.get("emission_date")), "status": status}
+
+
+def build_receipts(conn, date_from, date_to, professional_uuids=(), *, include_items=False):
     """Never infer receipt from zero balance, due date, or total bill amount."""
     date_to = min(date_to, date.today().isoformat())
     professionals = set(professional_uuids)
@@ -161,6 +181,7 @@ def build_receipts(conn, date_from, date_to, professional_uuids=()):
     pending = []
     resolved = {"professional": 0, "date": 0}
     total, fees_total, count = Decimal(0), Decimal(0), 0
+    items = []
     for uuid, row, bill, bill_raw, merged, status, kind in parcel_records(conn):
         # Experts uses "Conta" for both directions: "received" proves an inflow.
         if status not in SETTLED or (kind not in INCOME and status != "received"):
@@ -196,15 +217,21 @@ def build_receipts(conn, date_from, date_to, professional_uuids=()):
         total += net
         fees_total += cents(merged.get("fees_amount")) or Decimal(0)
         count += 1
+        if include_items:
+            items.append(payment_item(uuid, row, bill, bill_raw, merged, status, kind,
+                                      paid_day, date_source, net, "income"))
         if professionals and owner_source != "explicit_uuid":
             resolved["professional"] += 1
         if paid_day and not receipt_day(record(row.get("raw_json"))):
             resolved["date"] += 1
 
-    return {"net_total": float(total / 100), "fees_total": float(fees_total / 100),
+    result = {"net_total": float(total / 100), "fees_total": float(fees_total / 100),
             "count": count, "excluded": excluded, "pending": pending, "resolved": resolved,
             "status": "partial" if any(excluded.values()) else "complete",
             "basis": "Parcelas de receitas recebidas, pelo valor líquido e pela data de compensação; "
                      "na ausência dessa data, utiliza a data de recebimento registrada. "
                      "Vencimento e compensação prevista não comprovam recebimento. "
                      "Compensações futuras não entram no total recebido."}
+    if include_items:
+        result["items"] = items
+    return result
