@@ -67,6 +67,10 @@ class InstituteStore:
                 conn.execute("INSERT OR IGNORE INTO institutes VALUES (?,?)", (ident, name))
             conn.execute("INSERT OR IGNORE INTO courses VALUES (?,?,?,?,?,?,?)", (
                 "victor-paranhos", "regen-code", "REGEN.CODE · CO₂ Avançado", "[]", DEFAULT_SHEET, "0", "REGENCODE"))
+            conn.execute("INSERT OR IGNORE INTO courses VALUES (?,?,?,?,?,?,?)", (
+                "victor-paranhos", "regen-code-presencial", "REGEN.CODE · Módulo Presencial",
+                json.dumps(["0bc9de00-4cd5-11f1-ab31-f9ae6e042afe", "09acee40-4cd1-11f1-8f1e-03c7d68b7a1a"]),
+                "", "0", ""))
         os.chmod(self.path, 0o600)
 
     def allowed(self, user):

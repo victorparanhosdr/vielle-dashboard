@@ -12,7 +12,7 @@ if (typeof document !== "undefined") (() => {
   const {money, integer, percent, escape:esc, date} = InstituteUI;
   const $ = id => document.getElementById(id);
   const state = {catalog:[], tab:"overview", report:null, request:0, scope:0, settingsRequest:0, page:1, master:false, settings:null, products:[], meta:[], charts:{}, polling:0};
-  const labels = {kiwify:"Kiwify", sheets:"Google Sheets", kommo:"Kommo · REGENCODE", meta:"Meta Ads"};
+  const labels = {kiwify:"Kiwify", sheets:"Google Sheets", kommo:"Kommo", meta:"Meta Ads"};
   const warningLabels = {lead_missing_date:"Leads sem data válida", sale_missing_date:"Vendas sem data de aprovação", sale_invalid_amount:"Vendas com valor ou moeda não conciliados", sale_attribution:"Vendas sem campanha segura"};
   function notice(message, error=false) { $("notice").textContent=message; $("notice").classList.toggle("error",error); $("notice").hidden=!message; }
   function icons() { window.lucide?.createIcons(); }
@@ -56,6 +56,7 @@ if (typeof document !== "undefined") (() => {
   }
   function render(report) {
     const r=report.summary, loaded=Boolean(report.sync.kiwify?.at), leadsLoaded=Boolean(report.sync.sheets?.at);
+    labels.kommo=report.course.pipeline_name?"Kommo · "+report.course.pipeline_name:"Kommo";
     const kpis=[
       ["Vendas aprovadas",loaded?integer(r.sales):"—","Pagamento confirmado","shopping-cart"],
       ["Receita bruta",loaded?money(r.gross):"—","Vendas aprovadas · BRL","wallet"],
@@ -69,8 +70,8 @@ if (typeof document !== "undefined") (() => {
       const s=report.sync[key];const status=s?.ok?"Atualizado "+new Date(s.at*1000).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):s?.error||"Não sincronizado";
       return `<span class="${s?.error?"source-error":""}" title="${esc(status)}"><i data-lucide="${s?.ok?"circle-check":"circle-dashed"}"></i>${esc(label)} · ${s?.ok?esc(status):s?.error?"Verificar conexão":"Pendente"}</span>`;
     }).join("");
-    $("funnelTitle").textContent="Comercial · "+report.course.pipeline_name;
-    $("commercialPipeline").textContent="Kommo · "+report.course.pipeline_name;
+    $("funnelTitle").textContent=report.course.pipeline_name?"Comercial · "+report.course.pipeline_name:"Comercial";
+    $("commercialPipeline").textContent=report.course.pipeline_name?"Kommo · "+report.course.pipeline_name:"";
     $("stages").innerHTML=bars(report.stages);$("commercialStages").innerHTML=bars(report.stages);
     $("funnelResult").textContent=(loaded?integer(r.sales):"—")+" compras aprovadas · Kiwify";
     $("campaignSummary").innerHTML=campaignTable(report.campaigns.slice(0,5));$("campaignTable").innerHTML=campaignTable(report.campaigns,true);
@@ -108,6 +109,7 @@ if (typeof document !== "undefined") (() => {
     $("instituteName").textContent=institute?.name||"Institutos";
     const course=institute?.courses.find(r=>r.key===$("course").value);
     $("courseName").textContent=course?.name||"Cursos";
+    $("courseFormat").textContent=course?.key==="regen-code-presencial"?"MÓDULO PRESENCIAL":"CO₂ AVANÇADO";
     $("instituteLanding").hidden=true;$("instituteApp").hidden=false;
     const params=new URLSearchParams({institute:$("institute").value,course:$("course").value});history.replaceState(null,"","/institutes.html?"+params);
     state.page=1;state.settings=null;state.report=null;load();if(state.tab==="integrations")loadSettings();

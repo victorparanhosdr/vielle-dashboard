@@ -91,7 +91,7 @@ def build_report(store, institute, course, query, all_rows=False):
     def campaign(token):
         ident = aliases.get(token, "utm:" + token if token else "unattributed")
         if ident not in campaigns:
-            campaigns[ident] = {"id": ident, "name": token or "Sem campanha identificada", "meta": False,
+            campaigns[ident] = {"id": ident, "name": token or "Sem campanha identificada (orgânico)", "meta": False,
                 "leads": 0, "sales": 0, "gross": 0, "net": 0, "spend": 0, "buyers": set()}
         return campaigns[ident]
 

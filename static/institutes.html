@@ -6,7 +6,7 @@
   <link rel="icon" href="/doc4docs-favicon.png?v=20260908-2">
   <link rel="stylesheet" href="/institutes.css?v=2">
   <script src="/session.js"></script><script src="/body-icons.js" defer></script>
-  <script src="/institute-chart.min.js" defer></script><script src="/institutes.js?v=workspace-landing-1" defer></script>
+  <script src="/institute-chart.min.js" defer></script><script src="/institutes.js?v=presencial-1" defer></script>
 </head>
 <body>
   <header class="institute-header">
@@ -21,7 +21,7 @@
   </main>
   <main id="instituteApp" hidden>
     <div class="heading">
-      <div class="course-mark" aria-hidden="true"><i data-lucide="graduation-cap"></i><b>REGEN.CODE</b><span>CO₂ AVANÇADO</span></div>
+      <div class="course-mark" aria-hidden="true"><i data-lucide="graduation-cap"></i><b>REGEN.CODE</b><span id="courseFormat">CO₂ AVANÇADO</span></div>
       <div class="identity"><p id="instituteName">Institutos</p><h1 id="courseName">Cursos</h1></div>
       <div class="heading-actions"><button type="button" id="switchInstitute"><i data-lucide="building-2"></i>Trocar instituto</button><button type="button" id="export" title="Baixar detalhamento" disabled><span class="excel-icon"><img src="/excel-icon.png" alt=""></span>Exportar</button><button type="button" id="sync" class="primary" disabled><i data-lucide="refresh-cw"></i><span>Atualizar dados</span></button></div>
     </div>
@@ -53,7 +53,7 @@
     <section id="integrations" data-panel hidden>
       <div class="settings-grid">
         <form id="credentialsForm"><div class="section-heading"><h2>Conexões do instituto</h2></div><h3>Kiwify</h3><label>Client ID<input name="kiwify_client_id" autocomplete="off" maxlength="200"></label><label>Account ID<input name="kiwify_account_id" autocomplete="off" maxlength="200"></label><label>Client secret<input name="kiwify_client_secret" type="password" autocomplete="new-password" placeholder="Não informado" maxlength="8192"></label><h3>Meta Ads</h3><label>ID da conta de anúncios<input name="meta_account_id" placeholder="act_123456789" maxlength="34"></label><label>Token de acesso (ads_read)<input name="meta_access_token" type="password" autocomplete="new-password" maxlength="8192" placeholder="Não informado"></label><label>Versão da API<input name="meta_version" value="v22.0" pattern="v[0-9]{2}\.0" maxlength="8"></label><button type="submit" class="primary"><i data-lucide="save"></i>Salvar conexões</button><p class="form-status" role="status"></p></form>
-        <form id="courseForm"><div class="section-heading"><h2>Fontes do curso</h2></div><label>Nome<input name="name" required maxlength="160"></label><div class="field-heading"><h3>Produtos Kiwify</h3><button type="button" id="loadProducts" class="icon-button" title="Buscar produtos na Kiwify" aria-label="Buscar produtos na Kiwify"><i data-lucide="refresh-cw"></i></button></div><div id="productChoices" class="choices"></div><label>ID da planilha Google<input name="sheet_id" maxlength="150"></label><label>ID da aba (gid)<input name="sheet_gid" value="0" pattern="[0-9]+"></label><label>Funil na conta Kommo da Vielle<input name="pipeline_name" maxlength="160" required></label><button type="submit" class="primary"><i data-lucide="save"></i>Salvar curso</button><p class="form-status" role="status"></p><div class="csv-import"><label>Importar leads (CSV)<input id="leadCsv" type="file" accept=".csv,text/csv"></label><button type="button" id="importCsv"><i data-lucide="upload"></i>Importar</button></div></form>
+        <form id="courseForm"><div class="section-heading"><h2>Fontes do curso</h2></div><label>Nome<input name="name" required maxlength="160"></label><div class="field-heading"><h3>Produtos Kiwify</h3><button type="button" id="loadProducts" class="icon-button" title="Buscar produtos na Kiwify" aria-label="Buscar produtos na Kiwify"><i data-lucide="refresh-cw"></i></button></div><div id="productChoices" class="choices"></div><label>ID da planilha Google<input name="sheet_id" maxlength="150"></label><label>ID da aba (gid)<input name="sheet_gid" value="0" pattern="[0-9]+"></label><label>Funil na conta Kommo da Vielle<input name="pipeline_name" maxlength="160"></label><button type="submit" class="primary"><i data-lucide="save"></i>Salvar curso</button><p class="form-status" role="status"></p><div class="csv-import"><label>Importar leads (CSV)<input id="leadCsv" type="file" accept=".csv,text/csv"></label><button type="button" id="importCsv"><i data-lucide="upload"></i>Importar</button></div></form>
       </div>
       <form id="campaignForm"><div class="section-heading"><h2>Campanhas Meta do curso</h2><button type="button" id="loadCampaigns"><i data-lucide="search"></i>Buscar campanhas</button></div><datalist id="utmSuggestions"></datalist><div id="metaChoices" class="meta-choices"></div><button type="submit" class="primary"><i data-lucide="save"></i>Salvar campanhas</button><p class="form-status" role="status"></p></form>
       <form id="membersForm"><div class="section-heading"><h2>Acesso ao instituto</h2></div><div id="memberChoices" class="member-choices"></div><button type="submit" class="primary"><i data-lucide="shield-check"></i>Salvar acessos</button><p class="form-status" role="status"></p></form>

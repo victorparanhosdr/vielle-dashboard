@@ -73,8 +73,11 @@ def body(handler):
 def sync_sources(store, institute, course, start, end, kommo_call, progress):
     info = store.course(institute, course)
     config = store.settings(institute)
-    targets = {"kiwify": lambda: Kiwify(config).sales(info, min(start, "2025-01-01"), end),
-               "sheets": lambda: sheets(info), "kommo": lambda: kommo(info, kommo_call)}
+    targets = {"kiwify": lambda: Kiwify(config).sales(info, min(start, "2025-01-01"), end)}
+    if info["sheet_id"]:
+        targets["sheets"] = lambda: sheets(info)
+    if info["pipeline_name"]:
+        targets["kommo"] = lambda: kommo(info, kommo_call)
     if config.get("meta_access_token") and store.campaigns(institute, course):
         targets["meta"] = lambda: Meta(config).insights(store.campaigns(institute, course), start, end)
     results = {}

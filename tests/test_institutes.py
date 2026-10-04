@@ -42,6 +42,39 @@ class InstitutesTest(unittest.TestCase):
         self.assertEqual(self.store.allowed({"id": 4, "is_master": False}), [I])
         self.assertEqual(self.store.allowed({"id": 9, "is_master": True}), list(INSTITUTES))
 
+    def test_presencial_course_seed_is_additive_and_idempotent(self):
+        course = self.store.course(I, "regen-code-presencial")
+        self.assertEqual(len(course["product_ids"]), 2)
+        self.assertEqual((course["sheet_id"], course["pipeline_name"]), ("", ""))
+        course.pop("institute_key")
+        course["name"] = "Presencial personalizado"
+        self.store.save_course(I, course)
+        self.store.save_records(I, C, "kiwify", [self.sale()])
+        self.store.initialize()
+        self.assertEqual(self.store.course(I, "regen-code-presencial")["name"], "Presencial personalizado")
+        self.assertEqual(self.store.course(I, C)["product_ids"], ["regen"])
+        self.assertEqual(len(self.store.records(I, C, "kiwify")), 1)
+        self.assertEqual(len(self.store.courses(I)), 2)
+
+    def test_presencial_reports_do_not_mix_online_sales(self):
+        course = "regen-code-presencial"
+        product = self.store.course(I, course)["product_ids"][0]
+        self.store.save_records(I, C, "kiwify", [self.sale()])
+        self.store.save_records(I, course, "kiwify", [self.sale("presencial", product_id=product), self.sale("online")])
+        report = build_report(self.store, I, course, {"from": "2026-09-01", "to": "2026-09-30"})
+        self.assertEqual(report["summary"]["sales"], 1)
+        self.assertEqual(report["orders"]["rows"][0]["id"], "presencial")
+        self.assertEqual(self.report()["orders"]["rows"][0]["id"], "s")
+
+    def test_presencial_sync_skips_unconfigured_leads_and_crm(self):
+        with patch("institute_api.Kiwify") as kiwify, patch("institute_api.sheets") as sheet, patch("institute_api.kommo") as crm:
+            kiwify.return_value.sales.return_value = []
+            results = sync_sources(self.store, I, "regen-code-presencial", "2026-09-01", "2026-09-30", None, lambda _: None)
+        self.assertEqual(set(results), {"kiwify"})
+        self.assertTrue(results["kiwify"]["ok"])
+        sheet.assert_not_called()
+        crm.assert_not_called()
+
     def test_secrets_not_returned_and_blank_preserves(self):
         self.store.save_settings(I, {"kiwify_client_secret": "very-private", "meta_access_token": "private-meta"})
         self.store.save_settings(I, {"kiwify_client_secret": ""})
@@ -95,6 +128,19 @@ class InstitutesTest(unittest.TestCase):
         self.assertEqual(r["summary"]["roas"],10)
         paid=next(c for c in r["campaigns"] if c["meta"])
         self.assertEqual((paid["cpl"],paid["cac"]),(10000,10000))
+
+    def test_missing_campaign_organic_label_preserves_totals_and_source(self):
+        self.store.save_records(I, C, "sheets", [self.lead(campaign="")])
+        self.store.save_records(I, C, "kiwify", [self.sale()])
+        report = self.report()
+        bucket = report["campaigns"][0]
+        self.assertEqual(bucket["id"], "unattributed")
+        self.assertEqual(bucket["name"], "Sem campanha identificada (orgânico)")
+        self.assertEqual(report["orders"]["rows"][0]["campaign"], bucket["name"])
+        self.assertEqual((bucket["leads"], bucket["sales"], bucket["gross"], bucket["net"]),
+                         (1, 1, 100000, 90000))
+        self.assertIsNone(bucket["roas"])
+        self.assertEqual(self.store.records(I, C, "kiwify")[0]["campaign"], "")
 
     def test_invalid_values_dates_flagged_not_invented(self):
         self.store.save_records(I,C,"kiwify",[self.sale(approved_day=""),self.sale("foreign",currency="USD")])
