@@ -115,7 +115,7 @@ class SessionAuthMixin:
                 self.send_response(303)
                 destination = "/login?next=/master" if is_admin_path(path) else "/login"
                 page = posixpath.normpath(unquote(path)).removeprefix("/static")
-                if page in {"/body-evolution.html", "/tasks.html"}:
+                if page in {"/body-evolution.html", "/tasks.html", "/institutes.html", "/institutos"}:
                     destination = "/login?next=" + quote(page + "?" + parsed.query, safe="")
                 self.send_header("Location", destination)
                 self.send_header("Set-Cookie", self.session_cookie())
@@ -128,6 +128,9 @@ class SessionAuthMixin:
             return False
         if is_admin_path(path) and not self.require_master_auth():
             return False
+        from institute_api import guard, is_institute_request
+        if is_institute_request(parsed):
+            return guard(self, parsed)
         if not self.require_request_clinic(parsed):
             return False
         if not self.require_request_permission(parsed):
@@ -284,6 +287,10 @@ class SessionAuthMixin:
         protected = {Path(self.directory).resolve() / name for name in ("master.html", "settings.html", "settings.js")}
         if target in protected and not self.require_master_auth():
             return None
+        if target.name == "institutes.html":
+            from institute_api import guard
+            if not guard(self, urlsplit(self.path)):
+                return None
         if target.name in {"body-evolution.html", "tasks.html"} and not self.require_request_permission(urlsplit(self.path)):
             return None
         return super().send_head()

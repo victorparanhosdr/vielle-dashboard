@@ -7032,6 +7032,17 @@ def render_kommo_widget(report, clinic_id, period):
 </html>"""
 
 
+def institute_kommo_request(path):
+    from institute_sources import SourceError
+    # Reuse only the connection, with an explicit clinic context in worker threads.
+    with clinic_context("vielle"):
+        try:
+            context = get_access_context()
+            return kommo_request("GET", path, token=context["access_token"], domain=context["account_domain"])
+        except Exception:
+            raise SourceError("Kommo: conexão da Vielle indisponível. Revise suas credenciais sem alterar o funil do curso.") from None
+
+
 class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
@@ -7070,6 +7081,12 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/institutes" or parsed.path.startswith("/api/institutes/"):
+            from institute_api import handle_request
+            return handle_request(self, parsed, institute_kommo_request)
+        if parsed.path == "/institutos":
+            self.path = "/institutes.html" + ("?" + parsed.query if parsed.query else "")
+            return super().do_GET()
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)
@@ -7351,6 +7368,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
                 return json_response(self, result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
         if not self.require_dashboard_auth():
             return
+        if parsed.path == "/api/institutes" or parsed.path.startswith("/api/institutes/"):
+            from institute_api import handle_request
+            return handle_request(self, parsed, institute_kommo_request)
         if parsed.path == "/api/refresh":
             try:
                 if not 0 <= int(self.headers.get("Content-Length", "0")) <= 1024:

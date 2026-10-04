@@ -8,7 +8,7 @@
     redirecting = true;
     Object.keys(sessionStorage).filter(key => key.startsWith("clinicAccess:")).forEach(key => sessionStorage.removeItem(key));
     localStorage.removeItem("selectedClinic");
-    const next = ["/body-evolution.html", "/tasks.html"].includes(window.location.pathname) ? "?next=" + encodeURIComponent(window.location.pathname + window.location.search) : "";
+    const next = ["/body-evolution.html", "/tasks.html", "/institutes.html", "/institutos"].includes(window.location.pathname) ? "?next=" + encodeURIComponent(window.location.pathname + window.location.search) : "";
     window.location.replace("/login" + next);
   }
   window.fetch = async (input, init = {}) => {

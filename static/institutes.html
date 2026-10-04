@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Institutos | DOC4DOCS</title>
+  <link rel="icon" href="/doc4docs-favicon.png?v=20260908-2">
+  <link rel="stylesheet" href="/institutes.css?v=2">
+  <script src="/session.js"></script><script src="/body-icons.js" defer></script>
+  <script src="/institute-chart.min.js" defer></script><script src="/institutes.js?v=2" defer></script>
+</head>
+<body>
+  <header class="institute-header">
+    <a class="brand" href="/" aria-label="DOC4DOCS"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"></a>
+    <nav class="workspace-switch" aria-label="Área do sistema"><a href="/">Clínicas</a><a href="/institutos" aria-current="page">Institutos</a></nav>
+    <div class="account"><span data-session-user></span><a href="/master" data-master-only hidden class="icon-button" title="Painel Master" aria-label="Painel Master"><i data-lucide="shield-user"></i></a><button type="button" data-logout class="icon-button" title="Sair" aria-label="Sair"><i data-lucide="log-out"></i></button></div>
+  </header>
+  <main id="instituteLanding" class="institute-landing">
+    <div class="landing-heading"><p>DOC4DOCS</p><h1>Institutos</h1></div>
+    <p id="landingStatus" role="status">Carregando institutos...</p>
+    <div id="instituteCards" class="institute-cards"></div>
+  </main>
+  <main id="instituteApp" hidden>
+    <div class="heading">
+      <div class="course-mark" aria-hidden="true"><i data-lucide="graduation-cap"></i><b>REGEN.CODE</b><span>CO₂ AVANÇADO</span></div>
+      <div class="identity"><p id="instituteName">Institutos</p><h1 id="courseName">Cursos</h1></div>
+      <div class="heading-actions"><button type="button" id="switchInstitute"><i data-lucide="building-2"></i>Trocar instituto</button><button type="button" id="export" title="Baixar detalhamento" disabled><span class="excel-icon"><img src="/excel-icon.png" alt=""></span>Exportar</button><button type="button" id="sync" class="primary" disabled><i data-lucide="refresh-cw"></i><span>Atualizar dados</span></button></div>
+    </div>
+    <p id="sessionStatus" role="status"></p><div id="notice" role="status" aria-live="polite" hidden></div>
+    <nav class="tabs" aria-label="Instituto">
+      <button type="button" data-tab="overview" aria-selected="true"><i data-lucide="layout-dashboard"></i>Visão geral</button>
+      <button type="button" data-tab="sales" aria-selected="false"><i data-lucide="shopping-cart"></i>Vendas</button>
+      <button type="button" data-tab="leads" aria-selected="false"><i data-lucide="users"></i>Leads e campanhas</button>
+      <button type="button" data-tab="commercial" aria-selected="false"><i data-lucide="funnel"></i>Comercial</button>
+      <button type="button" data-tab="integrations" aria-selected="false" data-master-only hidden><i data-lucide="plug"></i>Integrações e acessos</button>
+    </nav>
+    <form id="filters" class="filters">
+      <label>Instituto<select id="institute" required></select></label><label>Curso<select id="course" required></select></label>
+      <label>De<input type="date" id="from" required></label><label>Até<input type="date" id="to" required></label>
+      <button type="submit" class="icon-button" title="Aplicar período" aria-label="Aplicar período"><i data-lucide="arrow-right"></i></button>
+    </form>
+    <div id="sourceStatus" class="source-status"></div>
+    <section id="overview" data-panel>
+      <div id="kpis" class="kpis" aria-live="polite"></div>
+      <div class="charts-grid">
+        <section class="chart-section"><div class="section-heading"><div><h2>Vendas por dia</h2><span>Receita de pagamentos aprovados</span></div><div class="legend"><span class="green-dot">Bruto</span><span class="olive-dot">Líquido</span><span class="blue-dot">Investimento</span></div></div><div class="chart-wrap"><canvas id="revenueChart" aria-label="Receita e investimento por dia" role="img"></canvas></div></section>
+        <section class="funnel-section"><div class="section-heading"><h2 id="funnelTitle">Comercial</h2><span>Etapas atuais</span></div><div id="stages"></div><div id="funnelResult" class="funnel-result"></div></section>
+      </div>
+      <div class="bottom-grid"><section class="campaign-section"><div class="section-heading"><h2>Desempenho por campanha</h2><button type="button" id="campaignDetails" class="text-button">Ver completo<i data-lucide="arrow-up-right"></i></button></div><div id="campaignSummary" class="table-wrap"></div></section><section class="status-section"><div class="section-heading"><h2>Status dos pedidos</h2></div><div id="orderStatuses"></div><button type="button" id="validation" class="validation" hidden><i data-lucide="triangle-alert"></i><span></span><i data-lucide="chevron-right"></i></button></section></div>
+    </section>
+    <section id="sales" data-panel hidden><div class="section-heading"><h2>Pedidos Kiwify</h2><div class="table-filters"><label><span class="sr-only">Buscar pedido</span><input id="salesSearch" type="search" placeholder="Aluno, e-mail ou pedido" maxlength="200"></label><label><span class="sr-only">Status</span><select id="orderStatus"><option value="">Todos os status</option><option value="paid">Pagos</option><option value="waiting_payment">Aguardando pagamento</option><option value="refunded">Reembolsados</option><option value="chargedback">Chargeback</option><option value="refused">Recusados</option></select></label></div></div><div id="ordersTable" class="table-wrap"></div><div id="ordersPages" class="pagination"></div></section>
+    <section id="leads" data-panel hidden><div class="section-heading"><h2>Campanhas e investimento</h2></div><div id="campaignTable" class="table-wrap"></div><div class="section-heading"><h2>Leads do formulário</h2><input id="leadsSearch" type="search" placeholder="Buscar lead" aria-label="Buscar lead" maxlength="200"></div><div id="leadsTable" class="table-wrap"></div><div id="leadsPages" class="pagination"></div><div class="section-heading"><h2>Leads e compras aprovadas por dia</h2></div><div class="chart-wrap"><canvas id="leadsChart" aria-label="Leads e vendas por dia" role="img"></canvas></div></section>
+    <section id="commercial" data-panel hidden><div class="section-heading"><h2>Distribuição por etapa</h2><span id="commercialPipeline"></span></div><div id="commercialStages" class="commercial-stages"></div></section>
+    <section id="integrations" data-panel hidden>
+      <div class="settings-grid">
+        <form id="credentialsForm"><div class="section-heading"><h2>Conexões do instituto</h2></div><h3>Kiwify</h3><label>Client ID<input name="kiwify_client_id" autocomplete="off" maxlength="200"></label><label>Account ID<input name="kiwify_account_id" autocomplete="off" maxlength="200"></label><label>Client secret<input name="kiwify_client_secret" type="password" autocomplete="new-password" placeholder="Não informado" maxlength="8192"></label><h3>Meta Ads</h3><label>ID da conta de anúncios<input name="meta_account_id" placeholder="act_123456789" maxlength="34"></label><label>Token de acesso (ads_read)<input name="meta_access_token" type="password" autocomplete="new-password" maxlength="8192" placeholder="Não informado"></label><label>Versão da API<input name="meta_version" value="v22.0" pattern="v[0-9]{2}\.0" maxlength="8"></label><button type="submit" class="primary"><i data-lucide="save"></i>Salvar conexões</button><p class="form-status" role="status"></p></form>
+        <form id="courseForm"><div class="section-heading"><h2>Fontes do curso</h2></div><label>Nome<input name="name" required maxlength="160"></label><div class="field-heading"><h3>Produtos Kiwify</h3><button type="button" id="loadProducts" class="icon-button" title="Buscar produtos na Kiwify" aria-label="Buscar produtos na Kiwify"><i data-lucide="refresh-cw"></i></button></div><div id="productChoices" class="choices"></div><label>ID da planilha Google<input name="sheet_id" maxlength="150"></label><label>ID da aba (gid)<input name="sheet_gid" value="0" pattern="[0-9]+"></label><label>Funil na conta Kommo da Vielle<input name="pipeline_name" maxlength="160" required></label><button type="submit" class="primary"><i data-lucide="save"></i>Salvar curso</button><p class="form-status" role="status"></p><div class="csv-import"><label>Importar leads (CSV)<input id="leadCsv" type="file" accept=".csv,text/csv"></label><button type="button" id="importCsv"><i data-lucide="upload"></i>Importar</button></div></form>
+      </div>
+      <form id="campaignForm"><div class="section-heading"><h2>Campanhas Meta do curso</h2><button type="button" id="loadCampaigns"><i data-lucide="search"></i>Buscar campanhas</button></div><datalist id="utmSuggestions"></datalist><div id="metaChoices" class="meta-choices"></div><button type="submit" class="primary"><i data-lucide="save"></i>Salvar campanhas</button><p class="form-status" role="status"></p></form>
+      <form id="membersForm"><div class="section-heading"><h2>Acesso ao instituto</h2></div><div id="memberChoices" class="member-choices"></div><button type="submit" class="primary"><i data-lucide="shield-check"></i>Salvar acessos</button><p class="form-status" role="status"></p></form>
+    </section>
+    <footer><span>DOC4DOCS · Institutos</span><button type="button" id="definitions" class="text-button"><i data-lucide="circle-help"></i>Critérios dos indicadores</button></footer>
+  </main>
+  <dialog id="validationDialog"><div class="section-heading"><h2>Validação dos dados</h2><button type="button" data-close class="icon-button" title="Fechar" aria-label="Fechar"><i data-lucide="x"></i></button></div><div id="pendingList"></div></dialog>
+  <dialog id="definitionsDialog"><div class="section-heading"><h2>Critérios dos indicadores</h2><button type="button" data-close class="icon-button" title="Fechar" aria-label="Fechar"><i data-lucide="x"></i></button></div><dl><dt>Vendas e receita</dt><dd>Somente pagamentos aprovados pela Kiwify, pela data de aprovação em Brasília. Pendentes, recusados, reembolsos e chargebacks não entram. Receita líquida é o valor informado pela plataforma, não o saldo disponível para saque.</dd><dt>Leads e conversão</dt><dd>Leads únicos pela primeira resposta do formulário. Conversão: leads captados no período que tiveram pagamento aprovado nesse mesmo período. O vínculo usa e-mail ou telefone, sem associação apenas pelo nome.</dd><dt>Campanhas</dt><dd>UTM da venda tem prioridade. Na ausência dela, usamos a última resposta anterior à compra quando o vínculo é seguro. Campanhas Meta são vinculadas pelo ID ou pelas UTMs configuradas pelo Master.</dd><dt>CPL, CAC e ROAS</dt><dd>Somente campanhas selecionadas e investimento atualizado para todo o período. CPL = investimento ÷ leads atribuídos. CAC = investimento ÷ compradores únicos atribuídos. ROAS = receita bruta atribuída ÷ investimento. Receita líquida menos anúncios não é lucro final.</dd><dt>Kommo</dt><dd>Leads criados no período, distribuídos pela etapa atual do funil do curso. Uma etapa ganha no CRM não substitui a confirmação de pagamento na Kiwify.</dd><dt>Google Sheets</dt><dd>A leitura automática depende de acesso permitido à planilha. Se ela for privada, importe o CSV exportado; não exponha a base de leads publicamente.</dd></dl></dialog>
+</body>
+</html>

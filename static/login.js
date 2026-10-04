@@ -22,9 +22,9 @@ form.addEventListener("submit", async event => {
     form.elements.password.value = "";
     const next = new URLSearchParams(window.location.search).get("next");
     let destination = next === "/master" ? "/master" : "/";
-    if (next?.startsWith("/body-evolution.html?") || next?.startsWith("/tasks.html?")) {
+    if (next?.startsWith("/body-evolution.html?") || next?.startsWith("/tasks.html?") || next?.startsWith("/institutes.html") || next?.startsWith("/institutos")) {
       const target = new URL(next, window.location.origin);
-      if (target.origin === window.location.origin && ["/body-evolution.html", "/tasks.html"].includes(target.pathname)) destination = target.pathname + target.search;
+      if (target.origin === window.location.origin && ["/body-evolution.html", "/tasks.html", "/institutes.html", "/institutos"].includes(target.pathname)) destination = target.pathname + target.search;
     }
     window.location.replace(destination);
   } catch (problem) {
