@@ -1,6 +1,6 @@
 """Conservative campaign attribution and integer-cent course reporting."""
 from collections import Counter, defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 import io
 import re
 
@@ -61,6 +61,33 @@ def paginate(rows, query):
     rows = [r for r in rows if (not search or search in " ".join(str(r.get(k, "")) for k in ("name", "email", "campaign", "id")).lower())
             and (not status or r.get("status") == status)]
     return {"rows": rows[(page-1)*50:page*50], "total": len(rows), "page": page, "pages": max(1, (len(rows)+49)//50)}
+
+
+def meta_coverage_ranges(state, new_range=None):
+    ranges = state.get("ranges", [])
+    if "ranges" not in state and (state.get("ok") or state.get("at")):
+        ranges = [{"from": state.get("from"), "to": state.get("to")}]
+    bounds = []
+    for item in [*ranges, *([{"from": new_range[0], "to": new_range[1]}] if new_range else [])]:
+        try:
+            a, b = date.fromisoformat(item["from"]), date.fromisoformat(item["to"])
+            if a <= b:
+                bounds.append((a, b))
+        except (KeyError, TypeError, ValueError):
+            continue
+    merged = []
+    # Adjacent successful imports cover a period; disjoint imports must retain their gaps.
+    for a, b in sorted(bounds):
+        if merged and (a - merged[-1][1]).days <= 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return [{"from": a.isoformat(), "to": b.isoformat()} for a, b in merged]
+
+
+def meta_period_covered(state, start, end):
+    return bool(state.get("ok") and any(r["from"] <= start and r["to"] >= end
+                                       for r in meta_coverage_ranges(state)))
 
 
 def report_sync(store, institute, course):
@@ -190,7 +217,8 @@ def build_report(store, institute, course, query, all_rows=False):
                 daily[row["day"]]["spend"] += row["spend"]
     sync = report_sync(store, institute, course)
     meta_state = sync.get("meta", {})
-    covered = bool(selected_ids) and meta_state.get("ok") and meta_state.get("from", "9999") <= start and meta_state.get("to", "") >= end
+    covered = bool(selected_ids) and all(meta_period_covered(store.sync_state(institute, c["key"]).get("meta", {}), start, end)
+        for c in courses if any(r["course_key"] == c["key"] for r in mappings))
     config = store.public_settings(institute)
     meta_status = "ready" if covered else "connection_missing" if not (config.get("meta_access_token_configured") and config.get("meta_account_id")) else "campaigns_missing" if not selected_ids else "sync_failed" if meta_state.get("error") and meta_state.get("attempt_at") else "period_missing"
     for row in campaigns.values():

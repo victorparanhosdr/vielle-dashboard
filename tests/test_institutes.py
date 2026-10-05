@@ -36,6 +36,14 @@ class InstitutesTest(unittest.TestCase):
     def report(self, **options):
         return build_report(self.store, I, C, {"from": "2026-09-01", "to": "2026-09-30", **options})
 
+    def sync_meta(self, start, end, rows=(), error=None):
+        with patch("institute_api.Kiwify") as kiwify, patch("institute_api.sheets", return_value=[]), \
+                patch("institute_api.kommo", return_value=[]), patch("institute_api.Meta") as meta:
+            kiwify.return_value.sales.return_value = []
+            meta.return_value.insights.return_value = list(rows)
+            meta.return_value.insights.side_effect = error
+            return sync_sources(self.store, I, C, start, end, None, lambda _: None)["meta"]
+
     def test_members_not_clinic_memberships(self):
         self.assertEqual(self.store.allowed({"id": 4, "is_master": False}), [])
         self.store.save_members(I, [4])
@@ -117,10 +125,53 @@ class InstitutesTest(unittest.TestCase):
         self.assertEqual(report["summary"]["spend"], 30000)
         self.assertEqual(sum(r["spend"] for r in report["daily"]), 30000)
         self.assertEqual(report["meta_status"], "ready")
+        self.store.set_sync_state(I, C, "meta", {"ok":True, "at":2, "from":"2026-09-10", "to":"2026-09-20",
+            "ranges":[{"from":"2026-09-01", "to":"2026-09-30"}]})
+        self.assertEqual(build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})["summary"]["spend"], 30000)
         self.store.set_sync_state(I, presencial, "meta", {"ok":True, "at":1, "from":"2026-09-02", "to":"2026-09-30"})
         report = build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})
         self.assertIsNone(report["summary"]["spend"])
         self.assertEqual(report["meta_status"], "period_missing")
+
+    def test_meta_narrow_refresh_preserves_legacy_coverage_and_outside_rows(self):
+        self.store.save_settings(I, {"meta_access_token":"test", "meta_account_id":"123456"})
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}])
+        self.store.save_records(I, C, "meta", [
+            {"id":"123:2026-09-01", "campaign_id":"123", "day":"2026-09-01", "spend":10000},
+            {"id":"123:2026-09-15", "campaign_id":"123", "day":"2026-09-15", "spend":20000}])
+        self.store.set_sync_state(I, C, "meta", {"ok":True, "at":1, "from":"2026-09-01", "to":"2026-09-30"})
+        state = self.sync_meta("2026-09-10", "2026-09-20", [
+            {"id":"123:2026-09-15", "campaign_id":"123", "day":"2026-09-15", "spend":25000}])
+        self.assertEqual(state["ranges"], [{"from":"2026-09-01", "to":"2026-09-30"}])
+        self.assertEqual((state["from"], state["to"]), ("2026-09-10", "2026-09-20"))
+        self.assertEqual(self.report()["summary"]["spend"], 35000)
+        self.sync_meta("2026-09-15", "2026-09-15")
+        self.assertEqual(self.report()["summary"]["spend"], 10000)
+
+    def test_meta_zero_spend_adjacent_imports_merge_but_gaps_do_not(self):
+        self.store.save_settings(I, {"meta_access_token":"test", "meta_account_id":"123456"})
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}])
+        self.sync_meta("2026-09-01", "2026-09-10")
+        state = self.sync_meta("2026-09-21", "2026-09-30")
+        self.assertEqual(len(state["ranges"]), 2)
+        self.assertIsNone(self.report()["summary"]["spend"])
+        self.assertEqual(self.report(**{"from":"2026-09-21"})["summary"]["spend"], 0)
+        state = self.sync_meta("2026-09-11", "2026-09-20")
+        self.assertEqual(state["ranges"], [{"from":"2026-09-01", "to":"2026-09-30"}])
+        self.assertEqual(self.report()["summary"]["spend"], 0)
+        self.assertEqual(self.report()["meta_status"], "ready")
+
+    def test_failed_meta_refresh_never_adds_coverage_and_recovery_retains_history(self):
+        self.store.save_settings(I, {"meta_access_token":"test", "meta_account_id":"123456"})
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}])
+        self.sync_meta("2026-09-01", "2026-09-30")
+        state = self.sync_meta("2026-10-01", "2026-10-31", error=SourceError("Meta indisponível"))
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["ranges"], [{"from":"2026-09-01", "to":"2026-09-30"}])
+        self.assertEqual(self.report()["meta_status"], "sync_failed")
+        self.sync_meta("2026-10-15", "2026-10-31")
+        self.assertEqual(self.report()["summary"]["spend"], 0)
+        self.assertIsNone(self.report(**{"from":"2026-10-01", "to":"2026-10-31"})["summary"]["spend"])
 
     def test_meta_pending_distinguishes_configuration_and_refresh(self):
         self.assertEqual(self.report()["meta_status"], "connection_missing")

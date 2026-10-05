@@ -8,7 +8,7 @@ import threading
 import time
 from urllib.parse import parse_qs, unquote
 
-from institute_report import build_report, report_sync, workbook
+from institute_report import build_report, meta_coverage_ranges, report_sync, workbook
 from institute_sources import Kiwify, Meta, SourceError, kommo, period, sheet_rows, sheets
 from institute_store import InstituteStore
 
@@ -94,6 +94,8 @@ def sync_sources(store, institute, course, start, end, kommo_call, progress):
             store.save_records(institute, course, source, rows, snapshot=source in {"sheets", "kommo"}, window=window)
             state = {"ok": True, "count": len(rows), "at": int(time.time()),
                      "from": min(start, "2025-01-01") if source == "kiwify" else start, "to": end}
+            if source == "meta":
+                state["ranges"] = meta_coverage_ranges(previous, (start, end))
         except Exception as exc:
             message = str(exc) if isinstance(exc, SourceError) else "Não foi possível atualizar esta fonte. Os dados anteriores foram preservados."
             state = {**previous, "ok": False, "error": message, "attempt_at": int(time.time())}
