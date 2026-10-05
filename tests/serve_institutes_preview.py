@@ -28,6 +28,7 @@ course = store.course(I,C)
 course.pop("institute_key")
 course["product_ids"] = ["demo-course"]
 store.save_course(I,course)
+store.save_settings(I, {"meta_account_id":"123456", "meta_access_token":"synthetic-preview-token"})
 store.save_campaigns(I,C,[{"id":"123456","name":"REGEN.CODE · Captação","aliases":["co2-captacao"]},
                              {"id":"789012","name":"REGEN.CODE · Remarketing","aliases":["co2-remarketing"]}])
 start = date.today().replace(day=1)
@@ -53,6 +54,13 @@ for n in range(28):
 for source,rows in (("kiwify",sales),("sheets",leads),("kommo",crm),("meta",ads)):
     store.save_records(I,C,source,rows,True)
     store.set_sync_state(I,C,source,{"ok":True,"at":int(time.time()),"from":start.isoformat(),"to":end.isoformat(),"count":len(rows)})
+
+presencial = store.course(I, "regen-code-presencial")
+store.save_records(I, presencial["key"], "kiwify", [
+    {**sales[0], "id":"presencial-demo-1", "product_id":presencial["product_ids"][0], "gross":600000, "net":550000},
+    {**sales[0], "id":"presencial-demo-2", "product_id":presencial["product_ids"][1], "email":"presencial@example.invalid", "gross":750000, "net":690000}
+], True)
+store.set_sync_state(I, presencial["key"], "kiwify", {"ok":True, "at":int(time.time()), "count":2, "from":start.isoformat(), "to":end.isoformat()})
 
 class Preview(app.Handler):
     def do_GET(self):

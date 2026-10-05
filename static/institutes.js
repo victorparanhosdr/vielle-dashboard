@@ -13,6 +13,7 @@ if (typeof document !== "undefined") (() => {
   const $ = id => document.getElementById(id);
   const state = {catalog:[], tab:"overview", report:null, request:0, scope:0, settingsRequest:0, page:1, master:false, settings:null, products:[], meta:[], charts:{}, polling:0};
   const labels = {kiwify:"Kiwify", sheets:"Google Sheets", kommo:"Kommo", meta:"Meta Ads"};
+  const metaLabels = {ready:"Campanhas vinculadas", connection_missing:"Conexão não configurada", campaigns_missing:"Nenhuma campanha vinculada", sync_failed:"Falha na atualização", period_missing:"Período não atualizado"};
   const warningLabels = {lead_missing_date:"Leads sem data válida", sale_missing_date:"Vendas sem data de aprovação", sale_invalid_amount:"Vendas com valor ou moeda não conciliados", sale_attribution:"Vendas sem campanha segura"};
   function notice(message, error=false) { $("notice").textContent=message; $("notice").classList.toggle("error",error); $("notice").hidden=!message; }
   function icons() { window.lucide?.createIcons(); }
@@ -62,12 +63,13 @@ if (typeof document !== "undefined") (() => {
       ["Receita bruta",loaded?money(r.gross):"—","Vendas aprovadas · BRL","wallet"],
       ["Receita líquida",loaded?money(r.net):"—","Valor informado pela Kiwify","chart-no-axes-column-increasing"],
       ["Leads únicos",leadsLoaded?integer(r.leads):"—","Primeira resposta no período","users"],
-      ["Investimento Meta",money(r.spend),report.meta_coverage?"Campanhas selecionadas":"Conexão/período pendente","megaphone"],
+      ["Investimento Meta",money(r.spend),metaLabels[report.meta_status]||"Período não atualizado","megaphone"],
       ["ROAS atribuído",r.roas==null?"—":r.roas.toFixed(2)+"×","Receita bruta atribuída ÷ anúncios","trending-up"]
     ];
     $("kpis").innerHTML=kpis.map(([label,value,caption,icon],i)=>`<article class="kpi ${i===2?"dark":""}"><span class="label"><i data-lucide="${icon}"></i>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(caption)}</small></article>`).join("")+`<div class="metric-line"><span>Conversão da captação <b>${loaded&&leadsLoaded?percent(r.conversion):"—"}</b></span><span>Ticket médio <b>${loaded?money(r.ticket):"—"}</b></span><span>Líquido menos anúncios <b>${money(r.net_after_ads)}</b></span></div>`;
-    $("sourceStatus").innerHTML=Object.entries(labels).map(([key,label])=>{
+    $("sourceStatus").innerHTML=Object.entries(labels).filter(([key])=>!report.sources||report.sources.includes(key)).map(([key,label])=>{
       const s=report.sync[key];const status=s?.ok?"Atualizado "+new Date(s.at*1000).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):s?.error||"Não sincronizado";
+      if(key==="meta"&&!report.meta_coverage)return `<${state.master?'button type="button" data-meta-config title="Configurar Meta Ads"':'span'} class="source-error"><i data-lucide="circle-dashed"></i>Meta Ads · ${esc(metaLabels[report.meta_status]||status)}</${state.master?"button":"span"}>`;
       return `<span class="${s?.error?"source-error":""}" title="${esc(status)}"><i data-lucide="${s?.ok?"circle-check":"circle-dashed"}"></i>${esc(label)} · ${s?.ok?esc(status):s?.error?"Verificar conexão":"Pendente"}</span>`;
     }).join("");
     $("funnelTitle").textContent=report.course.pipeline_name?"Comercial · "+report.course.pipeline_name:"Comercial";
@@ -76,7 +78,7 @@ if (typeof document !== "undefined") (() => {
     $("funnelResult").textContent=(loaded?integer(r.sales):"—")+" compras aprovadas · Kiwify";
     $("campaignSummary").innerHTML=campaignTable(report.campaigns.slice(0,5));$("campaignTable").innerHTML=campaignTable(report.campaigns,true);
     $("orderStatuses").innerHTML=bars(report.statuses);
-    $("ordersTable").innerHTML=table(["Data","Aluno","Status","Campanha","Bruto","Líquido","Pagamento"],report.orders.rows.map(s=>[date(s.day),s.name,s.status_label,s.campaign,money(s.gross),money(s.net),s.payment_method]));
+    $("ordersTable").innerHTML=table(["Data",...(report.course.is_all?["Curso"]:[]),"Aluno","Status","Campanha","Bruto","Líquido","Pagamento"],report.orders.rows.map(s=>[date(s.day),...(report.course.is_all?[s.course_name]:[]),s.name,s.status_label,s.campaign,money(s.gross),money(s.net),s.payment_method]));
     $("leadsTable").innerHTML=table(["Data","Lead","E-mail","Campanha","Origem","Anúncio","Pontuação"],report.leads.rows.map(s=>[date(s.created_day),s.name,s.email,s.campaign||"Sem campanha",s.source,s.content,s.score]));
     pagination("ordersPages",report.orders);pagination("leadsPages",report.leads);
     const count=Object.values(report.warnings).reduce((a,b)=>a+b,0);
@@ -108,15 +110,18 @@ if (typeof document !== "undefined") (() => {
     const institute=state.catalog.find(r=>r.key===$("institute").value);
     $("instituteName").textContent=institute?.name||"Institutos";
     const course=institute?.courses.find(r=>r.key===$("course").value);
-    $("courseName").textContent=course?.name||"Cursos";
-    $("courseFormat").textContent=course?.key==="regen-code-presencial"?"MÓDULO PRESENCIAL":"CO₂ AVANÇADO";
+    const all=$("course").value==="all";
+    $("courseName").textContent=all?"Todos os cursos":course?.name||"Cursos";
+    $("courseFormat").textContent=all?"TODOS OS CURSOS":course?.key==="regen-code-presencial"?"MÓDULO PRESENCIAL":"CO₂ AVANÇADO";
+    document.querySelectorAll("[data-course-settings]").forEach(e=>e.hidden=all);
+    document.querySelector(".settings-grid").classList.toggle("all-courses",all);
     $("instituteLanding").hidden=true;$("instituteApp").hidden=false;
     const params=new URLSearchParams({institute:$("institute").value,course:$("course").value});history.replaceState(null,"","/institutes.html?"+params);
     state.page=1;state.settings=null;state.report=null;load();if(state.tab==="integrations")loadSettings();
   }
   function courses() {
     const institute=state.catalog.find(r=>r.key===$("institute").value);
-    $("course").innerHTML=(institute?.courses||[]).map(c=>`<option value="${esc(c.key)}">${esc(c.name)}</option>`).join("");
+    $("course").innerHTML='<option value="all">Todos os cursos</option>'+(institute?.courses||[]).map(c=>`<option value="${esc(c.key)}">${esc(c.name)}</option>`).join("");
   }
   function switchTab(tab,fetchReport=true) {
     if(tab==="integrations"&&!state.master)return;
@@ -142,7 +147,7 @@ if (typeof document !== "undefined") (() => {
       const data=await api("/settings");if(request!==state.settingsRequest)return;state.settings=data;state.products=[];state.meta=[];
       const form=$("credentialsForm");["kiwify_client_id","kiwify_account_id","meta_account_id","meta_version"].forEach(k=>form.elements[k].value=data.settings[k]||(k==="meta_version"?"v22.0":""));
       ["kiwify_client_secret","meta_access_token"].forEach(k=>{form.elements[k].value="";form.elements[k].placeholder=data.settings[k+"_configured"]?"Já configurado · em branco mantém":"Não informado";});
-      const course=data.courses.find(c=>c.key===$("course").value);["name","sheet_id","sheet_gid","pipeline_name"].forEach(k=>$("courseForm").elements[k].value=course[k]);
+      const course=data.courses.find(c=>c.key===$("course").value);["name","sheet_id","sheet_gid","pipeline_name"].forEach(k=>$("courseForm").elements[k].value=course?.[k]||"");
       productsChoices();metaChoices();
       $("utmSuggestions").innerHTML=data.utms.map(v=>`<option value="${esc(v)}"></option>`).join("");
       $("memberChoices").innerHTML=data.users.filter(u=>!u.is_master).map(u=>`<label><input type="checkbox" value="${u.id}" ${data.members.includes(u.id)?"checked":""}>${esc(u.nome)}</label>`).join("")||'<p class="empty">Nenhum usuário comum ativo.</p>';
@@ -167,6 +172,7 @@ if (typeof document !== "undefined") (() => {
   $("export").addEventListener("click",async event=>{const button=event.currentTarget;button.disabled=true;try{const response=await fetch("/api/institutes/export?"+query({search:state.tab==="sales"?$("salesSearch").value:"",status:state.tab==="sales"?$("orderStatus").value:""}));if(!response.ok)throw new Error((await response.json()).error||"Não foi possível exportar.");const url=URL.createObjectURL(await response.blob()),a=document.createElement("a");a.href=url;a.download="doc4docs-"+$("course").value+".xlsx";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(error){notice(error.message,true);}finally{button.disabled=false;}});
   document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
   $("campaignDetails").addEventListener("click",()=>switchTab("leads"));
+  $("sourceStatus").addEventListener("click",event=>{if(event.target.closest("[data-meta-config]"))switchTab("integrations");});
   $("switchInstitute").addEventListener("click",showLanding);
   $("institute").addEventListener("change",()=>{clearTimeout(state.polling);courses();selectCourse();});$("course").addEventListener("change",()=>{clearTimeout(state.polling);selectCourse();});
   $("filters").addEventListener("submit",event=>{event.preventDefault();state.page=1;load();});

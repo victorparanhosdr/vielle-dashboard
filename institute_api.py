@@ -8,7 +8,7 @@ import threading
 import time
 from urllib.parse import parse_qs, unquote
 
-from institute_report import build_report, workbook
+from institute_report import build_report, report_sync, workbook
 from institute_sources import Kiwify, Meta, SourceError, kommo, period, sheet_rows, sheets
 from institute_store import InstituteStore
 
@@ -71,6 +71,10 @@ def body(handler):
 
 
 def sync_sources(store, institute, course, start, end, kommo_call, progress):
+    if course == "all":
+        for info in store.courses_for(institute, course):
+            sync_sources(store, institute, info["key"], start, end, kommo_call, progress)
+        return report_sync(store, institute, course)
     info = store.course(institute, course)
     config = store.settings(institute)
     targets = {"kiwify": lambda: Kiwify(config).sales(info, min(start, "2025-01-01"), end)}
@@ -136,9 +140,12 @@ def handle_request(handler, parsed, kommo_call):
             if path == "/api/institutes/settings":
                 with handler.server.auth_store.connection() as conn:
                     users = [dict(r) for r in conn.execute("SELECT id,nome,is_master FROM users WHERE status='active' ORDER BY nome")]
-                utms = sorted({r.get("campaign") for source in ("sheets", "kiwify") for r in store.records(institute, course, source) if r.get("campaign")})
+                selected = store.courses_for(institute, course)
+                utms = sorted({r.get("campaign") for c in selected for source in ("sheets", "kiwify")
+                    for r in store.records(institute, c["key"], source) if r.get("campaign")})
                 return handler.auth_json({"ok": True, "settings": store.public_settings(institute), "courses": store.courses(institute),
-                    "campaigns": store.campaigns(institute, course), "users": users, "members": store.members(institute), "utms": utms})
+                    "campaigns": [r for c in selected for r in store.campaigns(institute, c["key"])],
+                    "users": users, "members": store.members(institute), "utms": utms})
             if path == "/api/institutes/products":
                 return handler.auth_json({"ok": True, "products": Kiwify(store.settings(institute)).products()})
             if path == "/api/institutes/meta-campaigns":
@@ -154,6 +161,8 @@ def handle_request(handler, parsed, kommo_call):
                     last = JOBS.get(ident, {})
                     if last.get("running"):
                         return handler.auth_json({"ok": True, **last}, 202)
+                    if any(other[:2] == ident[:2] and job.get("running") for other, job in JOBS.items()):
+                        return handler.auth_json({"ok": False, "error": "Uma atualização deste instituto já está em andamento."}, 409)
                     if time.monotonic() - last.get("started_monotonic", 0) < 30:
                         return handler.auth_json({"ok": False, "error": "Aguarde 30 segundos entre atualizações."}, 429)
                     JOBS[ident] = {"running": True, "started_monotonic": time.monotonic(), "source": "kiwify"}
@@ -178,6 +187,8 @@ def handle_request(handler, parsed, kommo_call):
             elif path == "/api/institutes/courses":
                 store.save_course(institute, payload)
             elif path == "/api/institutes/campaigns" and set(payload) == {"campaigns"}:
+                if course == "all":
+                    raise ValueError("Selecione um curso específico para vincular campanhas.")
                 store.save_campaigns(institute, course, payload["campaigns"])
                 store.set_sync_state(institute, course, "meta", {"ok": False, "error": "Campanhas alteradas. Atualize o investimento para este período."})
             elif path == "/api/institutes/members" and set(payload) == {"user_ids"}:
@@ -190,6 +201,8 @@ def handle_request(handler, parsed, kommo_call):
                     raise ValueError("Selecione usuários comuns e ativos.")
                 store.save_members(institute, ids)
             elif path == "/api/institutes/import-leads" and set(payload) == {"csv"} and isinstance(payload["csv"], str):
+                if course == "all":
+                    raise ValueError("Selecione um curso específico para importar leads.")
                 rows = sheet_rows(payload["csv"])
                 store.save_records(institute, course, "sheets", rows, snapshot=True)
                 store.set_sync_state(institute, course, "sheets", {"ok": True, "count": len(rows), "at": int(time.time()), "method": "csv"})

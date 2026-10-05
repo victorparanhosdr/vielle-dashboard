@@ -60,6 +60,18 @@ class InstituteHttpTest(unittest.TestCase):
         self.assertEqual(self.request("/institutes.html",self.member)[0],200)
         self.assertEqual(self.request("/api/institutes/report?from=2026-09-01&to=2026-09-30",self.member)[0],200)
 
+    def test_all_courses_report_and_export_keep_institute_authorization(self):
+        for route in ("report", "export"):
+            url = "/api/institutes/"+route+"?institute=victor-paranhos&course=all&from=2026-09-01&to=2026-09-30"
+            self.assertEqual(self.request(url, self.member)[0], 200)
+            self.assertEqual(self.request(url, self.clinic)[0], 403)
+
+    def test_all_settings_read_but_campaign_and_lead_writes_rejected(self):
+        base = "?institute=victor-paranhos&course=all"
+        self.assertEqual(self.request("/api/institutes/settings"+base, self.master)[0], 200)
+        self.assertEqual(self.request("/api/institutes/campaigns"+base, self.master, {"campaigns":[]})[0], 400)
+        self.assertEqual(self.request("/api/institutes/import-leads"+base, self.master, {"csv":""})[0], 400)
+
     def test_admin_routes_forbidden_to_member(self):
         for route in ("settings","products","meta-campaigns","members","courses","campaigns","import-leads"):
             self.assertEqual(self.request("/api/institutes/"+route,self.member)[0],403)

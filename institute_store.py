@@ -89,7 +89,18 @@ class InstituteStore:
                 "SELECT * FROM courses WHERE institute_key=? ORDER BY name", (institute,))]
 
     def course(self, institute, course):
+        if course == "all":
+            courses = self.courses(institute)
+            return {"institute_key": institute, "key": "all", "name": "Todos os cursos", "is_all": True,
+                    "product_ids": list(dict.fromkeys(p for c in courses for p in c["product_ids"])),
+                    "sheet_id": "", "sheet_gid": "0", "pipeline_name": ""} if courses else None
         return next((r for r in self.courses(institute) if r["key"] == course), None)
+
+    def courses_for(self, institute, course):
+        if course == "all":
+            return self.courses(institute)
+        info = self.course(institute, course)
+        return [info] if info else []
 
     def settings(self, institute):
         with self.connection() as conn:
@@ -140,6 +151,8 @@ class InstituteStore:
         if not isinstance(values, dict) or set(values) - {"key", "name", "product_ids", "sheet_id", "sheet_gid", "pipeline_name"}:
             raise ValueError("Curso inválido.")
         ident = key(values.get("key"))
+        if ident == "all":
+            raise ValueError("Todos os cursos é um filtro, não um curso editável.")
         name, pipeline = values.get("name", ""), values.get("pipeline_name", "")
         products = values.get("product_ids", [])
         sheet, gid = values.get("sheet_id", ""), values.get("sheet_gid", "0")

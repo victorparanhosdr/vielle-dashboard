@@ -75,6 +75,101 @@ class InstitutesTest(unittest.TestCase):
         sheet.assert_not_called()
         crm.assert_not_called()
 
+    def test_all_courses_combines_products_without_duplicate_orders(self):
+        presencial = "regen-code-presencial"
+        info = self.store.course(I, presencial)
+        product = info["product_ids"][0]
+        info.pop("institute_key")
+        info["product_ids"].append("regen")
+        self.store.save_course(I, info)
+        self.store.save_records(I, C, "kiwify", [self.sale(), self.sale("clinic", product_id="clinic")])
+        self.store.save_records(I, presencial, "kiwify", [self.sale(), self.sale("presencial", product_id=product, gross=200000, net=180000)])
+        report = build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})
+        self.assertEqual((report["summary"]["sales"], report["summary"]["gross"], report["summary"]["net"]), (2, 300000, 270000))
+        self.assertEqual(report["summary"]["buyers"], 1)
+        self.assertEqual({r["id"] for r in report["orders"]["rows"]}, {"s", "presencial"})
+        self.assertTrue(report["course"]["is_all"])
+        self.assertEqual(sum(r["gross"] for r in report["daily"]), 300000)
+
+    def test_all_courses_lead_matching_stays_with_its_course(self):
+        presencial = "regen-code-presencial"
+        product = self.store.course(I, presencial)["product_ids"][0]
+        self.store.save_records(I, C, "sheets", [self.lead()])
+        self.store.save_records(I, C, "kiwify", [self.sale()])
+        self.store.save_records(I, presencial, "kiwify", [self.sale("presencial", product_id=product)])
+        report = build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})
+        order = next(r for r in report["orders"]["rows"] if r["id"] == "presencial")
+        self.assertEqual(order["attribution"], "Sem atribuição")
+        self.assertEqual(report["summary"]["leads"], 1)
+        self.assertEqual(report["summary"]["conversion"], 100)
+        self.store.save_records(I, presencial, "sheets", [self.lead("another", created_day="2026-09-02")])
+        self.assertEqual(build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})["summary"]["leads"], 1)
+
+    def test_all_courses_meta_sums_only_owned_campaigns_and_requires_coverage(self):
+        presencial = "regen-code-presencial"
+        self.store.save_settings(I, {"meta_access_token":"test", "meta_account_id":"123456"})
+        for owner, campaign, spend in ((C, "123", 10000), (presencial, "456", 20000)):
+            self.store.save_campaigns(I, owner, [{"id":campaign, "name":owner, "aliases":[]}])
+            self.store.save_records(I, owner, "meta", [{"id":campaign+":2026-09-01", "campaign_id":campaign, "day":"2026-09-01", "spend":spend},
+                {"id":"999:2026-09-01", "campaign_id":"999", "day":"2026-09-01", "spend":999999}])
+            self.store.set_sync_state(I, owner, "meta", {"ok":True, "at":1, "from":"2026-09-01", "to":"2026-09-30"})
+        report = build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})
+        self.assertEqual(report["summary"]["spend"], 30000)
+        self.assertEqual(sum(r["spend"] for r in report["daily"]), 30000)
+        self.assertEqual(report["meta_status"], "ready")
+        self.store.set_sync_state(I, presencial, "meta", {"ok":True, "at":1, "from":"2026-09-02", "to":"2026-09-30"})
+        report = build_report(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})
+        self.assertIsNone(report["summary"]["spend"])
+        self.assertEqual(report["meta_status"], "period_missing")
+
+    def test_meta_pending_distinguishes_configuration_and_refresh(self):
+        self.assertEqual(self.report()["meta_status"], "connection_missing")
+        self.store.save_settings(I, {"meta_access_token":"test", "meta_account_id":"123456"})
+        self.assertEqual(self.report()["meta_status"], "campaigns_missing")
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}])
+        self.store.set_sync_state(I, C, "meta", {"ok":False, "error":"Campanhas alteradas. Atualize o investimento para este período."})
+        self.assertEqual(self.report()["meta_status"], "period_missing")
+        self.store.set_sync_state(I, C, "meta", {"ok":False, "error":"Meta indisponível", "attempt_at":1})
+        self.assertEqual(self.report()["meta_status"], "sync_failed")
+
+    def test_exact_meta_campaign_name_attributes_without_manual_alias(self):
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}])
+        self.store.save_records(I, C, "kiwify", [self.sale(campaign="co2")])
+        campaign = next(r for r in self.report()["campaigns"] if r["sales"])
+        self.assertEqual(campaign["id"], "123")
+        self.assertTrue(campaign["meta"])
+
+    def test_duplicate_meta_campaign_names_are_not_guessed(self):
+        self.store.save_campaigns(I, C, [{"id":"123", "name":"co2", "aliases":[]}, {"id":"456", "name":"co2", "aliases":[]}])
+        self.store.save_records(I, C, "kiwify", [self.sale(campaign="co2")])
+        campaign = next(r for r in self.report()["campaigns"] if r["sales"])
+        self.assertFalse(campaign["meta"])
+
+    def test_all_courses_sync_updates_each_real_course(self):
+        with patch("institute_api.Kiwify") as kiwify, patch("institute_api.sheets", return_value=[]) as sheet, patch("institute_api.kommo", return_value=[]) as crm:
+            kiwify.return_value.sales.return_value = []
+            result = sync_sources(self.store, I, "all", "2026-09-01", "2026-09-30", None, lambda _: None)
+        self.assertEqual(kiwify.return_value.sales.call_count, 2)
+        self.assertEqual({call.args[0]["key"] for call in kiwify.return_value.sales.call_args_list}, {C, "regen-code-presencial"})
+        sheet.assert_called_once()
+        crm.assert_called_once()
+        self.assertTrue(result["kiwify"]["ok"])
+
+    def test_all_filter_cannot_be_saved_as_a_course(self):
+        with self.assertRaises(ValueError):
+            self.store.save_course(I, {"key":"all", "name":"Todos", "product_ids":[]})
+
+    def test_all_courses_export_includes_course_and_combined_total(self):
+        from openpyxl import load_workbook
+        presencial = "regen-code-presencial"
+        product = self.store.course(I, presencial)["product_ids"][0]
+        self.store.save_records(I, C, "kiwify", [self.sale()])
+        self.store.save_records(I, presencial, "kiwify", [self.sale("presencial", product_id=product)])
+        book = load_workbook(io.BytesIO(workbook(self.store, I, "all", {"from":"2026-09-01", "to":"2026-09-30"})))
+        self.assertEqual(book["Pedidos"].max_row, 3)
+        self.assertEqual(book["Pedidos"]["J1"].value, "Curso")
+        self.assertEqual(book["Resumo"]["B1"].value, "Todos os cursos")
+
     def test_secrets_not_returned_and_blank_preserves(self):
         self.store.save_settings(I, {"kiwify_client_secret": "very-private", "meta_access_token": "private-meta"})
         self.store.save_settings(I, {"kiwify_client_secret": ""})
