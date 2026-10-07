@@ -380,6 +380,10 @@ function applyActiveViewState() {
     window.location.replace(`/tasks.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
   }
+  if (state.activeView === "birthdaysView") {
+    window.location.replace(`/birthdays.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
+    return;
+  }
   if (state.activeView === "bodyEvolutionView") {
     window.location.replace(`/body-evolution.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
@@ -3152,7 +3156,7 @@ async function exportChart(button) {
 }
 
 async function loadReport() {
-  if (["bodyEvolutionView", "tasksView"].includes(state.activeView)) return;
+  if (["bodyEvolutionView", "tasksView", "birthdaysView"].includes(state.activeView)) return;
   if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
     showClinicLanding();

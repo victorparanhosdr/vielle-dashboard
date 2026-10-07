@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#102b25">
+  <title>Aniversários · DOC4DOCS</title>
+  <link rel="icon" type="image/png" href="/doc4docs-favicon.png">
+  <link rel="stylesheet" href="/styles.css?v=birthdays1">
+  <link rel="stylesheet" href="/birthdays.css?v=1">
+  <script src="/session.js?v=birthdays1" defer></script>
+  <script src="/body-icons.js" defer></script>
+  <script src="/institute-chart.min.js" defer></script>
+  <script src="/clinic-refresh.js?v=automatic-1" defer></script>
+  <script src="/birthdays.js?v=1" defer></script>
+</head>
+<body class="birthdaysPage">
+  <div class="sessionToolbar" aria-label="Conta">
+    <span id="sessionStatus" role="status"></span>
+    <span data-session-user>Conta</span>
+    <a href="/master" data-master-only hidden>Master</a>
+    <button type="button" data-logout>Sair</button>
+  </div>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="shell birthdaysHeader">
+    <header class="topbar">
+      <div class="topbarBrand"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS"><div><h1>DOC4DOCS</h1></div></div>
+      <div class="actions">
+        <button id="changeClinicBtn" class="secondary" type="button">Trocar clínica</button>
+        <a id="settingsLink" class="buttonLink secondary" href="/settings.html" data-master-only hidden>Configurações</a>
+        <button id="syncBtn" type="button" hidden><i data-lucide="refresh-cw" aria-hidden="true"></i><span data-refresh-label>Atualizar tudo</span></button>
+        <p id="clinicEyebrow" class="eyebrow clinicHeaderName">DOC4DOCS</p>
+      </div>
+    </header>
+    <p id="refreshStatus" class="refreshStatus" role="status" hidden></p>
+    <button id="mobileTabsToggle" class="mobileTabsToggle" type="button" aria-expanded="false" aria-controls="viewTabs"><span>Aniversários</span><span aria-hidden="true">⌄</span></button>
+    <nav id="viewTabs" class="viewTabs" aria-label="Áreas do dashboard"></nav>
+  </div>
+  <main class="birthdayContent" aria-label="Aniversários dos pacientes">
+    <div class="pageHeading">
+      <div class="headingTitle"><span class="headingIcon"><i data-lucide="calendar-days"></i></span><div><h1>Aniversários dos pacientes</h1><p id="monthLabel"></p></div></div>
+      <button id="exportBtn" type="button" hidden><img src="/excel-icon.png" alt="">Exportar</button>
+    </div>
+    <form id="filters" class="birthdayFilters">
+      <div class="monthControl"><button type="button" id="previousMonth" class="iconButton" title="Mês anterior" aria-label="Mês anterior"><i data-lucide="chevron-left"></i></button><label><span class="srOnly">Mês dos aniversários</span><input id="month" type="month" required aria-label="Mês dos aniversários"></label><button type="button" id="nextMonth" class="iconButton" title="Próximo mês" aria-label="Próximo mês"><i data-lucide="chevron-right"></i></button></div>
+      <button type="button" id="currentMonth" class="iconButton" title="Voltar ao mês atual" aria-label="Voltar ao mês atual"><i data-lucide="calendar-clock"></i></button>
+      <label class="search"><i data-lucide="search" aria-hidden="true"></i><input id="search" type="search" maxlength="200" placeholder="Buscar paciente" aria-label="Buscar paciente"></label>
+      <label><span class="srOnly">Presentes</span><select id="giftFilter" aria-label="Filtrar presentes"><option value="all">Todos os presentes</option><option value="pending">Não enviados</option><option value="sent">Enviados</option></select></label>
+      <label><span class="srOnly">Compras</span><select id="purchaseFilter" aria-label="Filtrar compras"><option value="all">Todos os pacientes</option><option value="with">Com compras</option><option value="without">Sem compras</option></select></label>
+    </form>
+    <p id="notice" role="status" class="notice" hidden></p>
+    <div id="content" hidden>
+      <section id="metrics" class="metrics" aria-label="Resumo do mês"></section>
+      <div class="chartBand">
+        <section class="birthdayChart"><div class="sectionHeading"><h2>Aniversários ao longo do mês</h2><span id="todayCount"></span></div><div class="chartCanvas"><canvas id="birthdayChart" role="img" aria-label="Quantidade de aniversariantes por dia"></canvas></div></section>
+        <section class="purchasesChart"><div class="sectionHeading"><h2>Histórico de compras</h2></div><div class="chartCanvas"><canvas id="purchaseChart" role="img" aria-label="Pacientes por quantidade de vendas"></canvas></div></section>
+      </div>
+      <section class="patientList" aria-label="Lista de aniversariantes">
+        <div class="sectionHeading"><div class="listTitle"><h2>Lista de aniversariantes</h2><span id="listCount" aria-live="polite"></span></div><label><span class="srOnly">Ordenar pacientes</span><select id="sort" aria-label="Ordenar pacientes"><option value="birthday">Data do aniversário</option><option value="amount">Maior total comprado</option><option value="sales">Mais vendas</option><option value="name">Nome do paciente</option></select></label></div>
+        <div class="tableScroll" tabindex="0" aria-label="Tabela de aniversariantes"><table><thead><tr><th>Paciente</th><th>Aniversário</th><th class="number">Vendas</th><th class="number">Total comprado</th><th>Última compra</th><th id="giftHeading">Presente</th><th><span class="srOnly">Ações</span></th></tr></thead><tbody id="patients"></tbody></table></div>
+        <div class="pagination"><span id="pageLabel"></span><button type="button" id="prevPage" class="iconButton" title="Página anterior" aria-label="Página anterior"><i data-lucide="chevron-left"></i></button><button type="button" id="nextPage" class="iconButton" title="Próxima página" aria-label="Próxima página"><i data-lucide="chevron-right"></i></button></div>
+      </section>
+      <div class="dataBasis"><p id="basis"></p><button id="validation" type="button" hidden><i data-lucide="circle-alert"></i><span></span></button><p id="syncLabel"></p></div>
+    </div>
+    <p id="loading" class="empty" role="status">Carregando aniversários...</p>
+    <dialog id="giftDialog" aria-labelledby="giftDialogTitle">
+      <div class="dialogHeading"><h2 id="giftDialogTitle"><i data-lucide="gift"></i>Registrar presente</h2><button type="button" id="closeGift" class="iconButton" aria-label="Fechar registro" title="Fechar registro"><i data-lucide="x"></i></button></div>
+      <div id="giftBody"></div>
+    </dialog>
+    <dialog id="validationDialog" aria-labelledby="validationTitle"><div class="dialogHeading"><h2 id="validationTitle">Dados para conferir</h2><button type="button" class="iconButton" id="closeValidation" aria-label="Fechar validação" title="Fechar validação"><i data-lucide="x"></i></button></div><div id="validationBody"></div></dialog>
+  </main>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

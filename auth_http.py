@@ -115,7 +115,7 @@ class SessionAuthMixin:
                 self.send_response(303)
                 destination = "/login?next=/master" if is_admin_path(path) else "/login"
                 page = posixpath.normpath(unquote(path)).removeprefix("/static")
-                if page in {"/body-evolution.html", "/tasks.html", "/institutes.html", "/institutos"}:
+                if page in {"/body-evolution.html", "/tasks.html", "/birthdays.html", "/institutes.html", "/institutos"}:
                     destination = "/login?next=" + quote(page + "?" + parsed.query, safe="")
                 self.send_header("Location", destination)
                 self.send_header("Set-Cookie", self.session_cookie())
@@ -174,6 +174,23 @@ class SessionAuthMixin:
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
             return True
         normalized = posixpath.normpath(unquote(path)).removeprefix("/static")
+        if path == "/api/birthdays" or path.startswith("/api/birthdays/") or normalized == "/birthdays.html":
+            if "clinic" not in query:
+                self.auth_json({"ok": False, "error": "Informe a clínica."}, 400)
+                return False
+            if not self.require_permission(clinic, "birthdays.view"):
+                return False
+            if path == "/api/birthdays/export":
+                if self.command == "GET":
+                    return self.require_permission(clinic, "birthdays.export")
+                self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
+                return False
+            if self.command == "GET" or (self.command == "HEAD" and normalized == "/birthdays.html"):
+                return True
+            if self.command == "POST" and path in {"/api/birthdays/gift", "/api/birthdays/gift/undo"}:
+                return True
+            self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
+            return False
         if path == "/api/tasks" or path.startswith("/api/tasks/") or normalized == "/tasks.html":
             if "clinic" not in query:
                 self.auth_json({"ok": False, "error": "Informe a clínica."}, 400)
@@ -291,7 +308,7 @@ class SessionAuthMixin:
             from institute_api import guard
             if not guard(self, urlsplit(self.path)):
                 return None
-        if target.name in {"body-evolution.html", "tasks.html"} and not self.require_request_permission(urlsplit(self.path)):
+        if target.name in {"body-evolution.html", "tasks.html", "birthdays.html"} and not self.require_request_permission(urlsplit(self.path)):
             return None
         return super().send_head()
 

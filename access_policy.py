@@ -12,6 +12,7 @@ MODULES = {
     "whatsapp_review": {"label": "Avaliação WhatsApp", "view": "whatsappAuditView", "actions": ["view", "edit", "export"]},
     "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "delete", "export"]},
     "tasks": {"label": "Tarefas", "view": "tasksView", "actions": ["view", "create", "edit", "delete"]},
+    "birthdays": {"label": "Aniversários", "view": "birthdaysView", "actions": ["view", "create", "edit", "export"]},
 }
 VIEW_MODULES = {item["view"]: key for key, item in MODULES.items()}
 ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "delete": "Excluir / restaurar", "export": "Exportar"}
@@ -52,7 +53,7 @@ def permission_map(clinics, permissions):
 
 
 def project_report(report, module):
-    if module in {"body_evolution", "tasks"}:
+    if module in {"body_evolution", "tasks", "birthdays"}:
         return {}
     result = {key: value for key, value in report.items() if key in REPORT_KEYS[module] | {"connected", "filters", "pipelines"}}
     if module == "commercial":
@@ -69,9 +70,9 @@ def project_report(report, module):
 def profile_defaults():
     groups = {
         "Administrador da clínica": list(MODULES),
-        "Gerente": ["dashboard", "commercial", "patient_followup", "budget_followup"],
-        "Comercial": ["commercial", "patient_followup", "budget_followup"],
+        "Gerente": ["dashboard", "commercial", "patient_followup", "budget_followup", "birthdays"],
+        "Comercial": ["commercial", "patient_followup", "budget_followup", "birthdays"],
         "Financeiro": ["dashboard", "financial"],
-        "Recepção": ["patient_followup", "budget_followup"],
+        "Recepção": ["patient_followup", "budget_followup", "birthdays"],
     }
     return {name: [f"{key}.{action}" for key in keys for action in MODULES[key]["actions"]] for name, keys in groups.items()}

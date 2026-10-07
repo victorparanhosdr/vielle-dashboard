@@ -63,10 +63,10 @@
     $("settingsLink").href=`/settings.html?clinic=${encodeURIComponent(state.clinic)}`;
     $("syncBtn").hidden=!clinicAllowed;
     clinicRefresh.setClinic(clinicAllowed ? state.clinic : "");
-    const moduleOrder=["dashboard","commercial","financial","patient_followup","budget_followup","whatsapp_review","paid_traffic","body_evolution","tasks"];
+    const moduleOrder=["dashboard","commercial","financial","patient_followup","budget_followup","whatsapp_review","paid_traffic","body_evolution","tasks","birthdays"];
     $("viewTabs").innerHTML=moduleOrder.filter(key => data.modules[key] && data.permissions[state.clinic]?.includes(`${key}.view`)).map(key=> {
       const module=data.modules[key];
-      const target=key==="tasks" ? `/tasks.html?clinic=${encodeURIComponent(state.clinic)}` : key==="body_evolution" ? `/body-evolution.html?clinic=${encodeURIComponent(state.clinic)}` : `/?clinic=${encodeURIComponent(state.clinic)}&view=${encodeURIComponent(module.view)}`;
+      const target=key==="tasks" ? `/tasks.html?clinic=${encodeURIComponent(state.clinic)}` : key==="birthdays" ? `/birthdays.html?clinic=${encodeURIComponent(state.clinic)}` : key==="body_evolution" ? `/body-evolution.html?clinic=${encodeURIComponent(state.clinic)}` : `/?clinic=${encodeURIComponent(state.clinic)}&view=${encodeURIComponent(module.view)}`;
       return `<button type="button" class="tabBtn${key==="tasks" ? " active" : ""}" data-target="${esc(target)}" data-view="${esc(module.view)}" ${key==="tasks" ? 'aria-current="page"' : ""}>${esc(module.label)}</button>`;
     }).join("");
     $("newTask").hidden=!can("create");

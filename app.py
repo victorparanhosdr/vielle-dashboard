@@ -7090,6 +7090,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)
+        if parsed.path == "/api/birthdays" or parsed.path.startswith("/api/birthdays/"):
+            from patient_birthdays import handle_request
+            with clinic_context(self.request_clinic_id(parsed)):
+                return handle_request(self, parsed, db)
         if parsed.path == "/api/refresh":
             clinic = self.request_clinic_id(parsed)
             status = DASHBOARD_REFRESH_JOBS.status(clinic)
@@ -7393,6 +7397,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)
+        if parsed.path == "/api/birthdays" or parsed.path.startswith("/api/birthdays/"):
+            from patient_birthdays import handle_request
+            with clinic_context(self.request_clinic_id(parsed)):
+                return handle_request(self, parsed, db)
         if parsed.path.startswith("/api/body/"):
             from body_evolution import handle_request
             with clinic_context(self.request_clinic_id(parsed)):
