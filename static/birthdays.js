@@ -9,8 +9,8 @@
   const dateLabel = (value,year=true) => value ? new Date(value+"T12:00:00").toLocaleDateString("pt-BR",year?{}:{day:"2-digit",month:"2-digit"}) : "—";
   const timeLabel = value => new Date(value).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const initialMonth = new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit"}).format(new Date());
-  const state = {clinic:new URLSearchParams(location.search).get("clinic"),session:null,report:null,page:1,seq:0,detailSeq:0,detail:null,giftYear:null,busy:false,charts:[],started:false};
-  let searchTimer, toastTimer, focusReturn;
+  const state = {clinic:new URLSearchParams(location.search).get("clinic"),session:null,report:null,page:1,direction:"asc",seq:0,detailSeq:0,historySeq:0,history:null,detail:null,giftYear:null,busy:false,charts:[],started:false};
+  let searchTimer, toastTimer, historyTimer, focusReturn;
   const can = action => Boolean(state.session?.user.is_master || state.session?.permissions[state.clinic]?.includes(`birthdays.${action}`));
   const url = (suffix="",params={}) => `/api/birthdays${suffix}?${new URLSearchParams({clinic:state.clinic,...params})}`;
   const refreshController = new ClinicRefreshController({button:$("syncBtn"),status:$("refreshStatus"),getPeriod:()=>({}),onComplete:async clinic=>{if(clinic===state.clinic)await load();}});
@@ -25,7 +25,8 @@
   function toast(message) {clearTimeout(toastTimer);$("toast").textContent=message;$("toast").hidden=false;toastTimer=setTimeout(()=>$("toast").hidden=true,4000);}
   function destroyCharts() {state.charts.forEach(c=>c.destroy());state.charts=[];}
   function deny() {
-    state.seq++;state.detailSeq++;state.report=null;state.detail=null;state.started=false;destroyCharts();
+    state.seq++;state.detailSeq++;state.historySeq++;clearTimeout(historyTimer);state.history=null;state.report=null;state.detail=null;state.started=false;destroyCharts();
+    $("historySync").hidden=true;
     $("patients").replaceChildren();$("metrics").replaceChildren();$("giftBody").replaceChildren();
     $("giftDialog").close();$("validationDialog").close();$("content").hidden=true;$("loading").hidden=true;$("exportBtn").hidden=true;
     notice("Seu usuário não tem acesso aos aniversários desta clínica.");
@@ -45,11 +46,44 @@
     }).join("");
     $("exportBtn").hidden=!can("export");
     if(!clinic || !can("view")){deny();return;}
-    if(!state.started){state.started=true;load();}
+    if(!state.started){state.started=true;load();loadHistory();}
     else if(state.report){renderList();if(state.detail && !state.busy)renderGift();}
     icons();
   }
-  function params() {return {month:$("month").value,status:$("giftFilter").value,purchases:$("purchaseFilter").value,q:$("search").value,sort:$("sort").value,page:state.page};}
+  function params() {return {month:$("month").value,status:$("giftFilter").value,purchases:$("purchaseFilter").value,q:$("search").value,sort:$("sort").value,direction:state.direction,page:state.page};}
+  function renderHistory(data) {
+    const completed=`${data.completed_months} de ${data.total_months} meses`;
+    $("historySync").hidden=false;
+    $("historyBtn").hidden=!data.connected;
+    $("historyBtn").disabled=data.running || data.retry_after>0;
+    $("historyBtn").querySelector("span").textContent=data.running?"Carregando histórico...":data.complete?"Atualizar histórico":"Carregar histórico desde 2024";
+    $("historyStatus").textContent=data.running?`${completed} · ${data.message}`:data.complete?`Histórico consultado: 01/01/2024 a ${dateLabel(data.through)}.`:!data.connected?"Conecte o Clínica Experts para carregar o histórico.":`Histórico parcial: ${completed} consultados desde 2024.${data.phase==="error"?" A importação foi interrompida. Tente novamente para retomar.":""}`;
+    icons();
+  }
+  async function loadHistory() {
+    if(!can("view"))return;
+    clearTimeout(historyTimer);
+    const seq=++state.historySeq;
+    try {
+      const data=await request(url("/history"));
+      if(seq!==state.historySeq || !can("view"))return;
+      const finished=state.history?.running && !data.running;
+      state.history=data;renderHistory(data);
+      if(finished)await load();
+      if(seq===state.historySeq && (data.running || data.retry_after>0))historyTimer=setTimeout(loadHistory,3000);
+    } catch(error) {if(seq===state.historySeq){$("historySync").hidden=false;$("historyStatus").textContent=error.message;historyTimer=setTimeout(loadHistory,10000);}}
+  }
+  async function startHistory() {
+    if(!can("view"))return;
+    $("historyBtn").disabled=true;
+    const seq=state.historySeq;
+    try {
+      const data=await request(url("/history"),{});
+      if(seq!==state.historySeq || !can("view"))return;
+      state.history={...state.history,...data};
+      await loadHistory();
+    } catch(error) {if(seq===state.historySeq){$("historyStatus").textContent=error.message;$("historyBtn").disabled=false;}}
+  }
   async function load() {
     if(!can("view"))return;
     const seq=++state.seq;
@@ -78,6 +112,12 @@
     const data=state.report;if(!data)return;
     $("listCount").textContent=`${count(data.filtered_count)} de ${count(data.totals.patients)} pacientes`;
     $("giftHeading").textContent=`Presente · ${data.year}`;
+    document.querySelectorAll("[data-sort]").forEach(button=>{
+      const active=button.dataset.sort===data.sort, direction=data.direction==="desc"?"descending":"ascending";
+      button.closest("th").setAttribute("aria-sort",active?direction:"none");
+      button.querySelector("svg,i")?.remove();
+      button.insertAdjacentHTML("beforeend",icon(active?(data.direction==="desc"?"arrow-down":"arrow-up"):"arrow-up-down"));
+    });
     $("patients").innerHTML=data.patients.map(row=>{
       const initials=row.name.trim().split(/\s+/).slice(0,2).map(n=>n[0]).join("").toUpperCase();
       let phone=row.phone.replace(/\D/g,"");if(phone.length===10 || phone.length===11)phone="55"+phone;
@@ -162,7 +202,16 @@
   $("month").value=initialMonth;
   $("month").min="2000-01";$("month").max=`${Number(initialMonth.slice(0,4))+1}-12`;
   $("filters").onsubmit=event=>{event.preventDefault();state.page=1;load();};
-  ["month","giftFilter","purchaseFilter","sort"].forEach(id=>$(id).onchange=()=>{state.page=1;load();});
+  ["month","giftFilter","purchaseFilter"].forEach(id=>$(id).onchange=()=>{state.page=1;load();});
+  const defaultDirection = key => ["amount","sales","last_sale"].includes(key)?"desc":"asc";
+  $("sort").onchange=()=>{state.direction=defaultDirection($("sort").value);state.page=1;load();};
+  document.querySelector("thead").onclick=event=>{
+    const button=event.target.closest("[data-sort]");if(!button)return;
+    const key=button.dataset.sort;
+    state.direction=$("sort").value===key?(state.direction==="asc"?"desc":"asc"):defaultDirection(key);
+    $("sort").value=key;state.page=1;load();
+  };
+  $("historyBtn").onclick=startHistory;
   $("search").oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.page=1;load();},250);};
   $("previousMonth").onclick=()=>monthStep(-1);$("nextMonth").onclick=()=>monthStep(1);
   $("currentMonth").onclick=()=>{$("month").value=state.report?.today.slice(0,7) || initialMonth;state.page=1;load();};

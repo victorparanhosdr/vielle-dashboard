@@ -28,7 +28,7 @@ def seed(conn, uuid="patient", birth="1985-10-07", name="Ana Costa", **extra):
 def sale(conn, uuid, buyer="patient", kind="sale", status="active", amount=12500, **extra):
     raw = {"type": kind, "status": status, "final_amount": amount, "buyer": {"uuid": buyer}, **extra}
     conn.execute("INSERT INTO clinica_sales(uuid,patient_uuid,type,sale_date,total,raw_json,synced_at) VALUES(?,?,?,?,?,?,0)",
-                 (uuid, buyer, kind, "2025-06-01", 9999, json.dumps(raw)))
+                 (uuid, buyer, kind, extra.get("sale_date", "2025-06-01"), 9999, json.dumps(raw)))
 
 
 class BirthdayTests(unittest.TestCase):
@@ -99,6 +99,28 @@ class BirthdayTests(unittest.TestCase):
             self.assertEqual([e["action"] for e in data["events"]], ["undone", "updated", "sent"])
             self.assertEqual(data["events"][0]["actor_name"], "Recepção")
 
+    def test_purchase_history_includes_2024_2025_and_2026(self):
+        for year in (2024, 2025, 2026):
+            sale(self.conn, str(year), amount=10000, sale_date=f"{year}-01-05")
+        row = self.report()["patients"][0]
+        self.assertEqual((row["sales"], row["amount"], row["last_sale"]), (3, 300, "2026-01-05"))
+
+    def test_header_sort_directions_apply_before_pagination(self):
+        for n in range(40):
+            seed(self.conn, f"p{n}", "1990-10-15", name=f"Paciente {n:02}")
+            sale(self.conn, f"s{n}", buyer=f"p{n}", amount=n * 100, sale_date=f"2025-06-{n % 28 + 1:02}")
+        self.assertEqual(self.report(sort="amount")["patients"][0]["uuid"], "p39")
+        descending = self.report(sort="amount", direction="desc")["patients"]
+        ascending = self.report(sort="amount", direction="asc")["patients"]
+        self.assertGreater(descending[0]["amount"], descending[-1]["amount"])
+        self.assertLess(ascending[0]["amount"], ascending[-1]["amount"])
+        page2 = self.report(sort="amount", direction="desc", page=2)["patients"]
+        self.assertGreaterEqual(descending[-1]["amount"], page2[0]["amount"])
+        self.assertEqual(self.report(sort="name", direction="desc")["patients"][0]["name"], "Paciente 39")
+        self.assertEqual(self.report(sort="last_sale", direction="asc", page=2)["patients"][-1]["uuid"], "patient")
+        self.gift()
+        self.assertEqual(self.report(sort="gift", direction="desc")["patients"][0]["uuid"], "patient")
+
     def test_filters_sort_pagination_and_safe_filtered_workbook(self):
         for n in range(40):
             seed(self.conn, f"p{n}", "1990-10-15", name=f"Paciente {n:02}")
@@ -132,7 +154,7 @@ class BirthdayTests(unittest.TestCase):
         for extra in ({"sent_at": "2026-10-08"}, {"sent_at": "2025-10-07"}, {"year": True}, {"revision": True},
                       {"description": ""}, {"description": "x" * 201}, {"patient_uuid": "unknown"}):
             with self.assertRaises((ValueError, LookupError)): self.gift(**extra)
-        for query in ({"month": ["2026-13"]}, {"month": ["2026-10", "2026-09"]}, {"sort": ["raw_json"]}, {"page": ["0"]}):
+        for query in ({"month": ["2026-13"]}, {"month": ["2026-10", "2026-09"]}, {"sort": ["raw_json"]}, {"direction": ["random"]}, {"page": ["0"]}):
             with self.assertRaises(ValueError): birthdays.options(query, DAY)
 
 
@@ -192,6 +214,19 @@ class BirthdayHttpTests(unittest.TestCase):
             self.assertEqual(self.req("/api/birthdays?clinic=inspire", user="master")[1]["totals"]["sent"], 0)
             self.assertEqual(self.req("/api/birthdays/patient?clinic=inspire&id=shared", user="master")[1]["history"], [])
             self.assertEqual(self.req("/api/birthdays/gift?clinic=vielle", payload={"patient_uuid": [], "year": 2026})[0], 400)
+
+    def test_history_access_connection_and_csrf(self):
+        from birthday_history import JOBS
+        self.assertEqual(self.req("/api/birthdays/history?clinic=vielle", user="none")[0], 403)
+        self.assertEqual(self.req("/api/birthdays/history?clinic=inspire")[0], 403)
+        self.assertEqual(self.req("/api/birthdays/history?clinic=vielle", payload={}, csrf=False)[0], 403)
+        with patch.object(app, "config_value", return_value=""):
+            self.assertEqual(self.req("/api/birthdays/history?clinic=vielle")[0], 200)
+            self.assertEqual(self.req("/api/birthdays/history?clinic=vielle", payload={})[0], 409)
+        with patch.object(app, "config_value", return_value="connected"), patch("birthday_history.start", return_value={"ok": True}) as start:
+            self.assertEqual(self.req("/api/birthdays/history?clinic=vielle", user="reader", payload={})[0], 202)
+            start.assert_called_once_with("vielle")
+        self.assertFalse(JOBS.status("vielle")["running"])
 
 
 if __name__ == "__main__": unittest.main()

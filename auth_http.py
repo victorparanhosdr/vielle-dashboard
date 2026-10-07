@@ -187,7 +187,7 @@ class SessionAuthMixin:
                 return False
             if self.command == "GET" or (self.command == "HEAD" and normalized == "/birthdays.html"):
                 return True
-            if self.command == "POST" and path in {"/api/birthdays/gift", "/api/birthdays/gift/undo"}:
+            if self.command == "POST" and path in {"/api/birthdays/gift", "/api/birthdays/gift/undo", "/api/birthdays/history"}:
                 return True
             self.auth_json({"ok": False, "error": "Método não permitido."}, 405)
             return False

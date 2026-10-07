@@ -51,6 +51,14 @@
 .birthdayContent .tableScroll{overflow-x:auto;width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:white}
 .birthdayContent table{border-collapse:collapse;text-align:left;width:100%;font-size:13px;min-width:900px}
 .birthdayContent th{background:#edf2ef;font-size:11px;color:#596c63;font-weight:600;white-space:nowrap}
+.birthdayContent th button{border:0!important;background:transparent!important;padding:0;min-height:24px;font-size:11px;color:inherit!important;gap:7px;width:100%;justify-content:flex-start}
+.birthdayContent th.number button{justify-content:flex-end}
+.birthdayContent th button svg{height:13px;width:13px;opacity:.5}
+.birthdayContent th[aria-sort=ascending] button,.birthdayContent th[aria-sort=descending] button{color:var(--green)!important}
+.birthdayContent th[aria-sort=ascending] svg,.birthdayContent th[aria-sort=descending] svg{opacity:1}
+.birthdayContent .historySync{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:0 0 20px;font-size:12px;color:var(--muted)}
+.birthdayContent .historySync p{flex:1;min-width:180px;line-height:1.6}
+.birthdayContent #historyBtn{font-size:12px}
 .birthdayContent th,.birthdayContent td{padding:15px 14px;border-bottom:1px solid #eaf0ec;vertical-align:middle}
 .birthdayContent tr:last-child td{border-bottom:0}
 .birthdayContent tr.today{background:#e9f5f4}

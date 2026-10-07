@@ -20,8 +20,16 @@ por clínica e não altera o cadastro ou o prontuário no sistema de origem.
 - Exportação XLSX inclui toda a lista filtrada, não apenas a página atual.
 
 O botão Atualizar tudo reutiliza a sincronização existente, incluindo pacientes.
-O histórico depende da cobertura disponível nessa base, não representa uma
-promessa de acesso a vendas ainda não importadas.
+O botão Carregar histórico desde 2024 consulta todos os pacientes e as vendas
+desde 01/01/2024, mês a mês, com paginação. Cada mês concluído é persistido em
+`birthday_history_months`; falhas permitem retomar sem apagar registros ou
+presentes. Não consulta financeiro, agendamentos nem importa chaves. O progresso
+e a cobertura são exibidos na página. A importação compartilha o bloqueio por
+clínica com a sincronização normal e requer acesso ao módulo e proteção CSRF.
+
+Os cabeçalhos da lista alternam ordem crescente/decrescente por nome,
+aniversário, vendas, total comprado, última compra ou presente. A ordenação é
+aplicada antes da paginação e também vale na exportação; datas ausentes vão ao fim.
 
 ## Presentes e acesso
 
@@ -38,6 +46,7 @@ APIs autenticadas e com clínica obrigatória:
 
 - GET `/api/birthdays`, `/api/birthdays/patient`, `/api/birthdays/export`
 - POST `/api/birthdays/gift`, `/api/birthdays/gift/undo`
+- GET/POST `/api/birthdays/history` (progresso / iniciar ou retomar importação)
 
 ## Verificação local
 

@@ -74,7 +74,8 @@ def options(query, reference=None):
     if not 2000 <= year <= reference.year + 1 or not 1 <= number <= 12:
         raise ValueError("Mês inválido.")
     status, purchases, sort = one("status", "all"), one("purchases", "all"), one("sort", "birthday")
-    if status not in {"all", "sent", "pending"} or purchases not in {"all", "with", "without"} or sort not in {"birthday", "amount", "sales", "name"}:
+    direction = one("direction", "desc" if sort in {"amount", "sales", "last_sale"} else "asc")
+    if status not in {"all", "sent", "pending"} or purchases not in {"all", "with", "without"} or sort not in {"birthday", "amount", "sales", "name", "last_sale", "gift"} or direction not in {"asc", "desc"}:
         raise ValueError("Filtro inválido.")
     q = one("q").strip()
     if len(q) > 200:
@@ -85,7 +86,7 @@ def options(query, reference=None):
             raise ValueError()
     except ValueError:
         raise ValueError("Página inválida.") from None
-    return {"month": month, "year": year, "number": number, "status": status, "purchases": purchases, "sort": sort, "q": q, "page": page}
+    return {"month": month, "year": year, "number": number, "status": status, "purchases": purchases, "sort": sort, "direction": direction, "q": q, "page": page}
 
 
 def patient(conn, uuid):
@@ -178,15 +179,19 @@ def report(conn, filters, reference=None, export=False):
     selected = [r for r in rows if (not query or query in normalized(" ".join((r["name"], r["phone"], r["email"]))))
                 and (filters["status"] == "all" or r["gift_sent"] == (filters["status"] == "sent"))
                 and (filters["purchases"] == "all" or bool(r["sales"]) == (filters["purchases"] == "with"))]
-    key = {"birthday": lambda r: (r["birthday"], normalized(r["name"])), "amount": lambda r: (-r["amount"], r["birthday"], normalized(r["name"])),
-           "sales": lambda r: (-r["sales"], r["birthday"], normalized(r["name"])), "name": lambda r: (normalized(r["name"]), r["birthday"])}[filters["sort"]]
-    selected.sort(key=key)
+    field = {"gift": "gift_sent"}.get(filters["sort"], filters["sort"])
+    selected.sort(key=lambda r: (normalized(r["name"]), r["birthday"], r["uuid"]))
+    selected.sort(key=lambda r: normalized(r[field]) if field == "name" else r[field] or "" if field == "last_sale" else r[field],
+                  reverse=filters["direction"] == "desc")
+    if field == "last_sale":
+        selected.sort(key=lambda r: r["last_sale"] is None)
     count = len(selected)
     if not export:
         selected = selected[(filters["page"] - 1) * 30:filters["page"] * 30]
     return {"ok": True, "month": filters["month"], "year": filters["year"], "today": reference.isoformat(), "totals": totals, "warnings": warnings,
             "synced_at": synced, "daily": daily, "distribution": distribution, "patients": selected, "filtered_count": count,
-            "page": filters["page"], "pages": max(1, (count + 29) // 30), "basis": "Compras acumuladas na base sincronizada do Clínica Experts."}
+            "page": filters["page"], "pages": max(1, (count + 29) // 30), "sort": filters["sort"], "direction": filters["direction"],
+            "basis": "Compras acumuladas na base sincronizada do Clínica Experts, sem limitar ao mês do aniversário."}
 
 
 def detail(conn, uuid):
@@ -297,6 +302,9 @@ def handle_request(handler, parsed, connect):
         with connect() as conn:
             initialize(conn)
             if handler.command == "GET":
+                if parsed.path == "/api/birthdays/history":
+                    from birthday_history import status
+                    return handler.auth_json(status(conn, clinic))
                 if parsed.path == "/api/birthdays/patient":
                     if len(query.get("id", [])) != 1:
                         raise ValueError("Informe o paciente.")
@@ -314,7 +322,7 @@ def handle_request(handler, parsed, connect):
                     handler.wfile.write(content)
                     return
                 return handler.auth_json(data)
-            if parsed.path not in {"/api/birthdays/gift", "/api/birthdays/gift/undo"}:
+            if parsed.path not in {"/api/birthdays/gift", "/api/birthdays/gift/undo", "/api/birthdays/history"}:
                 return handler.auth_json({"ok": False, "error": "Rota não encontrada."}, 404)
             length = int(handler.headers.get("Content-Length", "0"))
             if handler.headers.get_content_type() != "application/json" or handler.headers.get("Transfer-Encoding") or not 0 < length <= 12000:
@@ -322,6 +330,11 @@ def handle_request(handler, parsed, connect):
             payload = json.loads(handler.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Solicitação inválida.")
+            if parsed.path == "/api/birthdays/history":
+                from birthday_history import start, status
+                if not status(conn, clinic)["connected"]:
+                    return handler.auth_json({"ok": False, "error": "Conecte o Clínica Experts nesta clínica antes de importar."}, 409)
+                return handler.auth_json(start(clinic), 202)
             if not isinstance(payload.get("patient_uuid"), str) or type(payload.get("year")) is not int:
                 raise ValueError("Paciente ou ano inválidos.")
             old = conn.execute("SELECT revision FROM birthday_gifts WHERE patient_uuid=? AND year=?", (payload.get("patient_uuid"), payload.get("year"))).fetchone()
