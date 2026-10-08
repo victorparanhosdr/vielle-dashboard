@@ -68,6 +68,16 @@ class SharedDesignTests(unittest.TestCase):
         self.assertIn('event.key === "Escape"', shell)
         self.assertIn('"aria-label", "Menu da conta"', shell)
 
+    def test_mobile_fields_and_export_icons_have_bounded_dimensions(self):
+        css = (ROOT / "static/design-system.css").read_text()
+        self.assertIn("min-inline-size: 0; max-inline-size: 100%", css)
+        self.assertIn("input::-webkit-date-and-time-value", css)
+        self.assertIn(".generalAccumulatedSvg { min-width: 0; max-width: 100%; }", css)
+        self.assertRegex(css, r"\.panelHead \.chartExportButton\s*\{[^}]*padding: 0;")
+        self.assertIn(".chartExportIcon { width: 26px; height: 26px; }", css)
+        self.assertIn("grid-template-columns: repeat(2,minmax(0,1fr))", css)
+        self.assertIn(".tasksContent .segments { display: grid;", css)
+
 
 if __name__ == "__main__":
     unittest.main()

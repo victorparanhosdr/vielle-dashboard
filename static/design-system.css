@@ -68,13 +68,20 @@ body[data-app-page] :is(button,a,select,input,textarea,summary):focus-visible { 
 body[data-app-page] :is(input,select,textarea) {
   border-radius: 7px; border-color: var(--ui-line) !important;
   background: var(--ui-surface) !important; color: var(--ui-ink) !important;
-  font-size: 14px; max-width: 100%;
+  font-size: 14px; min-width: 0; max-width: 100%;
 }
 body[data-app-page] :is(input,select):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]) { min-height: 42px; }
+/* Native WebKit date fields otherwise retain an intrinsic width on iPhone. */
+body[data-app-page] input:is([type=date],[type=month],[type=datetime-local]) {
+  display: block; width: 100%; min-inline-size: 0; max-inline-size: 100%;
+  -webkit-appearance: none; appearance: none;
+}
+body[data-app-page] input::-webkit-date-and-time-value { min-width: 0; text-align: left; }
+body[data-app-page] input::-webkit-datetime-edit { min-width: 0; padding: 0; }
 body[data-app-page] :is(input,select,textarea):focus { border-color: var(--ui-focus) !important; box-shadow: 0 0 0 3px #358b7718 !important; }
 body[data-app-page] input:is([type=checkbox],[type=radio],[type=range]) { accent-color: var(--ui-green); }
 body[data-app-page] .ambient { display: none; }
-body[data-app-page] .shell::before { display: none; }
+body[data-app-page] .shell::before { content: none; display: none; }
 body[data-app-page] .eyebrow { color: var(--ui-muted); font-size: 11px; }
 body[data-app-page] [hidden] { display: none !important; }
 /* Chrome uses the original controls, so their permissions and listeners survive. */
@@ -120,6 +127,8 @@ body[data-app-page] .appNav :is(button,a):hover { color: var(--ui-green) !import
 :root[data-theme=dark] .appChrome { background: var(--ui-glass); }
 /* One aligned canvas instead of a narrow header over a full-width page. */
 body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,.masterMain,#instituteApp,#instituteLanding) { width: 100%; max-width: none; margin: 0; padding: 28px var(--ui-gutter) 40px; background: transparent; }
+/* Wide plots and tables scroll inside their own frames, never the page. */
+body[data-app-page] .shell { overflow-x: clip; }
 .appShellReady :is(.tasksHeader,.birthdaysHeader) { padding: 0 !important; }
 body[data-app-page=body] main, body[data-app-page=brain] main, body[data-app-page=pricing] main { width: 100%; max-width: none; margin: 0; padding: 28px var(--ui-gutter) 40px; background: transparent; }
 body[data-app-page] :is(.page-heading,.pageHeading,.pageTitle,.heading) { margin-bottom: 24px; }
@@ -129,6 +138,13 @@ body[data-app-page] :is(.panelHead,.filterHead,.settingsHeader) { background: tr
 body[data-app-page] .panelHead { padding: 17px 0; }
 body[data-app-page] .panelHead h2 { font-size: 16px; text-transform: none; }
 body[data-app-page] .panelHead.chartExportHeader { padding-right: 58px; }
+body[data-app-page] .panelHead .chartExportButton {
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+  padding: 0; flex: 0 0 44px; border-radius: 7px;
+  display: grid; place-items: center;
+}
+body[data-app-page] .chartExportIcon { width: 26px; height: 26px; }
+body[data-app-page] .generalAccumulatedSvg { min-width: 0; max-width: 100%; }
 body[data-app-page] :is(.filterPanel,.filters,.generalControls,.birthdayFilters) { background: #edf3f080 !important; border: 1px solid var(--ui-line) !important; border-radius: 8px; padding: 14px; box-shadow: inset 0 1px 0 #ffffffc0 !important; }
 body[data-app-page] :is(.filterPanel,.filters) { margin: 0 0 24px; }
 body[data-app-page] :is(.generalControls,.birthdayFilters) { margin-bottom: 0; }
@@ -244,9 +260,28 @@ body[data-app-page=login] h1 { font-size: 24px; }
   body[data-app-page] h1, body[data-app-page] .generalExecutiveHeader h2 { font-size: 24px; }
   body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,.masterMain,#instituteApp,#instituteLanding) { padding-top: 22px; }
   body[data-app-page] :is(input,select,textarea) { font-size: 16px; }
+  body[data-app-page] :is(.filterGrid,.generalControls,.birthdayFilters,.filters) > * { min-width: 0; max-width: 100%; }
+  body[data-app-page] .generalBoard { padding: 0; }
+  body[data-app-page] .generalExecutiveHeader { gap: 16px; margin-bottom: 18px; }
+  body[data-app-page] .generalExecutive .generalControls { width: 100%; padding: 12px; gap: 10px; }
+  body[data-app-page] .generalControls :is(input,select,button) { width: 100%; min-width: 0; }
+  body[data-app-page] .generalControls label { gap: 5px; }
+  body[data-app-page] .generalHeroGrid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  body[data-app-page] .generalHeroGrid .generalMetric { grid-column: auto; grid-row: auto; min-height: 96px; padding: 14px; }
+  body[data-app-page] .generalHeroGrid .generalMetric.featured { grid-column: 1 / -1; min-height: 0; padding: 18px; }
+  body[data-app-page] .generalMetric strong { font-size: 22px; white-space: normal; overflow-wrap: anywhere; }
   body[data-app-page] .generalMetric.featured > strong { font-size: 30px; }
-  body[data-app-page] .generalMetric.featured { padding: 18px; }
-  body[data-app-page] .generalHeroGrid { gap: 10px; }
+  body[data-app-page] .featuredFinanceSplit { padding-top: 14px; gap: 8px; }
+  body[data-app-page] .featuredFinanceSplit > div { padding: 10px; }
+  body[data-app-page] .featuredFinanceSplit b { font-size: 18px; white-space: normal; overflow-wrap: anywhere; }
+  body[data-app-page] .generalMetric :is(small,.featuredFinanceSplit span) { font-size: 11px; line-height: 1.4; }
+  body[data-app-page] .receivedDetails { padding-top: 14px; gap: 10px; }
+  body[data-app-page] .generalSmallChart { min-width: 0; padding: 12px 0; }
+  body[data-app-page] .panelHead.chartExportHeader { min-height: 56px; padding-top: 14px; padding-bottom: 14px; }
+  body[data-app-page] .panelHead .chartExportButton { right: 0; }
+  body[data-app-page] .tasksContent .segments { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 100%; }
+  body[data-app-page] .tasksContent .segments button { min-width: 0; padding: 8px 5px; gap: 4px; font-size: 12px; }
+  body[data-app-page] .tasksContent .segments svg { width: 16px; height: 16px; }
   body[data-app-page] .clinicCards { grid-template-columns: minmax(0,1fr); }
   body[data-app-page] .clinicAccessCard { min-height: 220px; }
 }
