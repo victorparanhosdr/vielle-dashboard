@@ -8,13 +8,17 @@
   <link rel="icon" type="image/png" href="/doc4docs-favicon.png">
   <link rel="stylesheet" href="/styles.css?v=birthdays1">
   <link rel="stylesheet" href="/birthdays.css?v=2">
+  <link rel="preload" href="/app-shell.js?v=1" as="script">
+  <script>
+    document.documentElement.classList.add("appShellBooting");
+    window.addEventListener("DOMContentLoaded", () => document.documentElement.classList.remove("appShellBooting"), {once:true});
+  </script>
   <script src="/session.js?v=birthdays1" defer></script>
   <script src="/body-icons.js" defer></script>
   <script src="/institute-chart.min.js" defer></script>
   <script src="/clinic-refresh.js?v=automatic-1" defer></script>
   <script src="/birthdays.js?v=2" defer></script>
   <link rel="stylesheet" href="/design-system.css?v=1">
-  <script src="/app-shell.js?v=1" defer></script>
 </head>
 <body class="birthdaysPage" data-app-page="birthdays">
   <div class="sessionToolbar" aria-label="Conta">
@@ -80,5 +84,6 @@
     <dialog id="validationDialog" aria-labelledby="validationTitle"><div class="dialogHeading"><h2 id="validationTitle">Dados para conferir</h2><button type="button" class="iconButton" id="closeValidation" aria-label="Fechar validação" title="Fechar validação"><i data-lucide="x"></i></button></div><div id="validationBody"></div></dialog>
   </main>
   <div id="toast" role="status" hidden></div>
+  <script src="/app-shell.js?v=1"></script>
 </body>
 </html>

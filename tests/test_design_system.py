@@ -13,6 +13,7 @@ class Page(HTMLParser):
         self.scripts = []
         self.page = None
         self.ids = []
+        self.script_attributes = {}
         self.feed(source)
 
     def handle_starttag(self, tag, attributes):
@@ -22,7 +23,9 @@ class Page(HTMLParser):
         if tag == "link" and attrs.get("rel") == "stylesheet":
             self.styles.append(attrs["href"].split("?")[0])
         if tag == "script" and attrs.get("src"):
-            self.scripts.append(attrs["src"].split("?")[0])
+            source = attrs["src"].split("?")[0]
+            self.scripts.append(source)
+            self.script_attributes[source] = attrs
         if attrs.get("id"):
             self.ids.append(attrs["id"])
 
@@ -86,6 +89,22 @@ class SharedDesignTests(unittest.TestCase):
         self.assertNotIn("window.localStorage", source)
         self.assertIn(".appChrome.appMenuOpen .appNav { display: grid !important;", css)
         self.assertIn(".appNotificationSource { display: none !important; }", css)
+
+    def test_standalone_modules_boot_chrome_before_deferred_modules(self):
+        for name in ("tasks.html", "birthdays.html"):
+            source = (ROOT / "static" / name).read_text()
+            page = Page(source)
+            with self.subTest(page=name):
+                self.assertNotIn("defer", page.script_attributes["/app-shell.js"])
+                self.assertIn('<link rel="preload" href="/app-shell.js?v=1" as="script">', source)
+                self.assertGreater(source.index('src="/app-shell.js'), source.index('id="toast"'))
+                self.assertLess(source.index('classList.add("appShellBooting")'), source.index("<body"))
+                self.assertIn('classList.remove("appShellBooting")', source)
+                self.assertIn('"DOMContentLoaded"', source)
+        css = (ROOT / "static/design-system.css").read_text()
+        self.assertIn(":not(.appShellReady) > :is(.sessionToolbar,.tasksHeader,.birthdaysHeader)", css)
+        shell = (ROOT / "static/app-shell.js").read_text()
+        self.assertIn('document.addEventListener("DOMContentLoaded", () => window.lucide?.createIcons({root:chrome})', shell)
 
 
 if __name__ == "__main__":

@@ -460,4 +460,5 @@
   updateContext();
   decorateNav();
   window.lucide?.createIcons({root:chrome});
+  document.addEventListener("DOMContentLoaded", () => window.lucide?.createIcons({root:chrome}), {once:true});
 })();

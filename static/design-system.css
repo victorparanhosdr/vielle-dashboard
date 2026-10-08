@@ -85,6 +85,12 @@ body[data-app-page] .shell::before { content: none; display: none; }
 body[data-app-page] .eyebrow { color: var(--ui-muted); font-size: 11px; }
 body[data-app-page] [hidden] { display: none !important; }
 /* Chrome uses the original controls, so their permissions and listeners survive. */
+/* Hide legacy chrome from the first paint; DOMContentLoaded restores the fallback if boot fails. */
+.appShellBooting :is(.tasksPage,.birthdaysPage):not(.appShellReady) > :is(.sessionToolbar,.tasksHeader,.birthdaysHeader) { display: none !important; }
+.appShellBooting :is(.tasksPage,.birthdaysPage):not(.appShellReady)::before {
+  content: ""; display: block; flex: none; height: 135px;
+  background: var(--ui-glass); border-bottom: 1px solid var(--ui-line);
+}
 .appShellReady :is(.appLegacyHeader,.appLegacyToolbar,#mobileTabsToggle) { display: none !important; }
 .appChrome { position: relative; z-index: 30; width: 100%; border-bottom: 1px solid var(--ui-line); background: var(--ui-glass); }
 .appTopbar { display: flex; align-items: center; gap: 20px; min-height: 76px; padding: 10px var(--ui-gutter); border-bottom: 1px solid #dce6e188; }
@@ -262,6 +268,7 @@ body[data-app-page=login] h1 { font-size: 24px; }
 }
 @media (max-width: 760px) {
   :root { --ui-gutter: 16px; }
+  .appShellBooting :is(.tasksPage,.birthdaysPage):not(.appShellReady)::before { height: 175px; }
   .appTopbar { min-height: 70px; gap: 10px; flex-wrap: wrap; padding: 8px var(--ui-gutter); }
   .appBrand { flex-basis: 106px; }
   .appBrand img { width: 106px; height: 46px; }

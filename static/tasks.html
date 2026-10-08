@@ -8,12 +8,16 @@
   <link rel="icon" type="image/png" href="/doc4docs-favicon.png?v=20260908-2">
   <link rel="stylesheet" href="/styles.css?v=refresh-all-1">
   <link rel="stylesheet" href="/tasks.css?v=3">
+  <link rel="preload" href="/app-shell.js?v=1" as="script">
+  <script>
+    document.documentElement.classList.add("appShellBooting");
+    window.addEventListener("DOMContentLoaded", () => document.documentElement.classList.remove("appShellBooting"), {once:true});
+  </script>
   <script src="/session.js?v=tasks1" defer></script>
   <script src="/body-icons.js" defer></script>
   <script src="/clinic-refresh.js?v=automatic-1" defer></script>
   <script src="/tasks.js?v=3" defer></script>
   <link rel="stylesheet" href="/design-system.css?v=1">
-  <script src="/app-shell.js?v=1" defer></script>
 </head>
 <body class="tasksPage" data-app-page="tasks">
   <div class="sessionToolbar" aria-label="Conta">
@@ -70,5 +74,6 @@
     </div>
   </main>
   <div id="toast" role="status" hidden></div>
+  <script src="/app-shell.js?v=1"></script>
 </body>
 </html>
