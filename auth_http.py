@@ -18,6 +18,7 @@ SESSION_COOKIE = "doc4docs_session"
 PUBLIC_FILES = {"/login.html", "/login.css", "/login.js", "/session.js", "/doc4docs-logo-white.png", "/doc4docs-favicon.png"}
 PUBLIC_FILES.update({"/pricing.html", "/pricing.css", "/pricing.js", "/pricing-math.js",
                      "/pricing-pdf-lib.min.js", "/body-icons.js"})
+PUBLIC_FILES.update({"/design-system.css", "/app-shell.js"})
 INTEGRATION_CALLBACKS = {"/auth/callback", "/webhooks/revoked"}
 ADMIN_API_PATHS = {"/api/settings", "/api/sync-all", "/api/clear-data", "/api/reset-kommo", "/api/sync", "/api/sync-clinica", "/auth/start"}
 

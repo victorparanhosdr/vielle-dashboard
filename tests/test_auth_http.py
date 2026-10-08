@@ -104,7 +104,9 @@ class HttpAuthTests(unittest.TestCase):
     def test_pricing_page_and_assets_are_public_without_clinic_access(self):
         paths = ("/precificacao", "/precificacao/", "/precificacao?clinic=inspire",
                  "/pricing.html", "/static/pricing.html", "/pricing.css", "/pricing.js",
-                 "/pricing-math.js", "/body-icons.js", "/pricing-pdf-lib.min.js")
+                 "/pricing-math.js", "/body-icons.js", "/pricing-pdf-lib.min.js",
+                 "/design-system.css?v=1", "/static/design-system.css?v=1",
+                 "/app-shell.js?v=1", "/static/app-shell.js?v=1")
         with patch.object(self.app, "db", side_effect=AssertionError("No clinic DB access")):
             for path in paths:
                 self.assertEqual(self.request("GET", path)[0], 200, path)
