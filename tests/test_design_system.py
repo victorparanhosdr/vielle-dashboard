@@ -78,6 +78,15 @@ class SharedDesignTests(unittest.TestCase):
         self.assertIn("grid-template-columns: repeat(2,minmax(0,1fr))", css)
         self.assertIn(".tasksContent .segments { display: grid;", css)
 
+    def test_mobile_menu_and_notification_center_are_shared(self):
+        source = (ROOT / "static/app-shell.js").read_text()
+        css = (ROOT / "static/design-system.css").read_text()
+        for requirement in ("appMobileNavToggle", "aria-expanded", "appNotificationPanel", "appNotificationSource", "captureNotifications", "sessionStorage"):
+            self.assertIn(requirement, source)
+        self.assertNotIn("window.localStorage", source)
+        self.assertIn(".appChrome.appMenuOpen .appNav { display: grid !important;", css)
+        self.assertIn(".appNotificationSource { display: none !important; }", css)
+
 
 if __name__ == "__main__":
     unittest.main()

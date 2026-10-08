@@ -102,11 +102,32 @@ body[data-app-page] .appContext :is(button,a) { display: flex; align-items: cent
 .appAreas a { display: flex; align-items: center; text-decoration: none; padding: 8px 13px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--ui-muted); }
 .appAreas a[aria-current=page] { background: var(--ui-green); color: white; box-shadow: 0 1px 4px #183d2920; }
 .appHeaderActions { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.appMobileNavToggle { display: none; }
+body[data-app-page] .appNotificationSource { display: none !important; }
+body[data-app-page] .appNotificationToggle { position: relative; overflow: visible; }
+.appNotificationBadge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; border-radius: 10px; background: #a94750; border: 2px solid var(--ui-bg); color: white; font-size: 10px; line-height: 1; font-weight: 650; }
+.appNotificationPanel { position: absolute; z-index: 50; top: 64px; right: var(--ui-gutter); width: min(420px,calc(100% - 32px)); max-height: min(600px,calc(100dvh - 90px)); display: flex; flex-direction: column; padding: 18px; border: 1px solid var(--ui-line); border-radius: 8px; background: var(--ui-surface); box-shadow: 0 16px 48px #173c2f26; }
+.appNotificationHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+body[data-app-page] .appNotificationHeading h2 { margin: 0; font-size: 18px; }
+.appNotificationTools { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; color: var(--ui-muted); font-size: 12px; }
+.appNotificationTools > span { flex: 1; min-width: 0; }
+.appNotificationList { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.appNotificationItem { display: flex; align-items: flex-start; gap: 10px; padding: 16px 0; border-top: 1px solid var(--ui-line); }
+.appNotificationItem > svg { margin-top: 2px; color: var(--ui-muted); }
+.appNotificationItem[data-level=error] > svg { color: #a94750; }
+.appNotificationItem[data-level=warning] > svg { color: #827645; }
+.appNotificationItem[data-level=success] > svg { color: #287555; }
+.appNotificationItem[data-read=true] { opacity: .75; }
+.appNotificationText { flex: 1; min-width: 0; }
+.appNotificationText strong { display: block; font-size: 13px; }
+.appNotificationText p { margin: 6px 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.appNotificationText time { font-size: 11px; color: var(--ui-muted); }
+.appNotificationEmpty { padding: 26px 0; margin: 0; color: var(--ui-muted); text-align: center; font-size: 13px; }
 .appChrome svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.7; }
 body[data-app-page] .appChrome :is(button,a.appIconButton) { flex: none; transform: none; }
 body[data-app-page] .appRefresh { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #e9f2ed !important; border-color: #d1e2d8 !important; color: var(--ui-green) !important; white-space: nowrap; }
 body[data-app-page] .appIconButton { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 7px; border: 1px solid var(--ui-line) !important; background: #ffffff60 !important; color: var(--ui-green) !important; }
-.appChoosingActions > :not(.appAccount) { display: none !important; }
+.appChoosingActions > :not(.appAccount):not(.appNotificationToggle) { display: none !important; }
 .appAccount { position: relative; flex-shrink: 0; color: var(--ui-ink); margin: 0; padding: 0; border: 0; background: transparent; }
 .appAccountToggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 500; min-height: 42px; border-radius: 8px; list-style: none; margin: 0; padding: 0; border: 0; }
 .appAccountToggle::-webkit-details-marker { display: none; }
@@ -255,8 +276,14 @@ body[data-app-page=login] h1 { font-size: 24px; }
   body[data-app-page] .appRefresh :is(span,[data-refresh-label]) { display: none; }
   body[data-app-page] .appIconButton { width: 36px; height: 36px; }
   .appAccountMenu { top: calc(100% + 8px); }
-  body[data-app-page] .appNav { min-height: 54px; padding-top: 7px; padding-bottom: 7px; }
-  body[data-app-page] .appNav :is(button,a) { padding: 8px 11px; }
+  body[data-app-page] .appMobileNavToggle:not([hidden]) { display: flex; align-items: center; gap: 10px; width: calc(100% - 32px); min-height: 44px; margin: 8px var(--ui-gutter); padding: 10px 12px; background: #eaf2ee !important; color: var(--ui-green) !important; }
+  .appMobileNavToggle span { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .appMenuOpen .appMobileNavToggle svg:last-child { transform: rotate(180deg); }
+  body[data-app-page] .appChrome .appNav { display: none !important; position: absolute !important; top: 100%; left: var(--ui-gutter); width: calc(100% - 32px); max-height: calc(100dvh - 215px); padding: 8px; margin: 0; overflow-x: hidden; overflow-y: auto; background: var(--ui-surface) !important; border: 1px solid var(--ui-line) !important; border-radius: 8px; box-shadow: 0 16px 40px #173c2f26 !important; }
+  body[data-app-page] .appChrome.appMenuOpen .appNav { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+  body[data-app-page] .appChrome .appNav[hidden] { display: none !important; }
+  body[data-app-page] .appChrome .appNav :is(button,a) { justify-content: flex-start; min-width: 0; width: 100% !important; min-height: 46px; padding: 10px; font-size: 12px; white-space: normal; text-align: left; }
+  .appNotificationPanel { top: 60px; max-height: calc(100dvh - 85px); padding: 14px; }
   body[data-app-page] h1, body[data-app-page] .generalExecutiveHeader h2 { font-size: 24px; }
   body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,.masterMain,#instituteApp,#instituteLanding) { padding-top: 22px; }
   body[data-app-page] :is(input,select,textarea) { font-size: 16px; }

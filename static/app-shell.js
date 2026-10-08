@@ -1,5 +1,61 @@
 (() => {
   "use strict";
+  class NotificationHistory {
+    constructor(storage, now = () => Date.now()) {
+      this.storage = storage;
+      this.now = now;
+      this.items = [];
+      this.key = null;
+    }
+    setUser(id) {
+      const key = id ? `doc4docs:notifications:${id}` : null;
+      if (key === this.key) return;
+      const pending = this.key ? [] : this.items;
+      this.key = key;
+      this.items = [];
+      if (!key) return;
+      try {
+        const items = JSON.parse(this.storage?.getItem(key) || "[]");
+        if (Array.isArray(items)) this.items = items.filter(item =>
+          typeof item.id === "string" && typeof item.message === "string" &&
+          typeof item.scope === "string" && typeof item.label === "string" &&
+          ["info", "success", "warning", "error"].includes(item.level) &&
+          typeof item.read === "boolean" && item.message.length <= 1200 &&
+          Number.isFinite(item.time) && item.time <= this.now() && item.time > this.now() - 86400000
+        ).slice(0, 40);
+      } catch (_) { /* Storage is optional, including private browsing. */ }
+      pending.forEach(item => { if (!this.items.some(saved => saved.id === item.id)) this.items.unshift(item); });
+      this.items = this.items.slice(0, 40);
+      this.save();
+    }
+    save() {
+      if (!this.key) return;
+      try { this.storage?.setItem(this.key, JSON.stringify(this.items)); } catch (_) {}
+    }
+    add(source, message, {scope = "Sistema", label = "Sistema", level = "info"} = {}) {
+      message = String(message || "").trim().replace(/\s+/g, " ").slice(0, 1200);
+      if (!message || message === "-") return false;
+      scope = String(scope).slice(0, 160);
+      label = String(label).slice(0, 160);
+      if (!["info", "success", "warning", "error"].includes(level)) level = "info";
+      const id = JSON.stringify([scope, source, message, level]);
+      if (this.items.some(item => item.id === id)) return false;
+      this.items.unshift({id, scope, label, level, message, time:this.now(), read:false});
+      this.items = this.items.slice(0, 40);
+      this.save();
+      return true;
+    }
+    read(id) {
+      this.items.forEach(item => { if (!id || item.id === id) item.read = true; });
+      this.save();
+    }
+    clearRead() { this.items = this.items.filter(item => !item.read); this.save(); }
+    get unread() { return this.items.filter(item => !item.read).length; }
+  }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = NotificationHistory;
+    return;
+  }
   const page = document.body.dataset.appPage;
   if (!page || page === "login") return;
   const $ = selector => document.querySelector(selector);
@@ -80,6 +136,143 @@
   const utilityNodes = originalHeader ? [...originalHeader.querySelectorAll(".actions > button, .actions > a, .header-actions > button")] : [];
   if (publicPage) utilityNodes.forEach(node => actions.append(node));
   const account = el("details", "appAccount");
+  let notificationHistory;
+  let renderNotifications = () => {};
+  let captureNotifications = () => {};
+  if (!publicPage) {
+    let storage;
+    try { storage = window.sessionStorage; } catch (_) {}
+    notificationHistory = new NotificationHistory(storage);
+    const notifications = el("button", "appIconButton appNotificationToggle");
+    notifications.type = "button";
+    notifications.title = "Notificações";
+    notifications.setAttribute("aria-label", "Notificações");
+    notifications.setAttribute("aria-expanded", "false");
+    notifications.setAttribute("aria-haspopup", "dialog");
+    notifications.setAttribute("aria-controls", "appNotificationPanel");
+    const badge = el("span", "appNotificationBadge");
+    badge.setAttribute("aria-hidden", "true");
+    badge.hidden = true;
+    notifications.append(icon("bell"), badge);
+    actions.append(notifications);
+    const panel = el("section", "appNotificationPanel");
+    panel.id = "appNotificationPanel";
+    panel.hidden = true;
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-labelledby", "appNotificationTitle");
+    const heading = el("div", "appNotificationHeading");
+    const title = el("h2", "", "Notificações");
+    title.id = "appNotificationTitle";
+    const close = el("button", "appIconButton");
+    close.type = "button";
+    close.title = "Fechar notificações";
+    close.setAttribute("aria-label", close.title);
+    close.append(icon("x"));
+    heading.append(title, close);
+    const tools = el("div", "appNotificationTools");
+    const count = el("span", "");
+    count.setAttribute("role", "status");
+    const readAll = el("button", "appIconButton");
+    readAll.type = "button";
+    readAll.title = "Marcar todas como lidas";
+    readAll.setAttribute("aria-label", readAll.title);
+    readAll.append(icon("check-check"));
+    const clear = el("button", "appIconButton");
+    clear.type = "button";
+    clear.title = "Limpar notificações lidas";
+    clear.setAttribute("aria-label", clear.title);
+    clear.append(icon("archive"));
+    tools.append(count, readAll, clear);
+    const list = el("div", "appNotificationList");
+    panel.append(heading, tools, list);
+    chrome.append(panel);
+    const setOpen = (open, restoreFocus = false) => {
+      panel.hidden = !open;
+      notifications.setAttribute("aria-expanded", String(open));
+      if (open) {
+        account.open = false;
+        chrome.classList.remove("appMenuOpen");
+        chrome.querySelector(".appMobileNavToggle")?.setAttribute("aria-expanded", "false");
+        close.focus();
+      }
+      else if (restoreFocus) notifications.focus();
+    };
+    notifications.addEventListener("click", () => setOpen(panel.hidden));
+    close.addEventListener("click", () => setOpen(false, true));
+    document.addEventListener("click", event => {
+      if (!panel.hidden && !panel.contains(event.target) && !notifications.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !panel.hidden) setOpen(false, true);
+    });
+    const timeFormat = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+    renderNotifications = () => {
+      const unread = notificationHistory.unread;
+      badge.hidden = !unread;
+      badge.textContent = unread > 99 ? "99+" : String(unread);
+      notifications.setAttribute("aria-label", unread ? `Notificações, ${unread} não lidas` : "Notificações");
+      count.textContent = unread ? `${unread} não ${unread === 1 ? "lida" : "lidas"}` : "Tudo lido";
+      readAll.disabled = !unread;
+      clear.disabled = !notificationHistory.items.some(item => item.read);
+      list.replaceChildren();
+      if (!notificationHistory.items.length) list.append(el("p", "appNotificationEmpty", "Nenhuma notificação"));
+      notificationHistory.items.forEach(item => {
+        const row = el("article", "appNotificationItem");
+        row.dataset.level = item.level;
+        row.dataset.read = String(Boolean(item.read));
+        row.append(icon({error:"circle-alert", warning:"triangle-alert", success:"circle-check", info:"info"}[item.level]));
+        const content = el("div", "appNotificationText");
+        content.append(el("strong", "", item.label), el("p", "", item.message));
+        const time = el("time", "", `${item.scope} · ${timeFormat.format(new Date(item.time))}`);
+        time.dateTime = new Date(item.time).toISOString();
+        content.append(time);
+        row.append(content);
+        if (!item.read) {
+          const read = el("button", "appIconButton");
+          read.type = "button";
+          read.title = "Marcar como lida";
+          read.setAttribute("aria-label", read.title);
+          read.append(icon("check"));
+          read.addEventListener("click", event => { event.stopPropagation(); notificationHistory.read(item.id); renderNotifications(); close.focus(); });
+          row.append(read);
+        }
+        list.append(row);
+      });
+      window.lucide?.createIcons({root:panel});
+    };
+    readAll.addEventListener("click", event => { event.stopPropagation(); notificationHistory.read(); renderNotifications(); close.focus(); });
+    clear.addEventListener("click", event => { event.stopPropagation(); notificationHistory.clearRead(); renderNotifications(); close.focus(); });
+    const sourceLabels = {
+      refreshStatus:"Atualização das integrações", sessionStatus:"Conta",
+      settingsStatus:"Configurações", quoteFollowupSyncWarning:"Orçamentos",
+      historyStatus:"Histórico de pacientes", error:"Cérebro do sistema"
+    };
+    const sources = [...document.querySelectorAll("#refreshStatus, #sessionStatus, #status, #notice, #settingsStatus, #quoteFollowupSyncWarning, #historyStatus, #error")];
+    const lastCaptured = new Map();
+    sources.forEach(source => source.classList.add("appNotificationSource"));
+    captureNotifications = () => {
+      const params = new URLSearchParams(location.search);
+      const scope = document.querySelector("#clinicEyebrow, #instituteName, [data-clinic-label], .brandbar .clinic")?.textContent.trim()
+        || params.get("clinic") || params.get("institute") || (adminPage ? "Administração" : "Sistema");
+      let changed = false;
+      sources.forEach(source => {
+        const message = source.textContent.trim();
+        const key = `${scope}:${source.id}`;
+        const signature = `${source.dataset.phase || ""}:${source.classList.contains("error")}:${message}`;
+        if (lastCaptured.get(key) === signature) return;
+        lastCaptured.set(key, signature);
+        if (!message || source.dataset.phase === "running" || /^(Iniciando|Carregando|Atualizando|Salvando)\b/i.test(message)) return;
+        const error = source.classList.contains("error") || source.dataset.phase === "error" || /falh|erro|não foi possível|não tem acesso|recusad|negad/i.test(message);
+        const warning = /pendên|parcial|conecte|não conectad|não configurad|verificar|atenção/i.test(message);
+        const level = error ? "error" : warning ? "warning" : /atualizad|salv[oa]|criad[oa]|concluíd/i.test(message) ? "success" : "info";
+        changed = notificationHistory.add(source.id, message, {scope, label:sourceLabels[source.id] || "Sistema", level}) || changed;
+      });
+      if (changed) renderNotifications();
+    };
+    const observer = new MutationObserver(captureNotifications);
+    sources.forEach(source => observer.observe(source, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:["class", "data-phase"]}));
+    renderNotifications();
+  }
   if (!publicPage) {
     const summary = el("summary", "appAccountToggle");
     summary.setAttribute("aria-label", "Menu da conta");
@@ -120,6 +313,40 @@
     nav.setAttribute("aria-label", institutePage ? "Módulos do instituto" : adminPage ? "Administração" : "Módulos da clínica");
     chrome.append(nav);
   }
+  const mobileNav = nav ? el("button", "appMobileNavToggle") : null;
+  const mobileNavLabel = el("span", "", "Menu");
+  if (mobileNav) {
+    mobileNav.type = "button";
+    mobileNav.title = "Abrir menu";
+    mobileNav.setAttribute("aria-label", "Abrir menu de módulos");
+    mobileNav.setAttribute("aria-expanded", "false");
+    if (!nav.id) nav.id = "appModuleNav";
+    mobileNav.setAttribute("aria-controls", nav.id);
+    mobileNav.append(icon("menu"), mobileNavLabel, icon("chevron-down"));
+    nav.before(mobileNav);
+    const setMenuOpen = (open, restoreFocus = false) => {
+      chrome.classList.toggle("appMenuOpen", open);
+      mobileNav.setAttribute("aria-expanded", String(open));
+      if (open) {
+        account.open = false;
+        const notifications = chrome.querySelector(".appNotificationPanel");
+        if (notifications) notifications.hidden = true;
+        chrome.querySelector(".appNotificationToggle")?.setAttribute("aria-expanded", "false");
+        nav.querySelector("button:not([hidden]), a:not([hidden])")?.focus();
+      } else if (restoreFocus) mobileNav.focus();
+    };
+    mobileNav.addEventListener("click", () => setMenuOpen(!chrome.classList.contains("appMenuOpen")));
+    nav.addEventListener("click", event => {
+      if (event.target.closest("button,a") && window.matchMedia("(max-width: 760px)").matches) setMenuOpen(false, true);
+    });
+    document.addEventListener("click", event => {
+      if (!nav.contains(event.target) && !mobileNav.contains(event.target)) setMenuOpen(false);
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && chrome.classList.contains("appMenuOpen")) setMenuOpen(false, true);
+    });
+    window.matchMedia("(max-width: 760px)").addEventListener("change", () => setMenuOpen(false));
+  }
   const navModels = {
     generalView:["Painel geral", "layout-dashboard"], commercialView:["Comercial", "chart-no-axes-combined"],
     financialView:["Financeiro", "wallet"], patientFollowupView:["Pacientes", "users"],
@@ -143,7 +370,8 @@
     });
     window.lucide?.createIcons({root:chrome});
     const active = nav?.querySelector(".active, [aria-current=page], [aria-selected=true]");
-    if (active && active !== lastActive && nav.clientWidth) {
+    if (active) mobileNavLabel.textContent = active.textContent.trim();
+    if (active && active !== lastActive && nav.clientWidth && !window.matchMedia("(max-width: 760px)").matches) {
       const item = active.getBoundingClientRect(), bounds = nav.getBoundingClientRect();
       nav.scrollLeft += item.left - bounds.left - (nav.clientWidth - item.width) / 2;
       lastActive = active;
@@ -158,6 +386,11 @@
     nav.children[page === "master" ? 0 : 1].setAttribute("aria-current", "page");
   }
   function applySession(data) {
+    if (notificationHistory) {
+      notificationHistory.setUser(data.user?.id);
+      renderNotifications();
+      captureNotifications();
+    }
     if (!nav || existingNav || adminPage || publicPage) return;
     const clinic = new URLSearchParams(location.search).get("clinic") || (page === "body" ? "inspire" : "");
     nav.replaceChildren();
@@ -187,6 +420,7 @@
     const choosing = page === "dashboard" ? dashboard?.classList.contains("dashboardHidden") : institutePage ? instituteApp?.hidden : false;
     chrome.classList.toggle("appChoosing", Boolean(choosing));
     if (nav) nav.hidden = Boolean(choosing);
+    if (mobileNav) mobileNav.hidden = Boolean(choosing);
     context.hidden = Boolean(choosing);
     actions.classList.toggle("appChoosingActions", Boolean(choosing));
     if (change) {
