@@ -208,6 +208,45 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(dict(headers)["Location"], "/login?next=/master")
         self.assertEqual(self.request("GET", "/api/settings", headers={"X-Master-User": "master"})[0], 401)
 
+    def test_meta_token_reuse_is_master_only_and_checks_origin(self):
+        cookie, _ = self.login()
+        payload = {"values": {}, "meta_token_institute": "victor-paranhos"}
+        with patch.object(self.app, "save_config_values") as save:
+            self.assertEqual(self.request("POST", "/api/settings?clinic=vielle", payload, cookie,
+                {"X-DOC4DOCS-Request": "1"})[0], 403)
+            self.store.create_first_master("Master", "master", "Master-test-password!")
+            master = "doc4docs_session=" + self.store.login("master", "Master-test-password!")
+            self.assertEqual(self.request("POST", "/api/settings?clinic=vielle", payload, master)[0], 403)
+            save.assert_not_called()
+
+    def test_meta_token_reuse_copies_only_secret_without_returning_it(self):
+        from institute_api import store_for
+        self.store.create_first_master("Master", "master", "Master-test-password!")
+        cookie = "doc4docs_session=" + self.store.login("master", "Master-test-password!")
+        institutes = store_for(self.store)
+        institutes.save_settings("victor-paranhos", {"meta_access_token": "private-meta-token", "meta_account_id": "123456"})
+        payload = {"values": {}, "meta_token_institute": "victor-paranhos"}
+        with patch.object(self.app, "save_config_values") as save, patch.object(self.app, "settings_payload", return_value={"ok": True, "config": {}}):
+            status, _, raw = self.request("POST", "/api/settings?clinic=vielle", payload, cookie,
+                {"X-DOC4DOCS-Request": "1"})
+            self.assertEqual(status, 200, raw)
+            save.assert_called_once_with({"META_ACCESS_TOKEN": "private-meta-token"})
+            self.assertNotIn(b"private-meta-token", raw)
+        self.assertEqual(institutes.settings("victor-paranhos")["meta_account_id"], "123456")
+
+    def test_meta_token_reuse_rejects_missing_unknown_or_conflicting_sources(self):
+        self.store.create_first_master("Master", "master", "Master-test-password!")
+        cookie = "doc4docs_session=" + self.store.login("master", "Master-test-password!")
+        with patch.object(self.app, "save_config_values") as save:
+            for payload in ({"values": {}, "meta_token_institute": "victor-paranhos"},
+                            {"values": {}, "meta_token_institute": "unknown"},
+                            {"values": {}, "meta_token_institute": ["victor-paranhos"]},
+                            {"values": {"META_ACCESS_TOKEN": "other"}, "meta_token_institute": "victor-paranhos"}):
+                with self.subTest(payload=payload):
+                    self.assertEqual(self.request("POST", "/api/settings?clinic=vielle", payload, cookie,
+                        {"X-DOC4DOCS-Request": "1"})[0], 400)
+            save.assert_not_called()
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

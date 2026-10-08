@@ -7438,8 +7438,23 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
                 if key in SECRET_CONFIG_KEYS and not text:
                     continue
                 clean_values[key] = text
+            source_institute = payload.get("meta_token_institute")
+            if "meta_token_institute" in payload:
+                from institute_api import store_for
+                institute_store = store_for(self.server.auth_store)
+                if not isinstance(source_institute, str) or source_institute not in institute_store.allowed(self.current_user):
+                    return self.auth_json({"ok": False, "error": "Instituto inválido ou sem acesso."}, 400)
+                if "META_ACCESS_TOKEN" in clean_values:
+                    return self.auth_json({"ok": False, "error": "Selecione uma única origem para o token Meta."}, 400)
+                source_token = institute_store.settings(source_institute).get("meta_access_token", "")
+                if not configured(source_token):
+                    return self.auth_json({"ok": False, "error": "O instituto não tem token Meta configurado."}, 400)
+                clean_values["META_ACCESS_TOKEN"] = source_token
             with clinic_context(self.request_clinic_id(parsed)):
                 save_config_values(clean_values)
+                if source_institute:
+                    self.server.auth_store.audit_event("meta_token_reused", self.current_user["id"],
+                        details={"institute": source_institute, "clinic": current_clinic_id()})
                 if payload.get("reset_kommo_oauth"):
                     with db() as conn:
                         conn.execute("delete from oauth_tokens")

@@ -105,6 +105,24 @@ async function loadEverything(reset = false) {
   showSettingsStatus(`${commercial}. ${clinica}.`);
 }
 
+document.getElementById("reuseInstituteMeta").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  showSettingsStatus("Conectando token do instituto...");
+  try {
+    const data = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({values: {}, meta_token_institute: "victor-paranhos"}),
+    });
+    fillSettings(data);
+    showSettingsStatus("Token Meta do instituto conectado. A conta de anúncios da clínica foi mantida.");
+  } catch (error) {
+    showSettingsStatus(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById("saveSettings").addEventListener("click", () => {
   saveSettings().catch(error => showSettingsStatus(error.message, true));
 });
