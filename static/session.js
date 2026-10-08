@@ -33,6 +33,7 @@
       const response = await window.fetch("/api/auth/me");
       if (!response.ok) return;
       const data = await response.json();
+      window.doc4docsSession = data;
       document.querySelectorAll("[data-session-user]").forEach(element => { element.textContent = data.user.nome; });
       document.querySelectorAll("[data-master-only]").forEach(element => { element.hidden = !data.user.is_master; });
       window.dispatchEvent(new CustomEvent("doc4docs-session", {detail: data}));

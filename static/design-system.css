@@ -1,0 +1,260 @@
+/* Shared visual foundation. Module-specific layouts and data behavior stay local. */
+:root {
+  --ui-font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  --ui-bg: #f5f8f7;
+  --ui-surface: #ffffff;
+  --ui-ink: #172e28;
+  --ui-muted: #667b73;
+  --ui-green: #123e32;
+  --ui-green-hover: #205443;
+  --ui-line: #dce6e1;
+  --ui-soft: #eaf2ee;
+  --ui-glass: rgba(249, 252, 251, .88);
+  --ui-focus: #358b77;
+  --ui-gutter: 32px;
+  --font: var(--ui-font);
+  --doc-background: var(--ui-bg);
+  --doc-surface: var(--ui-surface);
+  --doc-text-primary: var(--ui-ink);
+  --doc-text-secondary: var(--ui-muted);
+  --doc-border: var(--ui-line);
+  --doc-primary: var(--ui-green);
+  --bg: var(--ui-bg);
+  --paper: var(--ui-surface);
+  --panel: var(--ui-surface);
+  --surface: var(--ui-surface);
+  --ink: var(--ui-ink);
+  --text: var(--ui-ink);
+  --muted: var(--ui-muted);
+  --line: var(--ui-line);
+  --shadow: 0 3px 12px #173c2f08;
+  font-family: var(--ui-font);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+  color-scheme: light;
+}
+:root[data-theme=dark] {
+  --ui-bg: #14201b;
+  --ui-surface: #1c2d25;
+  --ui-ink: #eaf3ee;
+  --ui-muted: #b4c7bc;
+  --ui-line: #3a5144;
+  --ui-soft: #2b4436;
+  --ui-glass: rgba(28, 45, 37, .94);
+  color-scheme: dark;
+}
+body[data-app-page] { margin: 0; background: var(--ui-bg); color: var(--ui-ink); font-family: var(--ui-font); font-size: 14px; }
+body[data-app-page] * { box-sizing: border-box; letter-spacing: 0; }
+body[data-app-page] :is(h1,h2,h3,h4,button,input,select,textarea,strong,summary) { font-family: var(--ui-font); }
+body[data-app-page] :is(h1,h2,h3,h4) { color: inherit; font-weight: 650; }
+body[data-app-page] h1 { font-size: 28px; line-height: 1.25; }
+body[data-app-page] h2 { font-size: 19px; line-height: 1.35; }
+body[data-app-page] h3 { font-size: 15px; line-height: 1.4; }
+body[data-app-page] :is(button,.buttonLink) {
+  min-height: 40px; padding: 9px 14px; border-radius: 7px;
+  background: var(--ui-surface) !important; color: var(--ui-green) !important;
+  border: 1px solid var(--ui-line) !important; box-shadow: none !important;
+  font-size: 13px; font-weight: 600; line-height: 1.35;
+  transition: background-color .15s, border-color .15s;
+}
+body[data-app-page] :is(button,.buttonLink):disabled { opacity: .5; cursor: not-allowed; }
+body[data-app-page] :is(button.primary,.buttonLink,button[type=submit]) { background: var(--ui-green) !important; color: white !important; border-color: var(--ui-green) !important; }
+body[data-app-page] :is(#newUser,#newTask,#openGoalsModalBtn,#loginSubmit) { background: var(--ui-green) !important; color: white !important; border-color: var(--ui-green) !important; }
+body[data-app-page] :is(button.secondary,.buttonLink.secondary,.iconButton,.icon-button,.text-button,.help-button) {
+  background: var(--ui-surface) !important; color: var(--ui-green) !important; border-color: var(--ui-line) !important;
+}
+body[data-app-page] button.danger { background: #a94750 !important; border-color: #a94750 !important; color: white !important; }
+body[data-app-page] :is(button,a,select,input,textarea,summary):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 3px; }
+body[data-app-page] :is(input,select,textarea) {
+  border-radius: 7px; border-color: var(--ui-line) !important;
+  background: var(--ui-surface) !important; color: var(--ui-ink) !important;
+  font-size: 14px; max-width: 100%;
+}
+body[data-app-page] :is(input,select):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]) { min-height: 42px; }
+body[data-app-page] :is(input,select,textarea):focus { border-color: var(--ui-focus) !important; box-shadow: 0 0 0 3px #358b7718 !important; }
+body[data-app-page] input:is([type=checkbox],[type=radio],[type=range]) { accent-color: var(--ui-green); }
+body[data-app-page] .ambient { display: none; }
+body[data-app-page] .shell::before { display: none; }
+body[data-app-page] .eyebrow { color: var(--ui-muted); font-size: 11px; }
+body[data-app-page] [hidden] { display: none !important; }
+/* Chrome uses the original controls, so their permissions and listeners survive. */
+.appShellReady :is(.appLegacyHeader,.appLegacyToolbar,#mobileTabsToggle) { display: none !important; }
+.appChrome { position: relative; z-index: 30; width: 100%; border-bottom: 1px solid var(--ui-line); background: var(--ui-glass); }
+.appTopbar { display: flex; align-items: center; gap: 20px; min-height: 76px; padding: 10px var(--ui-gutter); border-bottom: 1px solid #dce6e188; }
+.appBrand { display: flex; align-items: center; flex: 0 0 126px; text-decoration: none; }
+.appBrand img { display: block; width: 126px; height: 52px; object-fit: contain; filter: brightness(0) saturate(100%); opacity: .85; }
+:root[data-theme=dark] .appBrand img { filter: none; opacity: 1; }
+.appContext { min-width: 0; max-width: 310px; padding-left: 20px; border-left: 1px solid var(--ui-line); }
+.appContext:empty { display: none; }
+.appExcelIcon { position: relative; display: inline-block; width: 24px; height: 24px; flex-shrink: 0; overflow: hidden; border-radius: 50%; }
+body[data-app-page] .appExcelIcon img { position: absolute; width: 218.3333% !important; height: 200% !important; max-width: none; left: -58%; top: -52%; object-fit: fill; }
+body[data-app-page] .appContext :is(button,a) { display: flex; align-items: center; gap: 8px; background: #ffffff60 !important; color: var(--ui-ink) !important; border: 1px solid var(--ui-line) !important; text-decoration: none; font-size: 13px; min-height: 40px; padding: 8px 12px; border-radius: 7px; }
+.appContextButton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appContextButton svg:last-child { width: 14px; }
+.appAreas { display: flex; gap: 3px; padding: 3px; background: #e8efec8c; border: 1px solid var(--ui-line); border-radius: 8px; }
+.appAreas a { display: flex; align-items: center; text-decoration: none; padding: 8px 13px; border-radius: 5px; font-size: 12px; font-weight: 600; color: var(--ui-muted); }
+.appAreas a[aria-current=page] { background: var(--ui-green); color: white; box-shadow: 0 1px 4px #183d2920; }
+.appHeaderActions { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.appChrome svg { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.7; }
+body[data-app-page] .appChrome :is(button,a.appIconButton) { flex: none; transform: none; }
+body[data-app-page] .appRefresh { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #e9f2ed !important; border-color: #d1e2d8 !important; color: var(--ui-green) !important; white-space: nowrap; }
+body[data-app-page] .appIconButton { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 7px; border: 1px solid var(--ui-line) !important; background: #ffffff60 !important; color: var(--ui-green) !important; }
+.appChoosingActions > :not(.appAccount) { display: none !important; }
+.appAccount { position: relative; flex-shrink: 0; color: var(--ui-ink); margin: 0; padding: 0; border: 0; background: transparent; }
+.appAccountToggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 500; min-height: 42px; border-radius: 8px; list-style: none; margin: 0; padding: 0; border: 0; }
+.appAccountToggle::-webkit-details-marker { display: none; }
+.appUserName { max-width: 150px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.appAvatar { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--ui-green); color: white; font-size: 12px; font-weight: 650; box-shadow: inset 0 0 0 1px #ffffff25; }
+.appAccountMenu { position: absolute; right: 0; top: calc(100% + 12px); width: 240px; padding: 8px; border: 1px solid var(--ui-line); border-radius: 8px; background: var(--ui-surface); box-shadow: 0 14px 40px #183d2926; z-index: 40; }
+.appAccount:not([open]) .appAccountMenu { display: none; }
+body[data-app-page] .appAccountMenu :is(a,button) { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; justify-content: flex-start; padding: 10px 12px; font-size: 13px; text-decoration: none; background: transparent !important; color: var(--ui-ink) !important; border: 0 !important; border-radius: 5px; }
+body[data-app-page] .appAccountMenu :is(a,button):hover { background: var(--ui-soft) !important; }
+.appSessionStatus:empty { display: none; }
+.appSessionStatus { margin: 0; padding: 10px var(--ui-gutter); color: #a94750; background: var(--ui-surface); }
+body[data-app-page] .appNav { position: static !important; display: flex !important; flex-direction: row !important; flex-wrap: nowrap; justify-content: flex-start; gap: 3px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding: 9px var(--ui-gutter); margin: 0; width: 100%; min-height: 58px; border: 0 !important; border-radius: 0; box-shadow: none !important; background: transparent !important; }
+body[data-app-page] .appNav[hidden] { display: none !important; }
+body[data-app-page] .appNav :is(button,a) { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; gap: 8px; width: auto !important; min-width: 0; max-width: none; min-height: 38px; padding: 8px 12px; border-radius: 6px; border: 1px solid transparent !important; background: transparent !important; color: var(--ui-muted) !important; font-size: 12px; font-weight: 550; white-space: nowrap; text-decoration: none; box-shadow: none !important; }
+body[data-app-page] .appNav :is(.active,[aria-current=page],[aria-selected=true]) { background: #e3eee7 !important; color: var(--ui-green) !important; border-color: #d4e2d8 !important; font-weight: 650; }
+body[data-app-page] .appNav :is(button,a):hover { color: var(--ui-green) !important; background: var(--ui-soft) !important; }
+@supports (backdrop-filter: blur(16px)) { .appChrome { background: rgba(247, 251, 249, .78); backdrop-filter: blur(20px) saturate(125%); -webkit-backdrop-filter: blur(20px) saturate(125%); } }
+:root[data-theme=dark] .appChrome { background: var(--ui-glass); }
+/* One aligned canvas instead of a narrow header over a full-width page. */
+body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,.masterMain,#instituteApp,#instituteLanding) { width: 100%; max-width: none; margin: 0; padding: 28px var(--ui-gutter) 40px; background: transparent; }
+.appShellReady :is(.tasksHeader,.birthdaysHeader) { padding: 0 !important; }
+body[data-app-page=body] main, body[data-app-page=brain] main, body[data-app-page=pricing] main { width: 100%; max-width: none; margin: 0; padding: 28px var(--ui-gutter) 40px; background: transparent; }
+body[data-app-page] :is(.page-heading,.pageHeading,.pageTitle,.heading) { margin-bottom: 24px; }
+body[data-app-page] :is(.panel,.settingsPanel,.generalSummaryHero,.generalBoard,.generalExecutive,.generalExecutiveHeader,.filterPanel,.filters,.filterHead,.settingsHeader,.authBox) { border-radius: 0; box-shadow: none !important; background: transparent !important; }
+body[data-app-page] :is(.panel,.settingsPanel) { border: 0 !important; border-top: 1px solid var(--ui-line) !important; }
+body[data-app-page] :is(.panelHead,.filterHead,.settingsHeader) { background: transparent !important; border-color: var(--ui-line) !important; }
+body[data-app-page] .panelHead { padding: 17px 0; }
+body[data-app-page] .panelHead h2 { font-size: 16px; text-transform: none; }
+body[data-app-page] .panelHead.chartExportHeader { padding-right: 58px; }
+body[data-app-page] :is(.filterPanel,.filters,.generalControls,.birthdayFilters) { background: #edf3f080 !important; border: 1px solid var(--ui-line) !important; border-radius: 8px; padding: 14px; box-shadow: inset 0 1px 0 #ffffffc0 !important; }
+body[data-app-page] :is(.filterPanel,.filters) { margin: 0 0 24px; }
+body[data-app-page] :is(.generalControls,.birthdayFilters) { margin-bottom: 0; }
+body[data-app-page] :is(.generalExecutiveHeader,.generalSummaryHero) { padding: 0; margin-bottom: 24px; border: 0 !important; }
+body[data-app-page] .generalExecutiveHeader h2 { font-size: 28px; text-transform: none; }
+body[data-app-page] .generalExecutiveHeader :is(span,small) { color: var(--ui-muted); font-size: 12px; }
+body[data-app-page] :is(.metric,.generalMetric,.trafficMetric,.followupHeroMetric,.kpi) { border-radius: 8px; box-shadow: none !important; background: var(--ui-surface) !important; border: 1px solid var(--ui-line) !important; }
+body[data-app-page] :is(.financeGrid,.clinicaGrid) { padding: 16px 0; }
+body[data-app-page] .financeGrid { display: flex; flex-wrap: wrap; }
+body[data-app-page] .financeGrid article { flex: 1 1 210px; }
+body[data-app-page] :is(.financeGrid,.clinicaGrid,.metrics) article { border-radius: 8px; background: var(--ui-surface); border: 1px solid var(--ui-line); box-shadow: none; }
+body[data-app-page] :is(.financeGrid,.metrics) article::after { display: none; }
+body[data-app-page] :is(.financeGrid,.clinicaGrid,.metrics) article strong { font-family: var(--ui-font); font-size: 28px; line-height: 1.2; font-weight: 650; }
+body[data-app-page] :is(.metric.featured,.metric.emphasis,.generalMetric.featured,.generalMetric.emphasisRevenue,.generalMetric.emphasisMargin,.followupHeroMetric.primary,.kpi.dark) { background: linear-gradient(115deg,#10392e,#1d5745) !important; color: white !important; border-color: #164735 !important; }
+body[data-app-page] :is(.generalMetric.emphasisLeads,.generalMetric.emphasisBookings) { background: #edf4f0 !important; color: var(--ui-ink) !important; }
+body[data-app-page] :is(.generalMetric.emphasisLeads,.generalMetric.emphasisBookings) :is(strong,span,small) { color: var(--ui-ink) !important; }
+body[data-app-page] :is(.metric.featured,.metric.emphasis,.generalMetric.featured,.generalMetric.emphasisMargin,.followupHeroMetric.primary,.kpi.dark) :is(strong,span,small) { color: inherit !important; }
+body[data-app-page] :is(.generalMetric,.metric,.trafficMetric) strong { font-family: var(--ui-font); font-size: 28px; line-height: 1.2; font-weight: 650; }
+body[data-app-page] .generalMetric.featured > strong { font-size: 36px; }
+body[data-app-page] .generalMetric.featured { padding: 22px; }
+body[data-app-page] .generalHeroGrid { gap: 14px; }
+body[data-app-page] .generalMetric > span { font-size: 11px; font-weight: 600; }
+body[data-app-page] .generalMetric small { font-size: 12px; font-weight: 400; }
+body[data-app-page] .generalExecutiveHeader :is(input,select) { font-weight: 500; }
+body[data-app-page] :is(.doctorCard,.followupCard,.quoteCard,.clinicAccessCard,.institute-card,.task-card) { border-radius: 8px; background: var(--ui-surface) !important; box-shadow: none !important; border: 1px solid var(--ui-line) !important; }
+body[data-app-page] :is(.doctorCard,.followupCard,.quoteCard) h3 { font-size: 18px; }
+body[data-app-page] :is(.followupCard.redFlag,.quoteCard.urgent) { border-left: 4px solid #b95656 !important; }
+body[data-app-page] :is(.tableWrap,.table-wrap,.dataTableWrap,.birthdayContent .tableWrap) { border: 1px solid var(--ui-line); border-radius: 8px; background: var(--ui-surface); overflow-x: auto; }
+body[data-app-page] table { background: var(--ui-surface); }
+body[data-app-page] th { background: #eef4f1; color: var(--ui-muted); font-size: 12px; text-transform: none; font-weight: 600; }
+body[data-app-page] td { font-size: 13px; border-color: #e8eeea; }
+body[data-app-page] tbody tr:hover { background: #f6faf8; }
+body[data-app-page] :is(th,[role=columnheader]) button { min-height: 28px; padding: 0; background: transparent !important; color: inherit !important; border: 0 !important; border-radius: 0; font-size: inherit; font-weight: inherit; }
+body[data-app-page] :is(.chartExportButton,.rowActions button,.heading-actions #export,#exportBtn,.detail-tools button) { background: var(--ui-surface) !important; color: var(--ui-green) !important; border-color: var(--ui-line) !important; }
+body[data-app-page] :is(.segments,.masterSections,.brainHeader + main .tabs) { background: #eaf1ed; border-radius: 8px; padding: 4px; border: 1px solid var(--ui-line); }
+body[data-app-page] :is(.segments,.masterSections,.tabs) button { background: transparent !important; border-color: transparent !important; color: var(--ui-muted) !important; }
+body[data-app-page] :is(.segments,.masterSections,.tabs) button:is([aria-pressed=true],[aria-selected=true],.active) { background: var(--ui-surface) !important; color: var(--ui-green) !important; box-shadow: 0 1px 4px #183d2910 !important; }
+body[data-app-page] .appChrome .appNav :is(.active,[aria-current=page],[aria-selected=true]) { background: #e3eee7 !important; color: var(--ui-green) !important; border-color: #d4e2d8 !important; box-shadow: none !important; }
+body[data-app-page] .source-status button { min-height: 24px; padding: 0; background: transparent !important; color: var(--ui-muted) !important; border: 0 !important; font-size: inherit; font-weight: 400; }
+body[data-app-page] :is(dialog,.modalCard,.accessModal) { border-radius: 8px; border-color: var(--ui-line); background: var(--ui-surface) !important; color: var(--ui-ink); box-shadow: 0 24px 64px #193d2926 !important; }
+body[data-app-page] :is(dialog::backdrop,.modalOverlay) { background: #10352b45; backdrop-filter: blur(5px); }
+body[data-app-page] .birthdayContent { --text: var(--ui-ink); --muted: var(--ui-muted); --line: var(--ui-line); }
+body[data-app-page] .birthdayContent .metric { background: #eef5f1 !important; }
+body[data-app-page] .birthdayContent .metric:nth-child(3) { background: #eaf6f3 !important; }
+body[data-app-page] .birthdayContent .metric:nth-child(4) { background: #edf3f7 !important; }
+body[data-app-page] .birthdayContent .metric:first-child { background: linear-gradient(115deg,#10392e,#1d5745) !important; color: white; border-color: #164735 !important; }
+body[data-app-page] .birthdayContent .chartBand { padding: 24px 0; margin-bottom: 20px; }
+body[data-app-page] .tasksContent { --surface: var(--ui-bg); --paper: var(--ui-surface); --text: var(--ui-ink); --line: var(--ui-line); border: 0; }
+body[data-app-page] .tasksContent button { background: var(--ui-surface) !important; color: var(--ui-green) !important; border-color: var(--ui-line) !important; }
+body[data-app-page] .tasksContent button.primary { background: var(--ui-green) !important; color: white !important; }
+body[data-app-page] .tasksContent .segments button { background: transparent !important; border-color: transparent !important; color: var(--ui-muted) !important; }
+body[data-app-page] .tasksContent .segments button[aria-pressed=true] { background: var(--ui-surface) !important; color: var(--ui-green) !important; }
+body[data-app-page] .tasksContent .lane { background: #edf3ef; border-color: var(--ui-line); border-radius: 8px; }
+body[data-app-page] .tasksContent .workspace { gap: 20px; }
+body[data-app-page] .tasksContent .inspector { border-radius: 8px; box-shadow: 0 3px 16px #183d2908; }
+body[data-app-page=institutes] :is(.chart-section,.funnel-section,.campaign-section,.status-section,#sales,#leads,#commercial,#integrations) { background: transparent; border-radius: 0; padding: 20px 0; }
+body[data-app-page=institutes] .charts-grid, body[data-app-page=institutes] .bottom-grid { gap: 28px; }
+body[data-app-page=institutes] .heading-actions { flex-direction: row; flex-wrap: wrap; }
+body[data-app-page=institutes] .course-mark { border-radius: 8px; width: 96px; min-height: 88px; padding: 12px; }
+body[data-app-page=institutes] .course-mark b { font-size: 13px; }
+body[data-app-page=body] :is(.evolutionGrid,.calorimetryPanel,.history,.assessmentData,.chartSection) { background: transparent; border-radius: 0; box-shadow: none; }
+body[data-app-page=body] .metrics { border-radius: 8px; background: var(--ui-surface); }
+body[data-app-page=body] .metric { background: transparent !important; border: 0 !important; }
+body[data-app-page=body] .timeline button { background: transparent !important; color: var(--ui-muted) !important; border: 0 !important; }
+body[data-app-page=body] .timeline button[aria-pressed=true] { background: var(--ui-soft) !important; color: var(--ui-green) !important; font-weight: 650; }
+body[data-app-page=body] .breadcrumb button { background: transparent !important; color: var(--ui-muted) !important; border: 0 !important; padding: 0; min-height: 28px; }
+body[data-app-page=brain] .node { background: var(--ui-surface) !important; color: var(--ui-ink) !important; border-color: var(--ui-line) !important; border-radius: 8px; }
+body[data-app-page=brain] .node.active { background: var(--ui-soft) !important; border-color: var(--ui-focus) !important; }
+/* The account picker, calculator and sign-in share the same brand treatment. */
+body[data-app-page] .clinicLanding { display: block; min-height: calc(100dvh - 78px); padding: 36px var(--ui-gutter); }
+body[data-app-page] .landingShell { width: 100%; max-width: 1120px; margin: auto; gap: 24px; }
+body[data-app-page] .clinicLanding .landingHero { min-height: 160px; padding: 16px 0; background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; }
+body[data-app-page] .clinicLanding .systemLogo { width: 240px; height: 112px; max-height: none; filter: brightness(0) saturate(100%); opacity: .85; }
+body[data-app-page] .clinicLanding .landingHero .eyebrow { color: var(--ui-muted); font-size: 11px; }
+body[data-app-page] .clinicAccessCard { min-height: 240px; padding: 24px; }
+body[data-app-page] .clinicAccessCard h2 { font-size: 26px; }
+body[data-app-page] .clinicAccessCard p { font-size: 14px; line-height: 1.6; font-weight: 400; color: var(--ui-muted); }
+body[data-app-page] .clinicAccessCard::after { display: none; }
+body[data-app-page] .clinicCardInitial { border-radius: 8px; width: 48px; height: 48px; font-size: 17px; }
+body[data-app-page=pricing] .form-section { background: transparent; border-top: 1px solid var(--ui-line); }
+body[data-app-page=pricing] .results { border-radius: 8px; overflow: hidden; }
+body[data-app-page=login] .loginShell { min-height: 100dvh; background: var(--ui-bg); padding: 40px 20px; }
+body[data-app-page=login] .loginBrand img { filter: brightness(0) saturate(100%); opacity: .85; width: 210px; height: 100px; object-fit: contain; }
+body[data-app-page=login] .loginBrand p { color: var(--ui-muted); font-size: 12px; }
+body[data-app-page=login] .loginPanel { border-radius: 8px; border: 1px solid var(--ui-line); background: var(--ui-surface); box-shadow: 0 12px 48px #183d2910; }
+body[data-app-page=login] h1 { font-size: 24px; }
+@media (max-width: 1150px) {
+  .appTopbar { gap: 12px; }
+  .appContext { padding-left: 12px; max-width: 235px; }
+  .appUserName { display: none; }
+  .appAreas a { padding: 8px 10px; }
+  .appNav { scroll-snap-type: x proximity; }
+  .appNav > * { scroll-snap-align: center; }
+}
+@media (max-width: 760px) {
+  :root { --ui-gutter: 16px; }
+  .appTopbar { min-height: 70px; gap: 10px; flex-wrap: wrap; padding: 8px var(--ui-gutter); }
+  .appBrand { flex-basis: 106px; }
+  .appBrand img { width: 106px; height: 46px; }
+  .appHeaderActions { gap: 6px; }
+  .appContext { order: 3; flex: 1 0 calc(100% - 170px); max-width: none; border: 0; padding: 0; }
+  body[data-app-page] .appContextButton { width: 100%; min-width: 0; max-width: 100%; }
+  .appAreas { order: 4; flex-shrink: 0; }
+  .appChoosing .appAreas { order: 3; }
+  .appChoosing .appHeaderActions { order: 2; }
+  .appAccountToggle > svg { display: none; }
+  body[data-app-page] .appRefresh { font-size: 0; width: 36px; min-width: 36px !important; min-height: 36px; height: 36px; padding: 8px; }
+  body[data-app-page] .appRefresh :is(span,[data-refresh-label]) { display: none; }
+  body[data-app-page] .appIconButton { width: 36px; height: 36px; }
+  .appAccountMenu { top: calc(100% + 8px); }
+  body[data-app-page] .appNav { min-height: 54px; padding-top: 7px; padding-bottom: 7px; }
+  body[data-app-page] .appNav :is(button,a) { padding: 8px 11px; }
+  body[data-app-page] h1, body[data-app-page] .generalExecutiveHeader h2 { font-size: 24px; }
+  body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,.masterMain,#instituteApp,#instituteLanding) { padding-top: 22px; }
+  body[data-app-page] :is(input,select,textarea) { font-size: 16px; }
+  body[data-app-page] .generalMetric.featured > strong { font-size: 30px; }
+  body[data-app-page] .generalMetric.featured { padding: 18px; }
+  body[data-app-page] .generalHeroGrid { gap: 10px; }
+  body[data-app-page] .clinicCards { grid-template-columns: minmax(0,1fr); }
+  body[data-app-page] .clinicAccessCard { min-height: 220px; }
+}
+@media (prefers-reduced-transparency: reduce) { .appChrome { background: var(--ui-surface); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+@media (prefers-reduced-motion: reduce) { body[data-app-page] * { transition: none !important; scroll-behavior: auto !important; } }
+@media print {
+  .appChrome { display: none !important; }
+  body[data-app-page] { background: white; color: #172e28; }
+  body[data-app-page] :is(.shell,.birthdayContent,.tasksContent,main) { padding: 0; }
+  body[data-app-page] .panel { break-inside: avoid; }
+}
