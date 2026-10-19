@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 if "--background" in sys.argv:
     log = Path(tempfile.gettempdir()) / "doc4docs-crm-preview-running.log"
     with log.open("w") as output:
-        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve())], cwd=ROOT,
+        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), *(a for a in sys.argv[1:] if a != "--background")], cwd=ROOT,
                                  stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
                                  start_new_session=True)
     for _ in range(100):
@@ -51,6 +51,19 @@ with sqlite3.connect(app.DB_PATH) as c:
             profile={"email":f"paciente-{n}-{i}@example.test","cpf":f"000.000.{n:03d}-{i:02d}"}
             c.execute("INSERT INTO clinica_patients VALUES(?,?,?,?,?)", (f"patient-{n}-{i}",name,f"55000000{n:02d}{i:03d}",json.dumps(profile),1))
 store = store_for(auth)
+if "--patient-refresh-fixture" in sys.argv:
+    import crm_patient_refresh
+
+    def synthetic_patient_refresh(target, progress):
+        progress("cadastros sint\u00e9ticos")
+        with sqlite3.connect(app.DB_PATH) as c:
+            for n in range(5):
+                c.execute("INSERT OR REPLACE INTO clinica_patients VALUES(?,?,?,?,?)",
+                          (f"patient-{n}-3", "Camila Cadastro Atualizado", f"55000000{n:02d}003", "{}", int(time.time())))
+        target.patient_directory.invalidate()
+        return [{"name": "Pacientes sint\u00e9ticos", "status": "done"}]
+
+    crm_patient_refresh.sync_patients = synthetic_patient_refresh
 structure = {}
 for pipeline, doc in app.PIPELINE_DOCTOR_MAP.items():
     structure.setdefault(doc, []).append(pipeline)

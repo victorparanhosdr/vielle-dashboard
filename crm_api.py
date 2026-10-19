@@ -25,7 +25,7 @@ def store_for(auth):
             directory = PatientDirectory(DB_PATH)
             history = PatientCommercial(DB_PATH, DOCTOR_PROFESSIONALS)
             appointments = PatientAppointments(DB_PATH, DOCTOR_PROFESSIONALS)
-            STORES[root] = CrmStore(root, directory.lookup, history.lookup, appointments, history)
+            STORES[root] = CrmStore(root, directory.lookup, history.lookup, appointments, history, patient_directory=directory)
         return STORES[root]
 
 
@@ -63,6 +63,20 @@ def handle_request(handler, parsed):
                                           "campaigns_enabled": campaigns_enabled() and store.worker_online()})
             if action == "lead":
                 return handler.auth_json({"ok": True, **store.detail(query.get("id", [""])[0], doctor)})
+            if action == "patient-refresh":
+                from crm_patient_refresh import status
+                job = status(store)
+                detail = store.detail(query.get("id", [""])[0], doctor)
+                return handler.auth_json({**job, "lead": detail["lead"]})
+            if action in {"patients", "patient-directory-refresh"}:
+                with store.db() as c:
+                    store.row(c, "doctors", doctor)
+                if action == "patient-directory-refresh":
+                    from crm_patient_refresh import status
+                    return handler.auth_json(status(store))
+                if store.patient_directory is None:
+                    raise ValueError("Base de pacientes indisponivel neste ambiente.")
+                return handler.auth_json({"ok": True, **store.patient_directory.search(query.get("search", [""])[0], query.get("page", [1])[0])})
             if action == "commercial":
                 return handler.auth_json({"ok": True, **store.commercial(query.get("id", [""])[0], doctor,
                     query.get("scope", ["doctor"])[0], query.get("kind", ["sales"])[0], query.get("page", [1])[0])})
@@ -111,6 +125,16 @@ def handle_request(handler, parsed):
                 result["state"] = state
         elif action == "lead":
             result["id"] = store.lead(p, actor)
+        elif action == "patient-refresh":
+            from crm_patient_refresh import start_refresh
+            with store.db() as c:
+                store.owned(c, "leads", p.get("id"), p.get("doctor_id"))
+            result.update(start_refresh(store))
+        elif action == "patient-directory-refresh":
+            from crm_patient_refresh import start_refresh
+            with store.db() as c:
+                store.row(c, "doctors", p.get("doctor_id"))
+            result.update(start_refresh(store))
         elif action == "activity":
             store.activity(p, actor)
         elif action == "conversation-close":

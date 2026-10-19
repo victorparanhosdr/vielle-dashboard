@@ -8,6 +8,7 @@
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:new URLSearchParams(location.search).get("mode")==="inbox"?"inbox":"board",seq:0,search:"",filters:{},sort:"updated",session:null};
   const tierLabels={bronze:"Bronze",silver:"Prata",gold:"Ouro"};
+  const patientRefreshes=new Set();
   const initials=name=>String(name).split(/\s+/).slice(0,2).map(n=>n[0]).join("").toUpperCase();
   const exactMoney=value=>(Number(value || 0)/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
   function customerValueDescription(data) {
@@ -112,6 +113,35 @@
     } catch(error) {notice(error.message);}
     finally {if(seq===state.seq) $("crmView").setAttribute("aria-busy","false");}
   }
+  function patientRefreshMessage(lead) {
+    return lead.experts_status==="matched"?"Contato vinculado ao Clínica Experts.":lead.experts_status==="new"?"Telefone não encontrado na base atualizada.":"Vínculo a conferir: não houve associação automática.";
+  }
+  async function patientRefreshJob(action, payload, query) {
+    let job=await api(action,payload,query);
+    if(!job.started && !job.running && job.retry_after)throw new Error(`Aguarde ${job.retry_after}s para buscar novamente.`);
+    const deadline=Date.now()+180000;
+    do {
+      if(Date.now()>deadline)throw new Error("A busca continua no servidor. Confira novamente em instantes.");
+      await new Promise(resolve=>setTimeout(resolve,1500));
+      job=await api(action,undefined,query);
+    } while(job.running);
+    if(job.phase!=="done")throw new Error("Não foi possível atualizar o Clínica Experts. Os dados anteriores foram preservados.");
+    return job;
+  }
+  async function refreshPatient(lead,button,status) {
+    if(patientRefreshes.has(lead.id))return null;
+    const doc=lead.doctor_id;
+    patientRefreshes.add(lead.id);button.disabled=true;
+    status.hidden=false;status.textContent="Buscando no Clínica Experts…";
+    try {
+      const job=await patientRefreshJob("patient-refresh",{id:lead.id,doctor_id:doc},{id:lead.id,doctor:doc});
+      if(state.doctor===doc)await load();
+      return job.lead;
+    } finally {
+      patientRefreshes.delete(lead.id);
+      if(button.isConnected)button.disabled=false;
+    }
+  }
   function renderGame() {
     const g=state.data.game;
     $("xp").value=g.progress;$("xpLabel").textContent=`${g.xp} XP`;
@@ -197,9 +227,59 @@
   }
   function leadForm() {
     const p=pipeline();if(!p)return;
-    modal("Nova oportunidade",`<form><div class="formGrid"><label>Nome do cliente<input name="name" required maxlength="160" autocomplete="name"></label><label>Telefone com código do país<input name="phone" inputmode="tel" required placeholder="5533999999999"></label></div><label>Oportunidade<input name="title" required maxlength="160" placeholder="Interesse / próximo objetivo"></label><div class="formGrid"><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name)).join("")}</select></label><label>Valor estimado (R$)<input name="value" type="number" min="0" max="1000000" step="0.01" value="0" required></label></div><label>Próximo contato<input name="next_action" type="date"></label><label class="check"><input name="consent" type="checkbox">Cliente autorizou o recebimento de mensagens desta equipe</label><label>Origem da autorização<input name="consent_source" maxlength="300" placeholder="Ex.: formulário de 18/10, solicitou contato"></label>${actions("Criar oportunidade")}</form>`);
-    const consent=$("crmDialog").querySelector('[name="consent"]'), source=$("crmDialog").querySelector('[name="consent_source"]');consent.onchange=()=>{source.required=consent.checked;};
-    wireForm(f=>api("lead",{doctor_id:state.doctor,pipeline_id:p.id,stage_id:f.get("stage_id"),name:f.get("name"),phone:f.get("phone"),title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action"),consent:f.has("consent"),consent_source:f.get("consent_source")}));
+    const doc=state.doctor;
+    modal("Nova oportunidade",`<form><p class="connectionNote">${esc(doctor().name)} · ${esc(p.name)}</p><fieldset class="patientSource"><legend class="visuallyHidden">Origem do cliente</legend><label><input type="radio" name="patient_source" value="new" checked>${icon("user-round-plus")} Novo contato</label><label><input type="radio" name="patient_source" value="experts">${icon("database")} Clínica Experts</label></fieldset><section id="patientPicker" hidden><div class="patientSearchBar"><label>Buscar paciente<input id="patientSearch" type="search" placeholder="Nome ou telefone" autocomplete="off"></label><button type="button" id="refreshPatientDirectory" class="icon-button" title="Atualizar pacientes do Clínica Experts" aria-label="Atualizar pacientes do Clínica Experts">${icon("refresh-cw")}</button></div><p id="patientSearchStatus" role="status" class="connectionNote"></p><div id="patientResults" class="patientResults" aria-label="Pacientes do Clínica Experts"></div><div class="patientPagination"><button type="button" id="patientPrev" class="icon-button" title="Página anterior" aria-label="Página anterior de pacientes">${icon("chevron-left")}</button><span id="patientPage"></span><button type="button" id="patientNext" class="icon-button" title="Próxima página" aria-label="Próxima página de pacientes">${icon("chevron-right")}</button></div><label id="patientPhoneChoice" hidden>Telefone cadastrado<select id="patientPhone"></select></label></section><div class="formGrid"><label>Nome do cliente<input name="name" required maxlength="160" autocomplete="name"></label><label>Telefone com código do país<input name="phone" inputmode="tel" required placeholder="5533999999999"></label></div><label>Oportunidade<input name="title" required maxlength="160" placeholder="Interesse / próximo objetivo"></label><div class="formGrid"><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name)).join("")}</select></label><label>Valor estimado (R$)<input name="value" type="number" min="0" max="1000000" step="0.01" value="0" required></label></div><label>Próximo contato<input name="next_action" type="date"></label><label class="check"><input name="consent" type="checkbox">Cliente autorizou o recebimento de mensagens desta equipe</label><label>Origem da autorização<input name="consent_source" maxlength="300" placeholder="Ex.: formulário de 18/10, solicitou contato"></label>${actions("Criar oportunidade")}</form>`);
+    const form=$("crmDialog").querySelector("form"),name=form.elements.name,phone=form.elements.phone;
+    const consent=form.elements.consent,source=form.elements.consent_source;
+    let mode="new", selected=null, rows=[], page=1, pages=1, request=0, timer, manual={name:"",phone:""};
+    const active=()=>form.isConnected && $("crmDialog").open;
+    consent.onchange=()=>{source.required=consent.checked;};
+    function clearSelection(){selected=null;name.value="";phone.value="";$("patientPhoneChoice").hidden=true;}
+    async function searchPatients(){
+      const seq=++request;$("patientResults").setAttribute("aria-busy","true");
+      $("patientSearchStatus").textContent="Buscando pacientes…";
+      $("patientPrev").disabled=true;$("patientNext").disabled=true;
+      try{
+        const data=await api("patients",undefined,{doctor:doc,search:$("patientSearch").value,page});
+        if(!active() || seq!==request || mode!=="experts")return;
+        rows=data.items;page=data.page;pages=data.pages;
+        $("patientSearchStatus").textContent=!data.available?"Base indisponível. Atualize os pacientes para consultar.":`${data.total} paciente(s)${data.synced_at?` · Base de ${new Date(data.synced_at*1000).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}`;
+        $("patientResults").innerHTML=rows.map((r,i)=>`<button type="button" class="patientResult" data-patient-index="${i}" aria-pressed="${selected?.uuid===r.uuid}" ${!r.name || !r.phones.length?"disabled":""}><span class="patientResultIcon">${icon("user-round")}</span><span><strong>${esc(r.name || "Sem nome")}</strong><small>${esc(r.phones.length?r.phones.map(n=>`+${n}`).join(" · "):r.shared_phone?"Telefone compartilhado · conferir cadastro":"Sem telefone cadastrado")}</small></span>${icon(selected?.uuid===r.uuid?"circle-check":"plus")}</button>`).join("") || '<p class="connectionNote">Nenhum paciente encontrado.</p>';
+        $("patientPage").textContent=`${page} de ${pages}`;
+        $("patientPrev").disabled=page<=1;$("patientNext").disabled=page>=pages;icons();
+      }catch(e){if(active() && seq===request)$("patientSearchStatus").textContent=e.message;}
+      finally{if(active() && seq===request)$("patientResults").setAttribute("aria-busy","false");}
+    }
+    form.querySelectorAll('[name="patient_source"]').forEach(radio=>radio.onchange=()=>{
+      if(mode==="new")manual={name:name.value,phone:phone.value};
+      mode=radio.value;request++;clearSelection();
+      $("patientPicker").hidden=mode!=="experts";name.readOnly=phone.readOnly=mode==="experts";
+      if(mode==="new"){name.value=manual.name;phone.value=manual.phone;}
+      else{page=1;searchPatients();}
+    });
+    $("patientSearch").oninput=()=>{clearTimeout(timer);page=1;request++;timer=setTimeout(()=>{if(active() && mode==="experts")searchPatients();},250);};
+    $("patientPrev").onclick=()=>{page--;searchPatients();};$("patientNext").onclick=()=>{page++;searchPatients();};
+    $("patientResults").onclick=event=>{
+      const button=event.target.closest("[data-patient-index]");if(!button || button.disabled)return;
+      selected=rows[Number(button.dataset.patientIndex)];name.value=selected.name;phone.value=selected.phones[0];
+      $("patientPhone").innerHTML=selected.phones.map(n=>option(n,`+${n}`)).join("");
+      $("patientPhoneChoice").hidden=selected.phones.length<2;
+      form.querySelectorAll("[data-patient-index]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
+    };
+    $("patientPhone").onchange=e=>{phone.value=e.target.value;};
+    $("refreshPatientDirectory").onclick=async()=>{
+      const button=$("refreshPatientDirectory");button.disabled=true;request++;
+      $("patientSearchStatus").textContent="Atualizando cadastros no Clínica Experts…";
+      try{
+        await patientRefreshJob("patient-directory-refresh",{doctor_id:doc},{doctor:doc});
+        if(active() && mode==="experts"){clearSelection();page=1;await searchPatients();}
+      }catch(e){if(active())$("patientSearchStatus").textContent=e.message;}
+      finally{if(button.isConnected)button.disabled=false;}
+    };
+    wireForm(f=>{
+      if(mode==="experts" && !selected)throw new Error("Selecione um paciente do Clínica Experts.");
+      return api("lead",{doctor_id:doc,pipeline_id:p.id,stage_id:f.get("stage_id"),name:f.get("name"),phone:f.get("phone"),experts_uuid:mode==="experts"?selected.uuid:"",title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action"),consent:f.has("consent"),consent_source:f.get("consent_source")},{doctor:doc});
+    });
   }
   function detail(id) {
     const lead=state.data.leads.find(l=>l.id===id);if(!lead)return;
@@ -282,6 +362,19 @@
       const l=data.lead,p=state.data.pipelines.find(p=>p.id===l.pipeline_id);
       modal(l.name,`<div class="leadDetail"><div><p class="connectionNote">+${esc(l.phone)} · ${esc(p.name)}</p><form id="leadEdit"><label>Oportunidade<input name="title" value="${esc(l.title)}" maxlength="160" required></label><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name,l.stage_id===s.id)).join("")}</select></label><div class="formGrid"><label>Valor estimado (R$)<input name="value" type="number" step="0.01" min="0" max="1000000" value="${l.value_cents/100}" required></label><label>Próximo contato<input name="next_action" type="date" value="${esc(l.next_action)}"></label></div>${actions("Salvar oportunidade")}</form><h3>Autorização de contato</h3><p class="connectionNote">${l.opted_out?"Descadastrado":l.consent_at?esc(l.consent_source):"Sem autorização registrada"}</p><div class="commands">${!l.opted_out?`<button id="recordConsent">${icon("shield-check")} Registrar autorização</button><button id="optout">Descadastrar</button>`:""}</div><h3>Registrar atividade</h3><form id="activityForm"><label>Tipo<select name="kind"><option value="followup">Follow-up realizado</option><option value="note">Nota interna</option></select></label><label>Resumo<textarea name="body" required maxlength="2000"></textarea></label>${actions("Registrar")}</form></div><div><h3>Histórico</h3>${data.events.map(e=>`<div class="eventRow"><small>${date(e.created_at)} · ${esc(e.actor)} · ${esc(e.kind)}</small>${esc(e.body)}</div>`).join("")}<h3>Conversas</h3><div class="conversation">${data.messages.map(m=>`<div class="eventRow ${esc(m.direction)}"><small>${date(m.created_at)} · ${esc(m.channel_name)} · ${esc(statusLabels[m.status] || m.status)}</small>${esc(m.body)}</div>`).join("") || '<p class="connectionNote">Nenhuma mensagem neste doutor.</p>'}</div></div></div>`);
       const identity=document.createElement("p");identity.className="connectionNote";identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");$("leadEdit").before(identity);
+      const refresh=document.createElement("div");refresh.className="patientRefreshControls";
+      refresh.innerHTML=`<button type="button" title="Buscar novamente no Clínica Experts" ${patientRefreshes.has(l.id)?"disabled":""}>${icon("refresh-cw")} Atualizar contato</button><p role="status" hidden></p>`;identity.after(refresh);
+      refresh.querySelector("button").onclick=async()=>{
+        const button=refresh.querySelector("button"),status=refresh.querySelector("p");
+        try {
+          const updated=await refreshPatient(l,button,status);
+          if(!updated || !refresh.isConnected || state.doctor!==l.doctor_id)return;
+          Object.assign(l,updated);$("modalTitle").textContent=l.name;
+          identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");
+          value.innerHTML=customerValuePanel(l.customer_value);appointment.innerHTML=appointmentBadge(l.appointment);
+          status.textContent=patientRefreshMessage(l);icons();
+        } catch(e){if(status.isConnected){status.hidden=false;status.textContent=e.message;}}
+      };
       const value=document.createElement("div");value.className="profileCustomerValue";value.innerHTML=customerValuePanel(l.customer_value);$("leadEdit").before(value);
       const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=appointmentBadge(l.appointment);$("leadEdit").before(appointment);
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
@@ -324,7 +417,7 @@
       $("verifyConnection").onclick=async()=>{try{const r=await api("channel-state",{id,doctor_id:state.doctor});if(r.state==="open"){$("crmDialog").close();await load();}else error("O número ainda não está conectado.");}catch(e){error(e.message);}};
     } catch(e){error(e.message);}
   }
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,refreshPatient,patientRefreshMessage,patientRefreshes});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
     if(state.mode!=="inbox"){state.mode="inbox";render();load();}

@@ -237,3 +237,18 @@
   .replyOptions{flex-wrap:wrap;gap:10px}.crmPage .replyOptions label{flex-basis:100%;max-width:none}.replySignature{flex-direction:row;align-items:center;padding-bottom:0;gap:8px}.replySignature strong{font-size:11px}.replyOptions select{font-size:10px}.crmPage .stageScene h2{font-size:23px}.sceneClient{font-size:14px;margin-bottom:26px}.stageFlight{grid-template-columns:minmax(0,1fr) 60px minmax(0,1fr);gap:8px}.stageFlight strong{font-size:12px}.flightFrom,.flightTo{padding:14px 8px;min-height:90px}.flightToken{width:30px;height:30px}.flightToken svg{width:16px;height:16px}.sceneEmblem{width:56px;height:56px}.sceneEmblem svg{width:28px;height:28px}
 }
 @media(prefers-reduced-motion:reduce) { .crmPage *{scroll-behavior:auto;transition:none!important;animation:none!important}.winRibbons,.stageTransition{display:none} }
+.patientRefreshControls{display:grid;gap:8px;margin:12px 0;min-width:0}
+.patientRefreshControls button{justify-self:start;max-width:100%}
+.patientRefreshControls p{margin:0;font-size:13px;line-height:1.5;color:var(--muted,#6c7d75);overflow-wrap:anywhere}
+.contactPanel .patientRefreshControls button{width:100%;justify-content:center}
+.patientSource{display:flex;gap:4px;padding:4px;border:1px solid var(--ui-line);border-radius:8px;background:#eaf0ed;margin:16px 0}
+.crmPage .patientSource label{flex:1;display:flex;flex-direction:row;align-items:center;justify-content:center;padding:10px 8px;gap:6px;cursor:pointer;border:1px solid transparent;border-radius:5px;color:#657d70}
+.patientSource label:has(:checked){background:#fff;border-color:#d5e1d9;color:#174a36;box-shadow:0 2px 4px #153d3010}
+.patientSource input{position:absolute;opacity:0;width:1px!important;height:1px}.patientSource label:has(:focus-visible){outline:2px solid #448c75;outline-offset:2px}
+#patientPicker{padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--ui-line);min-width:0}#patientPicker[hidden],#patientPhoneChoice[hidden]{display:none}
+.patientSearchBar{display:grid;grid-template-columns:minmax(0,1fr) 40px;gap:8px;align-items:end}.patientResults{max-height:240px;overflow:auto;min-height:64px;overscroll-behavior:contain}
+#crmDialog .patientResult{display:flex;text-align:left;justify-content:start;gap:10px;width:100%;padding:12px 4px;border:0;border-bottom:1px solid #e2eae5;border-radius:0;background:transparent;box-shadow:none;color:#244c3a}
+.patientResult>span:nth-child(2){flex:1;min-width:0}.patientResult strong,.patientResult small{display:block;overflow-wrap:anywhere}.patientResult strong{font-size:13px;font-weight:600}.patientResult small{font-size:11px;font-weight:400;color:#708679;margin-top:4px;line-height:1.5}
+.patientResultIcon{display:grid;place-items:center;width:30px;height:34px;background:#edf3ef;border-radius:5px;flex:none}#crmDialog .patientResult[aria-pressed=true]{background:#eaf4ee;color:#17663e}#crmDialog .patientResult:disabled{opacity:.6;cursor:not-allowed}
+.patientPagination{display:flex;align-items:center;justify-content:end;gap:8px;margin-top:8px;font-size:11px;color:#718377}#patientPhoneChoice{margin-top:12px}
+@media(max-width:480px){.crmPage .patientSource label{font-size:11px;padding:10px 5px}.patientSource svg{width:15px;height:15px}.patientResult small{font-size:10px}}

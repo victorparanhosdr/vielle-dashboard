@@ -274,3 +274,29 @@ draft campaigns, disabled live sending, mobile menu and bounds at 320/390/768/14
 Actual external pairing, sending and webhook delivery still require a separately
 configured provider and an opted-in test phone. This is not evidence of a live
 WhatsApp connection or live Clinic Experts synchronization.
+
+## Patient creation and explicit refresh
+
+New opportunities can start with a manual CRM contact or a selected patient from
+the Vielle Experts directory. The picker searches names without accents and
+full/partial phone numbers, pages 25 results, and exposes only UUID, name and
+selectable phone numbers. Deleted patients are omitted. Missing/shared phones
+cannot be selected; multiple unique registered phones can be chosen explicitly.
+The server revalidates the selected UUID against the full phone and uses the
+source name. Existing contacts and opportunities in the same funnel are reused.
+Selection does not grant messaging consent or create a patient in Experts.
+
+The ficha and attendance panel have an explicit refresh button; the picker also
+has a directory refresh. They share one deduplicated background job, serialize
+with clinic synchronization and fetch the patient directory via the existing
+server-side Experts integration. The complete response is staged before a local
+transaction updates the cache. Failures preserve the previous cache, report a
+sanitized error, and do not expose provider responses. No external records are
+written, and no financial synchronization or message dispatch is started.
+Patient reconciliation preserves conversations, drafts, unread state and history.
+A changed or shared patient identity is flagged for review, not silently merged.
+
+`tests/serve_crm_preview.py --patient-refresh-fixture` additionally replaces the
+patient refresh function with an isolated synthetic fixture. Never use that
+flag/helper in production. UI verification covers manual creation, existing
+patient reuse, draft/unread preservation after refresh and 390px modal bounds.

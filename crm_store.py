@@ -56,8 +56,9 @@ class Conflict(ValueError):
 
 
 class CrmStore:
-    def __init__(self, root, patient_lookup=None, commercial_lookup=None, appointment_source=None, commercial_source=None):
+    def __init__(self, root, patient_lookup=None, commercial_lookup=None, appointment_source=None, commercial_source=None, *, patient_directory=None):
         self.patient_lookup = patient_lookup or (lambda number: {"status": "unchecked"})
+        self.patient_directory = patient_directory
         self.commercial_lookup = commercial_lookup
         self.appointment_source = appointment_source
         self.commercial_source = commercial_source
@@ -151,7 +152,7 @@ class CrmStore:
             c.execute("INSERT OR IGNORE INTO contact_phones VALUES(?,?)", (number, current["id"]))
         cid = current["id"]
         status = match["status"]
-        if linked and linked["id"] != cid:
+        if (linked and linked["id"] != cid) or (status == "matched" and current["experts_uuid"] and current["experts_uuid"] != match["uuid"]):
             status = "review"
         elif status == "matched":
             c.execute("UPDATE contacts SET name=?,experts_uuid=? WHERE id=?", (match["name"], match["uuid"], cid))
@@ -287,7 +288,15 @@ class CrmStore:
                                    25 if target["kind"] == "won" else 5, key + (":won" if target["kind"] == "won" else ":stage:" + stage), now)
             else:
                 number, name = phone(p.get("phone")), text(p.get("name"))
+                selected_patient = p.get("experts_uuid", "")
+                if selected_patient:
+                    match = self.patient_lookup(number)
+                    if match["status"] != "matched" or match.get("uuid") != selected_patient:
+                        raise ValueError("Telefone e paciente nao conferem. Atualize a busca no Clinica Experts.")
+                    name = match["name"]
                 contact = self.contact(c, number, name)
+                if selected_patient and (contact["experts_status"] != "matched" or contact["experts_uuid"] != selected_patient):
+                    raise Conflict("Este telefone possui um vinculo diferente no CRM. Confira o cadastro antes de adicionar.")
                 existing = c.execute("SELECT id FROM leads WHERE pipeline_id=? AND contact_id=?", (pipeline, contact["id"])).fetchone()
                 if existing:
                     return existing["id"]

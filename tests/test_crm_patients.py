@@ -85,6 +85,61 @@ class PatientLinkTests(unittest.TestCase):
         self.patient(deleted_at="2026-10-18")
         self.assertNotEqual(self.directory.lookup("5533998398227")["status"],"matched")
 
+    def test_directory_search_normalizes_accents_and_phones_without_private_fields(self):
+        self.patient(name="Joao Concei\u00e7\u00e3o", email="private@example.test", cpf="private")
+        result = self.directory.search("conceicao")
+        self.assertEqual(result["items"], [{"uuid": "p1", "name": "Joao Concei\u00e7\u00e3o", "phones": ["5533998398227"], "shared_phone": False}])
+        self.assertEqual(self.directory.search("(33) 99839")["total"], 1)
+        self.assertNotIn("private", json.dumps(result))
+
+    def test_directory_lists_missing_and_shared_phones_without_selectable_numbers(self):
+        self.patient(); self.patient("p2", "Familiar")
+        self.patient("p3", "Sem telefone", "")
+        self.patient("p4", "Excluido", "(11) 99999-0000", deleted=True)
+        result = self.directory.search()
+        self.assertEqual(result["total"], 3)
+        self.assertTrue(all(not item["phones"] for item in result["items"]))
+        self.assertTrue(next(p for p in result["items"] if p["uuid"] == "p1")["shared_phone"])
+
+    def test_directory_pagination_and_invalidation(self):
+        for i in range(28):
+            self.patient(str(i), f"Paciente {i:02d}", f"(33) 99999-{i:04d}")
+        self.assertEqual(len(self.directory.search()["items"]), 25)
+        result = self.directory.search(page=100)
+        self.assertEqual((result["page"], result["pages"], len(result["items"])), (2, 2, 3))
+        with sqlite3.connect(self.path) as c:
+            c.execute("UPDATE clinica_patients SET name='Atualizado' WHERE uuid='0'")
+        self.directory.invalidate()
+        self.assertEqual(self.directory.search("atualizado")["total"], 1)
+
+    def test_selected_patient_uses_verified_name_and_deduplicates_lead(self):
+        self.patient()
+        payload = {"doctor_id": self.doctor, "pipeline_id": self.pipeline["id"], "stage_id": self.pipeline["stages"][0]["id"],
+                   "phone": "5533998398227", "name": "Nome adulterado", "title": "Retorno", "experts_uuid": "p1"}
+        key = self.store.lead(payload, "Equipe")
+        self.assertEqual(self.store.lead(payload, "Equipe"), key)
+        lead = self.store.detail(key, self.doctor)["lead"]
+        self.assertEqual(lead["name"], "Nome do Clinica Experts")
+        self.assertFalse(lead["consent_at"])
+
+    def test_selected_patient_rejects_wrong_uuid_or_shared_phone_without_creating_contact(self):
+        self.patient()
+        payload = {"doctor_id": self.doctor, "pipeline_id": self.pipeline["id"], "stage_id": self.pipeline["stages"][0]["id"],
+                   "phone": "5533998398227", "name": "Teste", "title": "Retorno", "experts_uuid": "wrong"}
+        with self.assertRaises(ValueError): self.store.lead(payload, "Equipe")
+        self.patient("p2", "Familiar")
+        with self.assertRaises(ValueError): self.store.lead({**payload, "experts_uuid": "p1"}, "Equipe")
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM contacts").fetchone()[0], 0)
+
+    def test_changed_patient_identity_does_not_silently_reassign_contact(self):
+        self.patient(); key = self.lead()
+        with sqlite3.connect(self.path) as c:
+            c.execute("UPDATE clinica_patients SET phone='' WHERE uuid='p1'")
+        self.patient("p2", "Outra pessoa")
+        lead = self.store.detail(key, self.doctor)["lead"]
+        self.assertEqual((lead["experts_uuid"], lead["experts_status"]), ("p1", "review"))
+
 
 if __name__ == "__main__":
     unittest.main()

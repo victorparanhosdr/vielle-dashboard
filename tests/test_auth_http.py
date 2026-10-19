@@ -251,6 +251,35 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
 
+    def test_crm_patient_picker_and_refresh_keep_master_origin_and_doctor_boundaries(self):
+        from crm_api import store_for
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        doctor = store.listing()["doctor_id"]
+        pipeline = store.listing()["pipelines"][0]
+        lead = store.lead({"doctor_id": doctor, "pipeline_id": pipeline["id"], "stage_id": pipeline["stages"][0]["id"],
+                           "name": "Contato", "phone": "5500000000002", "title": "Retorno"}, "Equipe")
+        master, user = self.master_cookie(), self.login()[0]
+        headers = {"X-DOC4DOCS-Request": "1"}
+        with patch("crm_patient_refresh.start_refresh", return_value={"ok": True, "started": True, "running": True}) as start:
+            for action in ("patients", "patient-directory-refresh", "patient-refresh"):
+                path = f"/api/crm/{action}?clinic=vielle&doctor={doctor}&id={lead}"
+                self.assertEqual(self.request("GET", path)[0], 401)
+                self.assertEqual(self.request("GET", path, cookie=user)[0], 403)
+                self.assertEqual(self.request("GET", path.replace("clinic=vielle", "clinic=inspire"), cookie=master)[0], 403)
+            for action, payload in (("patient-directory-refresh", {"doctor_id": "wrong"}),
+                                    ("patient-refresh", {"doctor_id": "wrong", "id": lead})):
+                path = f"/api/crm/{action}?clinic=vielle"
+                self.assertEqual(self.request("POST", path, payload, master)[0], 403)
+                self.assertIn(self.request("POST", path, payload, master, headers)[0], (400, 404))
+            start.assert_not_called()
+            self.assertEqual(self.request("POST", "/api/crm/patient-directory-refresh?clinic=vielle", {"doctor_id": doctor}, master, headers)[0], 200)
+            self.assertEqual(self.request("POST", "/api/crm/patient-refresh?clinic=vielle", {"doctor_id": doctor, "id": lead}, master, headers)[0], 200)
+            self.assertEqual(start.call_count, 2)
+        with patch.object(store.patient_directory, "search", return_value={"items": [], "total": 0}) as search:
+            self.assertEqual(self.request("GET", f"/api/crm/patients?clinic=vielle&doctor={doctor}&search=Teste&page=2", cookie=master)[0], 200)
+            search.assert_called_once_with("Teste", "2")
+
     def test_crm_inbox_close_and_reply_http_boundaries(self):
         from crm_api import store_for
         store=store_for(self.store)
