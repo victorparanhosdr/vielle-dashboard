@@ -81,6 +81,30 @@
   const publicPage = page === "pricing";
   const institutePage = page === "institutes";
   const adminPage = page === "master" || page === "brain";
+  let shellSession;
+  const attendance = !publicPage ? link("Atendimento", "/crm.html?clinic=vielle&mode=inbox", "messages-square") : null;
+  if (attendance) {
+    attendance.className = "appAttendanceLauncher";
+    attendance.hidden = true;
+    attendance.title = "Ponto de atendimento · Vielle Clinic";
+    attendance.setAttribute("aria-label", "Abrir ponto de atendimento da Vielle Clinic");
+    document.body.append(attendance);
+    attendance.addEventListener("click", event => {
+      if (page !== "crm" || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent("doc4docs-open-attendance"));
+    });
+  }
+  function updateAttendance() {
+    if (!attendance) return;
+    const clinic = new URLSearchParams(location.search).get("clinic");
+    const choosing = page === "dashboard" && $("#dashboardShell")?.classList.contains("dashboardHidden");
+    const allowed = shellSession?.user?.is_master && shellSession.clinics?.some(item => item.key === "vielle") &&
+      shellSession.permissions?.vielle?.includes("crm.view");
+    attendance.hidden = !allowed || choosing || (clinic && clinic !== "vielle") || institutePage;
+    document.body.classList.toggle("appHasAttendance", !attendance.hidden);
+    window.lucide?.createIcons({root:attendance});
+  }
   const originalHeader = $(".topbar, .institute-header, .masterHeader, .brainHeader, .brandbar");
   const originalToolbar = $(".sessionToolbar");
   if (page === "settings" && originalHeader) {
@@ -352,7 +376,7 @@
     financialView:["Financeiro", "wallet"], patientFollowupView:["Pacientes", "users"],
     quoteFollowupView:["Orçamentos", "file-text"], whatsappAuditView:["WhatsApp", "message-circle"],
     trafficView:["Tráfego pago", "chart-column-increasing"], bodyEvolutionView:["Evolução corporal", "activity"],
-    tasksView:["Tarefas", "square-check"], birthdaysView:["Aniversários", "gift"]
+    tasksView:["Tarefas", "square-check"], birthdaysView:["Aniversários", "gift"], crmView:["CRM", "workflow"]
   };
   let navObserver;
   let lastActive;
@@ -360,7 +384,7 @@
     navObserver?.disconnect();
     nav?.querySelectorAll("button").forEach(button => {
       const target = button.dataset.target ? new URL(button.dataset.target, location.href) : null;
-      const pathViews = {"/tasks.html":"tasksView", "/birthdays.html":"birthdaysView", "/body-evolution.html":"bodyEvolutionView"};
+      const pathViews = {"/tasks.html":"tasksView", "/birthdays.html":"birthdaysView", "/body-evolution.html":"bodyEvolutionView", "/crm.html":"crmView"};
       const view = button.dataset.view || target?.searchParams.get("view") || pathViews[target?.pathname];
       const model = navModels[view];
       if (!model || button.dataset.appLabel === model[0]) return;
@@ -386,6 +410,8 @@
     nav.children[page === "master" ? 0 : 1].setAttribute("aria-current", "page");
   }
   function applySession(data) {
+    shellSession = data;
+    updateAttendance();
     if (notificationHistory) {
       notificationHistory.setUser(data.user?.id);
       renderNotifications();
@@ -401,12 +427,14 @@
     const views = Object.keys(navModels);
     Object.entries(data.modules || {}).sort(([, a], [, b]) => views.indexOf(a.view) - views.indexOf(b.view)).forEach(([key, module]) => {
       if (!data.permissions?.[clinic]?.includes(`${key}.view`)) return;
+      if (key === "crm" && !data.user?.is_master) return;
       const model = navModels[module.view];
       if (!model) return;
-      const path = {tasks:"/tasks.html", birthdays:"/birthdays.html", body_evolution:"/body-evolution.html"}[key];
+      const path = {tasks:"/tasks.html", birthdays:"/birthdays.html", body_evolution:"/body-evolution.html", crm:"/crm.html"}[key];
       const href = path ? `${path}?clinic=${encodeURIComponent(clinic)}` : `/?clinic=${encodeURIComponent(clinic)}&view=${encodeURIComponent(module.view)}`;
       const item = link(model[0], href, model[1]);
       if (page === "body" && key === "body_evolution") item.setAttribute("aria-current", "page");
+      if (page === "crm" && key === "crm") item.setAttribute("aria-current", "page");
       nav.append(item);
     });
     decorateNav();
@@ -417,6 +445,7 @@
   const dashboard = $("#dashboardShell");
   const instituteApp = $("#instituteApp");
   function updateContext() {
+    updateAttendance();
     const choosing = page === "dashboard" ? dashboard?.classList.contains("dashboardHidden") : institutePage ? instituteApp?.hidden : false;
     chrome.classList.toggle("appChoosing", Boolean(choosing));
     if (nav) nav.hidden = Boolean(choosing);

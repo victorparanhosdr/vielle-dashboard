@@ -84,6 +84,20 @@ body[data-app-page] .ambient { display: none; }
 body[data-app-page] .shell::before { content: none; display: none; }
 body[data-app-page] .eyebrow { color: var(--ui-muted); font-size: 11px; }
 body[data-app-page] [hidden] { display: none !important; }
+body.appHasAttendance { padding-bottom: 88px; }
+.appAttendanceLauncher {
+  position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom)); z-index: 45;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 12px 18px;
+  border: 1px solid #ffffff50; border-radius: 8px; background: var(--ui-green); color: #fff; text-decoration: none;
+  box-shadow: 0 6px 24px #123e3226, inset 0 1px 0 #ffffff24; font-size: 13px; font-weight: 600;
+}
+.appAttendanceLauncher:hover { background: var(--ui-green-hover); }
+.appAttendanceLauncher svg { width: 21px; height: 21px; flex: none; }
+@media (max-width: 480px) {
+  .appAttendanceLauncher { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); width: 48px; padding: 12px; }
+  .appAttendanceLauncher>span { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@media print { .appAttendanceLauncher { display: none !important; } body.appHasAttendance { padding-bottom: 0; } }
 /* Chrome uses the original controls, so their permissions and listeners survive. */
 /* Hide legacy chrome from the first paint; DOMContentLoaded restores the fallback if boot fails. */
 .appShellBooting :is(.tasksPage,.birthdaysPage):not(.appShellReady) > :is(.sessionToolbar,.tasksHeader,.birthdaysHeader) { display: none !important; }

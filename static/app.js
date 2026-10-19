@@ -380,6 +380,10 @@ function applyActiveViewState() {
     window.location.replace(`/tasks.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
   }
+  if (state.activeView === "crmView") {
+    window.location.replace(`/crm.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
+    return;
+  }
   if (state.activeView === "birthdaysView") {
     window.location.replace(`/birthdays.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
@@ -446,7 +450,7 @@ function canAccess(permission, clinic = state.selectedClinic) {
 }
 function activeModule() { return Object.keys(accessModules).find(key => accessModules[key].view === state.activeView); }
 function permittedViews(clinic = state.selectedClinic) {
-  return Object.entries(accessModules).filter(([key]) => canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
+  return Object.entries(accessModules).filter(([key]) => (key !== "crm" || sessionMaster) && canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
 }
 function applyActionPermissions() {
   installChartExports();
@@ -3156,7 +3160,7 @@ async function exportChart(button) {
 }
 
 async function loadReport() {
-  if (["bodyEvolutionView", "tasksView", "birthdaysView"].includes(state.activeView)) return;
+  if (["bodyEvolutionView", "tasksView", "birthdaysView", "crmView"].includes(state.activeView)) return;
   if (document.getElementById("dashboardShell").classList.contains("dashboardHidden")) return;
   if (!state.selectedClinic) {
     showClinicLanding();

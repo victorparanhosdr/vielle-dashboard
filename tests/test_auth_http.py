@@ -219,6 +219,114 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/settings?clinic=vielle", payload, master)[0], 403)
             save.assert_not_called()
 
+    def test_crm_pilot_authentication_clinic_and_origin_boundaries(self):
+        self.assertEqual(self.request("GET", "/api/crm?clinic=vielle")[0], 401)
+        self.assertEqual(self.request("GET", "/api/crm/appointments?clinic=vielle&id=other")[0], 401)
+        cookie, _ = self.login()
+        self.assertEqual(self.request("GET", "/api/crm?clinic=vielle", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/api/crm/commercial?clinic=vielle&id=other&scope=clinic", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/api/crm/appointments?clinic=vielle&id=other&scope=clinic", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/static/crm.html?clinic=vielle", cookie=cookie)[0], 403)
+        master = self.master_cookie()
+        self.assertEqual(self.request("GET", "/api/crm?clinic=inspire", cookie=master)[0], 403)
+        self.assertEqual(self.request("GET", "/api/crm", cookie=master)[0], 403)
+        self.assertEqual(self.request("GET", "/api/crm?clinic=vielle&clinic=inspire", cookie=master)[0], 400)
+        self.assertEqual(self.request("POST", "/api/crm/doctor?clinic=vielle", {"name":"A"}, cookie=master)[0], 403)
+
+    def test_crm_pilot_master_can_prepare_structure_without_external_calls(self):
+        master = self.master_cookie()
+        headers = {"X-DOC4DOCS-Request":"1"}
+        status, _, raw = self.request("POST", "/api/crm/bootstrap?clinic=vielle", {}, master, headers)
+        self.assertEqual(status, 200, raw)
+        status, _, raw = self.request("GET", "/api/crm?clinic=vielle", cookie=master)
+        self.assertEqual(status, 200, raw)
+        data = json.loads(raw)
+        self.assertEqual(len(data["doctors"]), 5)
+        self.assertFalse(data["sends_enabled"])
+        self.assertEqual(data["leads"], [])
+
+    def test_crm_webhook_has_separate_authentication(self):
+        with patch.dict(os.environ, {"CRM_WEBHOOK_SECRET":"x"*40}):
+            self.assertEqual(self.request("POST", "/api/crm-webhook", {})[0], 401)
+            self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
+            self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
+
+    def test_crm_inbox_close_and_reply_http_boundaries(self):
+        from crm_api import store_for
+        store=store_for(self.store)
+        store.bootstrap({"Doutor teste":["Teste"]})
+        doctor=store.listing()["doctor_id"]
+        channel=store.channel({"doctor_id":doctor,"name":"Atendimento","phone":"5500000000001"})
+        with store.db() as c:instance=store.row(c,"channels",channel)["instance"]
+        store.receive(instance,{"key":{"id":"in-test","remoteJid":"5500000000002@s.whatsapp.net"},"message":{"conversation":"Ola"}},"messages.upsert")
+        master=self.master_cookie()
+        inbox=f"/api/crm/inbox?clinic=vielle&doctor={doctor}"
+        user,_=self.login()
+        self.assertEqual(self.request("GET",inbox,cookie=user)[0],403)
+        status,_,raw=self.request("GET",inbox,cookie=master)
+        self.assertEqual(status,200,raw)
+        item=json.loads(raw)["conversations"][0]
+        path=f"/api/crm/conversation?clinic=vielle&doctor={doctor}&channel={channel}&contact={item['contact_id']}"
+        status,_,raw=self.request("GET",path,cookie=master)
+        self.assertEqual(status,200,raw)
+        payload={"doctor_id":doctor,"channel_id":channel,"contact_id":item["contact_id"],"cursor":json.loads(raw)["inbound_cursor"]}
+        self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],1)
+        self.assertEqual(self.request("POST","/api/crm/conversation-read?clinic=vielle",payload,master)[0],403)
+        self.assertEqual(self.request("POST","/api/crm/conversation-read?clinic=vielle",payload,master,{"X-DOC4DOCS-Request":"1"})[0],404)
+        self.assertEqual(self.request("POST","/api/crm/conversation-close?clinic=vielle",payload,user,{"X-DOC4DOCS-Request":"1"})[0],403)
+        self.assertEqual(self.request("POST","/api/crm/conversation-close?clinic=vielle",payload,master)[0],403)
+        self.assertEqual(self.request("POST","/api/crm/conversation-close?clinic=vielle",{**payload,"doctor_id":"wrong"},master,{"X-DOC4DOCS-Request":"1"})[0],400)
+        self.assertEqual(self.request("POST","/api/crm/conversation-close?clinic=vielle",payload,master,{"X-DOC4DOCS-Request":"1"})[0],200)
+        self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],0)
+        store.receive(instance,{"key":{"id":"in-reopened","remoteJid":"5500000000002@s.whatsapp.net"},"message":{"conversation":"Mais uma duvida"}},"messages.upsert")
+        payload["cursor"]=json.loads(self.request("GET",path,cookie=master)[2])["inbound_cursor"]
+        self.assertEqual(self.request("POST","/api/crm/reply?clinic=vielle",{**payload,"body":"Oi","request_id":"http-1"},master,{"X-DOC4DOCS-Request":"1"})[0],400)
+        with store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(channel,))
+        with patch("crm_api.sends_enabled",return_value=True),patch.object(store,"worker_online",return_value=True):
+            status,_,raw=self.request("POST","/api/crm/reply?clinic=vielle",{**payload,"body":"Oi","request_id":"http-1","sender_name":"Nome falso"},master,{"X-DOC4DOCS-Request":"1"})
+        self.assertEqual(status,200,raw)
+        message=json.loads(self.request("GET",path,cookie=master)[2])["messages"][-1]
+        self.assertEqual(message["body"],"*Master*\n\nOi")
+        self.assertEqual(message["sender_name"],"Master")
+        self.assertNotEqual(message["sender_user_id"],"")
+        self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],1)
+        store.finish(store.claim(),"http-accepted")
+        self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],0)
+
+    def test_crm_customer_tier_settings_require_vielle_master_and_origin(self):
+        payload={"silver_cents":700000,"gold_cents":2000000}
+        user,_=self.login();master=self.master_cookie()
+        path="/api/crm/customer-tiers?clinic=vielle"
+        self.assertEqual(self.request("POST",path,payload,master)[0],403)
+        self.assertEqual(self.request("POST",path,payload,user,{"X-DOC4DOCS-Request":"1"})[0],403)
+        self.assertEqual(self.request("POST","/api/crm/customer-tiers?clinic=inspire",payload,master,{"X-DOC4DOCS-Request":"1"})[0],403)
+        self.assertEqual(self.request("POST",path,{"silver_cents":1,"gold_cents":1},master,{"X-DOC4DOCS-Request":"1"})[0],400)
+        self.assertEqual(self.request("POST",path,payload,master,{"X-DOC4DOCS-Request":"1"})[0],200)
+        status,_,raw=self.request("GET","/api/crm?clinic=vielle",cookie=master)
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(raw)["customer_tier_rules"],payload)
+
+    def test_crm_search_filters_validate_and_keep_master_clinic_boundary(self):
+        from crm_api import store_for
+        from urllib.parse import urlencode
+        master=self.master_cookie();user,_=self.login()
+        store=store_for(self.store);store.bootstrap({"Doutor teste":["Funil"]})
+        doctor=store.listing()["doctor_id"]
+        for endpoint in ("/api/crm","/api/crm/inbox"):
+            def url(payload,clinic="vielle"):
+                return endpoint+"?"+urlencode({"clinic":clinic,"doctor":doctor,"filters":json.dumps(payload)})
+            self.assertEqual(self.request("GET",url({"sales":"yes"}),cookie=user)[0],403)
+            self.assertEqual(self.request("GET",url({"sales":"yes"},"inspire"),cookie=master)[0],403)
+            for filters in ({"sales":"bad"},{"min_sales":True},{"unknown":1},{"min_spent_cents":200,"max_spent_cents":100},
+                            {"appointment_from":"2026-02-30"},{"appointment_no_upcoming":"true"},
+                            {"appointment_from":"2026-10-20","appointment_to":"2026-10-19"}):
+                self.assertEqual(self.request("GET",url(filters),cookie=master)[0],400)
+            status,_,raw=self.request("GET",url({"sales":"yes","quotes":"active","min_spent_cents":500000,
+                "appointment_status":"completed","appointment_from":"2026-09-01","appointment_to":"2026-09-30",
+                "appointment_no_upcoming":True}),cookie=master)
+            self.assertEqual(status,200,raw)
+            self.assertNotIn("_experts_search",raw.decode())
+
     def test_meta_token_reuse_copies_only_secret_without_returning_it(self):
         from institute_api import store_for
         self.store.create_first_master("Master", "master", "Master-test-password!")

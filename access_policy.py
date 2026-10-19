@@ -13,6 +13,7 @@ MODULES = {
     "body_evolution": {"label": "Evolução corporal", "view": "bodyEvolutionView", "actions": ["view", "create", "edit", "delete", "export"]},
     "tasks": {"label": "Tarefas", "view": "tasksView", "actions": ["view", "create", "edit", "delete"]},
     "birthdays": {"label": "Aniversários", "view": "birthdaysView", "actions": ["view", "create", "edit", "export"]},
+    "crm": {"label": "CRM", "view": "crmView", "actions": ["view"]},
 }
 VIEW_MODULES = {item["view"]: key for key, item in MODULES.items()}
 ACTION_LABELS = {"view": "Visualizar", "create": "Criar / registrar", "edit": "Editar / executar", "delete": "Excluir / restaurar", "export": "Exportar"}
@@ -27,7 +28,8 @@ REPORT_KEYS = {
 
 def clinic_modules(clinic):
     return [key for key in MODULES if (key != "patient_followup" or clinic == "vielle")
-            and (key != "body_evolution" or clinic == "inspire")] if clinic in SUPPORTED_CLINICS else []
+            and (key != "body_evolution" or clinic == "inspire")
+            and (key != "crm" or clinic == "vielle")] if clinic in SUPPORTED_CLINICS else []
 
 
 def clinic_permissions(clinic):
@@ -53,7 +55,7 @@ def permission_map(clinics, permissions):
 
 
 def project_report(report, module):
-    if module in {"body_evolution", "tasks", "birthdays"}:
+    if module in {"body_evolution", "tasks", "birthdays", "crm"}:
         return {}
     result = {key: value for key, value in report.items() if key in REPORT_KEYS[module] | {"connected", "filters", "pipelines"}}
     if module == "commercial":

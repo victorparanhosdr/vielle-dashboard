@@ -33,12 +33,13 @@ class Page(HTMLParser):
 class SharedDesignTests(unittest.TestCase):
     def test_every_page_uses_the_shared_foundation_last(self):
         pages = list((ROOT / "static").rglob("*.html"))
-        self.assertEqual(len(pages), 10)
+        self.assertEqual(len(pages), 11)
         for path in pages:
             with self.subTest(page=path.name):
                 page = Page(path.read_text())
                 self.assertTrue(page.page)
-                self.assertEqual(page.styles[-1], "/design-system.css")
+                self.assertIn("/design-system.css", page.styles)
+                self.assertEqual(page.styles[-1], "/crm.css" if page.page == "crm" else "/design-system.css")
                 self.assertEqual(len(page.ids), len(set(page.ids)))
                 if page.page != "login":
                     self.assertIn("/app-shell.js", page.scripts)
@@ -90,13 +91,24 @@ class SharedDesignTests(unittest.TestCase):
         self.assertIn(".appChrome.appMenuOpen .appNav { display: grid !important;", css)
         self.assertIn(".appNotificationSource { display: none !important; }", css)
 
+    def test_attendance_launcher_uses_shared_permissions_and_safe_mobile_bounds(self):
+        source = (ROOT / "static/app-shell.js").read_text()
+        css = (ROOT / "static/design-system.css").read_text()
+        self.assertIn('/crm.html?clinic=vielle&mode=inbox', source)
+        self.assertIn('shellSession.permissions?.vielle?.includes("crm.view")', source)
+        self.assertIn('shellSession?.user?.is_master', source)
+        self.assertIn('clinic && clinic !== "vielle"', source)
+        self.assertIn('doc4docs-open-attendance', source)
+        self.assertIn('env(safe-area-inset-bottom)', css)
+        self.assertIn('@media print { .appAttendanceLauncher { display: none !important; }', css)
+
     def test_standalone_modules_boot_chrome_before_deferred_modules(self):
         for name in ("tasks.html", "birthdays.html"):
             source = (ROOT / "static" / name).read_text()
             page = Page(source)
             with self.subTest(page=name):
                 self.assertNotIn("defer", page.script_attributes["/app-shell.js"])
-                self.assertIn('<link rel="preload" href="/app-shell.js?v=1" as="script">', source)
+                self.assertIn('<link rel="preload" href="/app-shell.js?v=crm-release1" as="script">', source)
                 self.assertGreater(source.index('src="/app-shell.js'), source.index('id="toast"'))
                 self.assertLess(source.index('classList.add("appShellBooting")'), source.index("<body"))
                 self.assertIn('classList.remove("appShellBooting")', source)

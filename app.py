@@ -7090,6 +7090,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)
+        if parsed.path == "/api/crm" or parsed.path.startswith("/api/crm/"):
+            from crm_api import handle_request
+            return handle_request(self, parsed)
         if parsed.path == "/api/birthdays" or parsed.path.startswith("/api/birthdays/"):
             from patient_birthdays import handle_request
             with clinic_context(self.request_clinic_id(parsed)):
@@ -7348,6 +7351,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if self.handle_session_post(parsed.path):
             return
+        if parsed.path == "/api/crm-webhook":
+            from crm_api import webhook
+            return webhook(self)
         if parsed.path == "/api/clinica-webhook":
             params = urllib.parse.parse_qs(parsed.query)
             with clinic_context(self.request_clinic_id(parsed)):
@@ -7396,6 +7402,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
+            return handle_request(self, parsed)
+        if parsed.path == "/api/crm" or parsed.path.startswith("/api/crm/"):
+            from crm_api import handle_request
             return handle_request(self, parsed)
         if parsed.path == "/api/birthdays" or parsed.path.startswith("/api/birthdays/"):
             from patient_birthdays import handle_request
@@ -7639,6 +7648,10 @@ if __name__ == "__main__":
             apply_kommo_reset_if_needed()
     thread = threading.Thread(target=background_sync, daemon=True)
     thread.start()
+    from crm_gateway import sends_enabled
+    if sends_enabled():
+        from crm_worker import run as run_crm_worker
+        threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.auth_store = auth_store
     server.login_limiter = LoginLimiter()
