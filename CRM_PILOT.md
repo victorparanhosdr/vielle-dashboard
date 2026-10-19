@@ -300,3 +300,15 @@ A changed or shared patient identity is flagged for review, not silently merged.
 patient refresh function with an isolated synthetic fixture. Never use that
 flag/helper in production. UI verification covers manual creation, existing
 patient reuse, draft/unread preservation after refresh and 390px modal bounds.
+
+## Pending quotes on cards
+
+Cards, funnel totals, stage totals and the attendance panel show the sum of
+active and expired Experts quotes for the matched patient and selected doctor.
+Lost, cancelled, deleted and converted quotes and closed sales do not enter.
+The amount is computed from the complete synchronized history, not a page of
+results, and does not overwrite the CRM's manually entered estimate. Cards with
+no pending quote omit the currency amount. Unavailable/ambiguous/partial quote
+histories show a review state rather than an authoritative zero. Totals exclude
+these unknown amounts and disclose partial coverage. Bronze/silver/gold remains
+based only on valid closed sales. No provider writes or new per-card API calls.

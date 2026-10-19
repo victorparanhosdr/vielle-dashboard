@@ -139,6 +139,48 @@ class CommercialTests(unittest.TestCase):
         self.add("sale",sale_quote_uuid="different-quote")
         self.assertEqual(self.data(kind="quotes")["total"],1)
 
+    def test_card_pending_quotes_include_expired_but_exclude_lost_and_sales(self):
+        self.add("first", kind="sale_quote", status="open", final_amount=123456)
+        self.add("second", kind="sale_quote", status="open", final_amount=78901)
+        self.add("sale", final_amount=800000)
+        self.add("other-doctor", kind="sale_quote", status="open", seller={"uuid": "doc-b", "name": "Outro"}, final_amount=999999)
+        self.add("other-patient", kind="sale_quote", status="open", patient="other", final_amount=999999)
+        for status in ("lost", "expired", "won", "cancelled"):
+            self.add(status, kind="sale_quote", status=status, final_amount=999999)
+        self.add("deleted", kind="sale_quote", status="open", deleted_at="2026-10-18", final_amount=999999)
+        self.add("converted", kind="sale_quote", status="open", final_amount=999999)
+        self.add("linked-sale", sale_quote_uuid="converted", final_amount=999999)
+        self.add("expired-by-date", kind="sale_quote", status="open", due_date="2020-01-01", final_amount=999999)
+        with self.store.db() as c: c.execute("UPDATE leads SET value_cents=777777")
+        before = self.path.read_bytes()
+        for lead in (self.store.listing(self.doctor)["leads"][0], self.store.detail(self.lead, self.doctor)["lead"]):
+            history = lead["customer_history"]
+            self.assertEqual((history["open_quotes_count"], history["open_quotes_cents"], history["quotes_state"]), (2, 202357, "ready"))
+            self.assertEqual((history["pending_quotes_count"], history["pending_quotes_cents"]), (4, 2202355))
+            self.assertEqual(lead["value_cents"], 777777)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_card_pending_quotes_cover_all_pages_and_partial_amount_is_flagged(self):
+        for i in range(26): self.add(f"quote-{i}", kind="sale_quote", status="open", final_amount=10001)
+        self.assertEqual(self.store.listing(self.doctor)["leads"][0]["customer_history"]["pending_quotes_cents"], 260026)
+        self.add("bad", kind="sale_quote", status="open", final_amount=None)
+        with sqlite3.connect(self.path) as c: c.execute("UPDATE clinica_sales SET total=NULL WHERE uuid='bad'")
+        history = self.store.detail(self.lead, self.doctor)["lead"]["customer_history"]
+        self.assertEqual(history["quotes_state"], "partial")
+        self.assertEqual(history["open_quotes_count"], 27)
+
+    def test_card_pending_quotes_have_no_sale_fallback_and_unsafe_link_has_no_amount(self):
+        self.add("sale", final_amount=123456)
+        history = self.store.detail(self.lead, self.doctor)["lead"]["customer_history"]
+        self.assertEqual((history["open_quotes_count"], history["open_quotes_cents"]), (0, 0))
+        self.assertEqual((history["pending_quotes_count"], history["pending_quotes_cents"]), (0, 0))
+        with sqlite3.connect(self.path) as c:
+            c.execute("INSERT INTO clinica_patients VALUES('duplicate','Outro','5500000000001','{}',1)")
+        self.directory.invalidate()
+        history = self.store.detail(self.lead, self.doctor)["lead"]["customer_history"]
+        self.assertEqual(history["quotes_state"], "identity_pending")
+        self.assertNotIn("pending_quotes_cents", history)
+
     def test_professional_scope_no_guessing_and_whole_clinic_explicit(self):
         self.add("own");self.add("other",seller={"uuid":"doc-b","name":"Doutor A"})
         self.add("unknown",seller={})

@@ -137,6 +137,9 @@ class PatientCommercial:
         summary = {"sales_count": len(sales), "sales_cents": sum(r["amount_cents"] or 0 for r in sales),
                    "quotes_count": len(quotes), "quotes_cents": sum(r["amount_cents"] or 0 for r in quotes),
                    "open_quotes_count": sum(r["status"] == "active" for r in quotes),
+                   "open_quotes_cents": sum(r["amount_cents"] or 0 for r in quotes if r["status"] == "active"),
+                   "pending_quotes_count": sum(r["status"] in {"active", "expired"} for r in quotes),
+                   "pending_quotes_cents": sum(r["amount_cents"] or 0 for r in quotes if r["status"] in {"active", "expired"}),
                    "expired_quotes_count": sum(r["status"] == "expired" for r in quotes),
                    "lost_quotes_count": sum(r["status"] == "lost" for r in quotes)}
         pages = max(1, (len(values) + 24) // 25)
