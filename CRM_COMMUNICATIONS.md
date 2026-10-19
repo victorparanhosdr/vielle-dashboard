@@ -79,11 +79,23 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - Limite solicitado pelo Master em 19/10/2026: 200 mensagens de campanha por dia por numero WhatsApp, com virada do dia em America/Sao_Paulo. Numeros novos usam 200 por padrao (pode-se escolher uma cota menor). A migracao eleva uma unica vez as cotas antigas inferiores a 200, sem zerar o consumo, alterar horarios, ativar campanhas ou reabrir descadastros.
 - Nenhum intervalo ou limite garante evitar bloqueios numa integracao WhatsApp nao oficial. Nunca enviar mensagens nao solicitadas.
 
+## Respostas Externas
+
+- `messages.upsert` com `fromMe=true` e `send.message` sao capturados como saidas no mesmo contato/numero. Origem exibida como WhatsApp / sistema externo; nao inventamos o nome do usuario que respondeu fora do DOC4DOCS.
+- O worker atualiza os eventos do webhook dos numeros conectados ao iniciar, sem gerar outro QR nem desconectar. Mantem o mesmo destino HTTPS e segredo; inclui SEND_MESSAGE.
+- A abertura da conversa busca automaticamente ate os 200 registros mais recentes que a Evolution armazenou e recupera apenas as saidas ausentes daquele contato. Ha botao de sincronizacao e intervalo minimo de 30 segundos no servidor; repeticoes sao ignoradas pelo ID do provedor.
+- O historico anterior depende do que estiver salvo no provedor. Nao habilitamos syncFullHistory nem prometemos recuperar mensagens que a Evolution nao possui. Midias aparecem como registro de tipo/legenda, sem download ou reproducao do arquivo nesta entrega.
+- Mensagens externas com data segura atualizam o status respondido somente para as entradas anteriores, naquele numero. Mensagens novas continuam pendentes; uma saida antiga nao resolve perguntas posteriores. Ausencia de data nao e tratada como prova de resposta.
+- Ecos de envios DOC4DOCS usam o ID do provedor e a unica saida em processamento para evitar duplicacao. Campanhas proprias nao sao tratadas como resposta manual; pedidos de SAIR continuam bloqueados. A importacao nao envia mensagens nem cria campanhas.
+
 ## Fontes
 
 - https://www.twilio.com/docs/voice/sdks/javascript/twiliodevice
 - https://www.twilio.com/docs/voice/twiml/number
 - https://www.twilio.com/docs/voice/api/recording
 - https://www.twilio.com/docs/usage/security
+- https://github.com/evolution-foundation/evolution-api/blob/main/src/api/routes/chat.router.ts
+- https://github.com/evolution-foundation/evolution-api/blob/main/src/api/services/channel.service.ts
+- https://github.com/evolution-foundation/evolution-docs/blob/main/docs/02-Configuration/Webhooks.md
 
 SDK JavaScript oficial vendorizado: `@twilio/voice-sdk` 2.18.5, com licenca em `static/twilio-voice.LICENSE.md`. SDK Python fixado em requirements.txt. Nenhuma chamada ou envio real faz parte dos testes automatizados.

@@ -1,5 +1,6 @@
 """Run explicitly: python crm_worker.py. One shared persistent volume, no replicas."""
 import os
+import logging
 from pathlib import Path
 import threading
 import time
@@ -33,9 +34,21 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
 def run(auth, stop):
     store = CrmStore(auth.path.parent / "crm" / "vielle")
     gateway = EvolutionGateway()
+    webhook_next = {}
     while not stop.wait(2):
         if sends_enabled():
             store.heartbeat()
+            with store.db() as c:
+                channels = [dict(r) for r in c.execute("SELECT * FROM channels WHERE state='open'")]
+            for channel in channels:
+                if webhook_next.get(channel["id"], 0) > time.time():
+                    continue
+                try:
+                    gateway.configure_webhook(channel)
+                    webhook_next[channel["id"]] = float("inf")
+                except ValueError:
+                    webhook_next[channel["id"]] = time.time() + 300
+                    logging.warning("CRM WhatsApp webhook configuration pending")
             tick(store, gateway, allow_campaigns=campaigns_enabled() or store.campaigns_allowed())
 
 

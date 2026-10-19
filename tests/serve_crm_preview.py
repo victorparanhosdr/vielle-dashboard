@@ -140,6 +140,9 @@ for n, doctor in enumerate(store.listing()["doctors"]):
         if i==1:
             store.receive(channels[cid]["instance"],{"key":{"id":f"preview-follow-{n}","remoteJid":lead["phone"]+"@s.whatsapp.net"},
                 "pushName":lead["name"],"message":{"conversation":"Tenho disponibilidade a partir das 15h."}},"messages.upsert")
+            if "--external-messages-fixture" in sys.argv:
+                store.receive(channels[cid]["instance"],{"key":{"id":f"preview-external-{n}","fromMe":True,"remoteJid":lead["phone"]+"@s.whatsapp.net"},
+                    "messageTimestamp":int(time.time())+1,"message":{"conversation":"Confirmado! Vamos combinar seu retorno para quinta-feira."}},"messages.upsert")
 
 if "--audience-fixture" in sys.argv:
     doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))

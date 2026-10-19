@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -23,6 +24,36 @@ def location_from_phone(number):
     if len(number) not in {12, 13} or not number.startswith("55"):
         return ""
     return LOCATION_DDDS.get(number[2:4], "")
+
+
+def whatsapp_content(message):
+    for _ in range(5):
+        if not isinstance(message, dict):
+            return ""
+        extended = message.get("extendedTextMessage")
+        body = message.get("conversation") or (extended.get("text") if isinstance(extended, dict) else "")
+        if isinstance(body, str) and body:
+            return body[:5000]
+        for kind, label in (("imageMessage", "Imagem"), ("videoMessage", "Video"), ("audioMessage", "Audio"),
+                            ("documentMessage", "Documento"), ("stickerMessage", "Figurinha"), ("locationMessage", "Localizacao"),
+                            ("contactMessage", "Contato")):
+            media = message.get(kind)
+            if isinstance(media, dict):
+                caption = media.get("caption") or media.get("fileName") or ""
+                return (f"[{label}]" + (" " + caption if isinstance(caption, str) and caption else ""))[:5000]
+        wrapper = next((message[k] for k in ("ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "documentWithCaptionMessage") if isinstance(message.get(k), dict)), {})
+        message = wrapper.get("message")
+    return ""
+
+
+def whatsapp_time(value, now):
+    if isinstance(value, bool):
+        return 0
+    try:
+        stamp = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return 0
+    return stamp if math.isfinite(stamp) and 1262304000 <= stamp <= now + 300 else 0
 
 
 def text(value, maximum=160, required=True):
@@ -112,6 +143,7 @@ class CrmStore:
             CREATE INDEX IF NOT EXISTS leads_doctor ON leads(doctor_id,pipeline_id);
             CREATE INDEX IF NOT EXISTS messages_queue ON messages(status,campaign_id);
             CREATE INDEX IF NOT EXISTS messages_thread ON messages(channel_id,contact_id);
+            CREATE INDEX IF NOT EXISTS messages_thread_time ON messages(channel_id,contact_id,created_at DESC);
             CREATE TABLE IF NOT EXISTS conversation_reads(channel_id TEXT NOT NULL REFERENCES channels(id),
                 contact_id TEXT NOT NULL REFERENCES contacts(id),user_id TEXT NOT NULL,last_read INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(channel_id,contact_id,user_id));
@@ -142,6 +174,12 @@ class CrmStore:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
             if "skip_reason" not in columns:
                 c.execute("ALTER TABLE messages ADD COLUMN skip_reason TEXT NOT NULL DEFAULT ''")
+            for name, definition in (("origin", "TEXT NOT NULL DEFAULT 'crm'"), ("provider_timestamp", "REAL NOT NULL DEFAULT 0")):
+                if name not in columns:
+                    c.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
+            columns = {r[1] for r in c.execute("PRAGMA table_info(conversation_resolutions)")}
+            if "external_reply_at" not in columns:
+                c.execute("ALTER TABLE conversation_resolutions ADD COLUMN external_reply_at REAL NOT NULL DEFAULT 0")
             columns = {r[1] for r in c.execute("PRAGMA table_info(campaigns)")}
             for name, definition in (("weekdays", "TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]'"),
                 ("minute_from", "INTEGER NOT NULL DEFAULT 0"), ("minute_to", "INTEGER NOT NULL DEFAULT 0"),
@@ -563,7 +601,7 @@ class CrmStore:
     @staticmethod
     def conversation_peer(c, channel, contact, fallback):
         peer = c.execute("""SELECT recipient_phone FROM messages WHERE channel_id=? AND contact_id=? AND recipient_phone<>''
-            AND (direction='in' OR status IN ('queued','sending','sent','unknown')) ORDER BY rowid DESC LIMIT 1""", (channel, contact)).fetchone()
+            AND (direction='in' OR status IN ('queued','sending','sent','unknown')) ORDER BY created_at DESC,rowid DESC LIMIT 1""", (channel, contact)).fetchone()
         return peer[0] if peer else fallback
 
     def inbox(self, doctor, user, channel="", kind="all", search="", filters=None):
@@ -578,19 +616,22 @@ class CrmStore:
                 self.owned(c, "channels", channel, doctor)
             # Campaign drafts are not conversations until dispatch has actually begun.
             rows = c.execute("""WITH visible AS (
-                SELECT m.rowid seq,m.* FROM messages m JOIN channels ch ON ch.id=m.channel_id
+                SELECT m.rowid seq,m.*,row_number() OVER(PARTITION BY m.channel_id,m.contact_id ORDER BY m.created_at DESC,m.rowid DESC) newest
+                FROM messages m JOIN channels ch ON ch.id=m.channel_id
                 WHERE ch.doctor_id=? AND (?='' OR ch.id=?) AND
                 (m.direction='in' OR m.status IN ('sent','sending','unknown') OR (m.campaign_id IS NULL AND m.status='queued'))
             ), threads AS (
-                SELECT channel_id,contact_id,max(seq) latest,
+                SELECT channel_id,contact_id,max(CASE WHEN newest=1 THEN seq END) latest,
                 sum(CASE WHEN direction='in' AND seq>coalesce((SELECT resolved_through FROM conversation_resolutions r
+                    WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0)
+                    AND coalesce(nullif(provider_timestamp,0),created_at)>=coalesce((SELECT external_reply_at FROM conversation_resolutions r
                     WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0) THEN 1 ELSE 0 END) unread
                 FROM visible GROUP BY channel_id,contact_id
             ) SELECT m.*,t.unread,ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
                 ct.service_location,ct.service_location_source,ct.service_location_revision,ch.name channel_name,
                 (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
-                JOIN channels ch ON ch.id=t.channel_id ORDER BY m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
+                JOIN channels ch ON ch.id=t.channel_id ORDER BY m.created_at DESC,m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
             items = [dict(r) for r in rows]
             self.attach_customer_values(c, items, doc["name"], bool(filters["search"]))
             if appointment_active(filters):
@@ -611,10 +652,13 @@ class CrmStore:
         before = integer(before, 0, 2**63-1)
         with self.db() as c:
             ch, ct = self.conversation_contact(c, doctor, channel, contact)
+            boundary = c.execute("SELECT created_at FROM messages WHERE rowid=? AND channel_id=? AND contact_id=?", (before, channel, contact)).fetchone() if before else None
+            if before and boundary is None:
+                raise ValueError("Marcador de conversa invalido.")
             rows = c.execute("""SELECT rowid seq,* FROM messages WHERE channel_id=? AND contact_id=?
-                AND (?=0 OR rowid<?) AND (direction='in' OR status IN ('sent','sending','unknown')
-                OR (campaign_id IS NULL AND status='queued')) ORDER BY rowid DESC LIMIT 81""",
-                (channel, contact, before, before)).fetchall()
+                AND (?=0 OR created_at<? OR (created_at=? AND rowid<?)) AND (direction='in' OR status IN ('sent','sending','unknown')
+                OR (campaign_id IS NULL AND status='queued')) ORDER BY created_at DESC,rowid DESC LIMIT 81""",
+                (channel, contact, before, boundary[0] if boundary else 0, boundary[0] if boundary else 0, before)).fetchall()
             messages = [dict(r) for r in reversed(rows[:80])]
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
@@ -627,8 +671,9 @@ class CrmStore:
     @staticmethod
     def conversation_status(c, channel, contact):
         resolved = c.execute("SELECT * FROM conversation_resolutions WHERE channel_id=? AND contact_id=?", (channel, contact)).fetchone()
-        unread = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND contact_id=? AND direction='in' AND rowid>?",
-                           (channel, contact, resolved["resolved_through"] if resolved else 0)).fetchone()[0]
+        unread = c.execute("""SELECT count(*) FROM messages WHERE channel_id=? AND contact_id=? AND direction='in' AND rowid>?
+            AND coalesce(nullif(provider_timestamp,0),created_at)>=?""",
+            (channel, contact, resolved["resolved_through"] if resolved else 0, resolved["external_reply_at"] if resolved else 0)).fetchone()[0]
         return {"unread": unread, "resolution": "open" if unread else resolved["reason"] if resolved else "none"}
 
     @staticmethod
@@ -644,7 +689,8 @@ class CrmStore:
         if not marker:
             return
         # Shared team checkpoint: a reply/close can only resolve its captured inbound boundary.
-        c.execute("""INSERT INTO conversation_resolutions VALUES(?,?,?,?,?,?) ON CONFLICT(channel_id,contact_id)
+        c.execute("""INSERT INTO conversation_resolutions(channel_id,contact_id,resolved_through,reason,actor_id,updated_at)
+            VALUES(?,?,?,?,?,?) ON CONFLICT(channel_id,contact_id)
             DO UPDATE SET resolved_through=excluded.resolved_through,reason=excluded.reason,
                 actor_id=excluded.actor_id,updated_at=excluded.updated_at
             WHERE excluded.resolved_through>resolved_through""", (channel, contact, marker, reason, str(user), time.time()))
@@ -858,7 +904,10 @@ class CrmStore:
                     if campaign["tag"]:
                         c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
 
-    def receive(self, instance, data, event):
+    def receive(self, instance, data, event, *, expected_contact=None, history=False):
+        if not isinstance(data, dict) or not isinstance(event, str):
+            return False
+        event = event.lower().replace("_", ".")
         now = time.time()
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
@@ -873,26 +922,66 @@ class CrmStore:
                 if state != "open":
                     c.execute("UPDATE campaigns SET status='paused',last_error='Numero desconectado.' WHERE channel_id=? AND status='running'", (ch["id"],))
                 return
-            if event != "messages.upsert":
-                return
+            if event not in {"messages.upsert", "send.message"}:
+                return False
             key = data.get("key") or {}
+            if not isinstance(key, dict) or (key.get("fromMe") is not None and type(key["fromMe"]) is not bool):
+                return False
             jid = key.get("remoteJid", "")
-            if not jid.endswith("@s.whatsapp.net") or key.get("fromMe"):
-                return
-            number = phone(jid.split("@")[0])
-            message = data.get("message") or {}
-            body = message.get("conversation") or (message.get("extendedTextMessage") or {}).get("text")
-            if not isinstance(body, str) or not key.get("id"):
-                return
-            contact = self.contact(c, number, str(data.get("pushName") or number)[:160])
-            c.execute("INSERT OR IGNORE INTO messages(id,channel_id,contact_id,body,direction,status,provider_id,created_at,recipient_phone) VALUES(?,?,?,?,'in','received',?,?,?)",
-                      (uuid.uuid4().hex, ch["id"], contact["id"], body[:5000], str(key["id"])[:200], now, number))
+            if isinstance(jid, str) and jid.endswith("@lid"):
+                jid = key.get("remoteJidAlt", "")
+            if not isinstance(jid, str) or not jid.endswith("@s.whatsapp.net"):
+                return False
+            number = phone(jid.split("@")[0].split(":")[0])
+            from_me = key.get("fromMe") is True
+            if (event == "send.message" or history) and not from_me:
+                return False
+            body = whatsapp_content(data.get("message"))
+            provider_id = key.get("id")
+            if not body or not isinstance(provider_id, str) or not 1 <= len(provider_id) <= 200:
+                return False
+            stamp = whatsapp_time(data.get("messageTimestamp"), now)
+            if history and not stamp:
+                return False
+            known = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
+            if expected_contact and (not known or known["id"] != expected_contact):
+                return False
+            if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND provider_id=?", (ch["id"], provider_id)).fetchone():
+                return False
+            if from_me:
+                # An echo can arrive before the sendText HTTP response returns its ID.
+                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin='crm'
+                    AND status IN ('sending','unknown') AND provider_id IS NULL AND recipient_phone=? AND body=?
+                    AND claimed_at>=? AND claimed_at<=?""", (ch["id"], number, body, (stamp or now)-120, (stamp or now)+120)).fetchall()
+                if len(pending) == 1:
+                    c.execute("UPDATE messages SET provider_id=?,provider_timestamp=? WHERE id=?", (provider_id, stamp, pending[0]["id"]))
+                    return False
+            name = (known["name"] if known else number) if from_me else str(data.get("pushName") or number)[:160]
+            contact = self.contact(c, number, name)
+            c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,status,provider_id,created_at,
+                recipient_phone,sent_at,sender_name,origin,provider_timestamp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (uuid.uuid4().hex, ch["id"], contact["id"], body, "out" if from_me else "in", "sent" if from_me else "received",
+                 provider_id, stamp or now, number, (stamp or now) if from_me else None,
+                 "WhatsApp / sistema externo" if from_me else "", "external" if from_me else "whatsapp", stamp))
             normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().strip().upper()
-            if normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"}:
+            if not from_me and normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"}:
                 c.execute("UPDATE contacts SET opted_out=1 WHERE id=?", (contact["id"],))
                 c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE contact_id=? AND status='queued'", (contact["id"],))
+            if from_me and stamp:
+                c.execute("""INSERT INTO conversation_resolutions(channel_id,contact_id,resolved_through,reason,actor_id,updated_at,external_reply_at)
+                    VALUES(?,?,0,'replied','external',?,?) ON CONFLICT(channel_id,contact_id) DO UPDATE SET
+                    reason=CASE WHEN excluded.external_reply_at>=conversation_resolutions.updated_at THEN 'replied' ELSE conversation_resolutions.reason END,
+                    actor_id=CASE WHEN excluded.external_reply_at>=conversation_resolutions.updated_at THEN 'external' ELSE conversation_resolutions.actor_id END,
+                    updated_at=max(conversation_resolutions.updated_at,excluded.updated_at),
+                    external_reply_at=max(conversation_resolutions.external_reply_at,excluded.external_reply_at)""", (ch["id"], contact["id"], stamp, stamp))
+                if not history:
+                    incoming = c.execute("""SELECT max(rowid),max(coalesce(nullif(provider_timestamp,0),created_at)) FROM messages
+                        WHERE channel_id=? AND contact_id=? AND direction='in'""", (ch["id"], contact["id"])).fetchone()
+                    if incoming[0] and incoming[1] <= stamp:
+                        self.resolve_conversation(c, ch["id"], contact["id"], incoming[0], "replied", "external")
             existing = c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchone()
             first = c.execute("SELECT s.id,s.pipeline_id FROM stages s JOIN pipelines p ON p.id=s.pipeline_id WHERE p.doctor_id=? AND s.kind='open' ORDER BY p.name,s.position LIMIT 1", (ch["doctor_id"],)).fetchone()
             if not existing and first:
                 c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                          (uuid.uuid4().hex, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa recebida", now, now))
+                          (uuid.uuid4().hex, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now))
+            return True

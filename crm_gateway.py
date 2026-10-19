@@ -43,11 +43,20 @@ class EvolutionGateway:
             # Provider error bodies may contain credentials or patient content.
             raise ValueError("Nao foi possivel confirmar a operacao no servidor WhatsApp.") from None
 
-    def connect(self, channel):
+    @staticmethod
+    def webhook_payload():
         callback = os.getenv("CRM_WEBHOOK_URL", "")
         secret = os.getenv("CRM_WEBHOOK_SECRET", "")
         if not callback.startswith("https://") or len(secret) < 32:
             raise ValueError("Configure um webhook HTTPS com segredo de pelo menos 32 caracteres antes de conectar.")
+        return {"webhook": {"enabled": True, "url": callback, "byEvents": False, "base64": False,
+            "headers": {"X-DOC4DOCS-Webhook": secret}, "events": ["MESSAGES_UPSERT", "SEND_MESSAGE", "CONNECTION_UPDATE"]}}
+
+    def configure_webhook(self, channel):
+        return self.request("POST", "/webhook/set/" + quote(channel["instance"], safe=""), self.webhook_payload())
+
+    def connect(self, channel):
+        self.webhook_payload()
         name = quote(channel["instance"], safe="")
         instances = self.request("GET", "/instance/fetchInstances?instanceName=" + name, missing_ok=True)
         if not isinstance(instances, list):
@@ -55,9 +64,7 @@ class EvolutionGateway:
         if not instances:
             self.request("POST", "/instance/create", {"instanceName": channel["instance"], "integration": "WHATSAPP-BAILEYS",
                 "qrcode": False, "number": channel["phone"], "groupsIgnore": True, "syncFullHistory": False})
-        self.request("POST", "/webhook/set/" + name, {"webhook": {"enabled": True, "url": callback,
-            "byEvents": False, "base64": False, "headers": {"X-DOC4DOCS-Webhook": secret},
-            "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE"]}})
+        self.configure_webhook(channel)
         data = self.request("GET", "/instance/connect/" + name)
         base64 = data.get("base64") or (data.get("qrcode") or {}).get("base64") or ""
         return {"qr": base64 if isinstance(base64, str) and base64.startswith("data:image/png;base64,") else ""}
@@ -71,6 +78,15 @@ class EvolutionGateway:
                             {"number": item["phone"], "text": item["body"]})
         key = data.get("key") or {}
         return key.get("id")
+
+    def history(self, channel, number):
+        data = self.request("POST", "/chat/findMessages/" + quote(channel["instance"], safe=""),
+            {"where": {"key": {"remoteJid": number + "@s.whatsapp.net"}}, "offset": 200, "page": 1})
+        messages = data.get("messages") if isinstance(data, dict) else None
+        if not isinstance(messages, dict) or not isinstance(messages.get("records"), list):
+            raise ValueError("Historico WhatsApp indisponivel no conector.")
+        pages = messages.get("pages", 1)
+        return messages["records"][:200], type(pages) is int and pages > 1
 
 
 def sends_enabled():

@@ -152,6 +152,9 @@ def handle_request(handler, parsed):
             store.save_service_location(p, actor)
         elif action == "conversation-close":
             result.update(store.close_conversation(p, handler.current_user["id"]))
+        elif action == "conversation-sync":
+            from crm_message_sync import sync_conversation
+            result.update(sync_conversation(store, EvolutionGateway(), p))
         elif action == "customer-tiers":
             store.save_customer_tier_rules(p)
         elif action == "reply":
@@ -176,7 +179,7 @@ def handle_request(handler, parsed):
         else:
             raise LookupError()
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),
-            **({"channel_id": p.get("channel_id", ""), "contact_id": p.get("contact_id", "")} if action == "conversation-close" else {})})
+            **({"channel_id": p.get("channel_id", ""), "contact_id": p.get("contact_id", "")} if action in {"conversation-close", "conversation-sync"} else {})})
         return handler.auth_json({"ok": True, **result})
     except Conflict as e:
         return handler.auth_json({"ok": False, "error": str(e)}, 409)
