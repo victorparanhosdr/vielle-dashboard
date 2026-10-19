@@ -39,7 +39,7 @@
     $("syncBtn").hidden=!clinic;
     refreshController.setClinic(clinic?state.clinic:"");
     const order=["dashboard","commercial","financial","patient_followup","budget_followup","whatsapp_review","paid_traffic","body_evolution","tasks","birthdays","crm"];
-    $("viewTabs").innerHTML=order.filter(key=>(key!=="crm" || data.user.is_master) && data.modules[key] && data.permissions[state.clinic]?.includes(`${key}.view`)).map(key=>{
+    $("viewTabs").innerHTML=order.filter(key=>data.modules[key] && data.permissions[state.clinic]?.includes(`${key}.view`)).map(key=>{
       const module=data.modules[key], page={tasks:"tasks.html",body_evolution:"body-evolution.html",birthdays:"birthdays.html",crm:"crm.html"}[key];
       const target=page?`/${page}?clinic=${encodeURIComponent(state.clinic)}`:`/?clinic=${encodeURIComponent(state.clinic)}&view=${encodeURIComponent(module.view)}`;
       return `<button type="button" class="tabBtn${key==="birthdays"?" active":""}" data-target="${esc(target)}" ${key==="birthdays"?'aria-current="page"':""}>${esc(module.label)}</button>`;

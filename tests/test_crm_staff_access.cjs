@@ -22,4 +22,21 @@ launcherContext.shellSession={...staff,permissions:{vielle:[]}};vm.runInContext(
 assert.ok(!/key === "crm" && !data.user\?\.is_master/.test(shell));
 const tab=read("index.html").match(/<button[^>]*data-view="crmView"[^>]*>/)?.[0];assert.ok(tab);assert.ok(!tab.includes("data-master-only"));
 assert.match(crm,/if\(!state.data.can_manage\)/);
+for(const module of ["tasks","birthdays"]){
+  const source=read(module+".js");
+  const begin=source.indexOf("  function applySession(data)");
+  const end=source.indexOf(module==="tasks"?"  function listParams(":"  function params(",begin);
+  assert.ok(begin>=0 && end>begin);
+  const nodes=new Map();const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,innerHTML:"",textContent:""});return nodes.get(id);};
+  const session={...staff,clinics:[{key:"vielle",name:"Vielle Clinic"}],permissions:{vielle:["tasks.view","tasks.create","birthdays.view","crm.view"]},
+    modules:{tasks:{view:"tasksView",label:"Tarefas"},birthdays:{view:"birthdaysView",label:"Aniversários"},crm:{view:"crmView",label:"CRM"},financial:{view:"financialView",label:"Financeiro"}}};
+  const ctx={state:{clinic:"vielle",session:null,started:true},$,encodeURIComponent,esc:v=>String(v),icons:()=>{},
+    clinicRefresh:{setClinic:()=>{}},refreshController:{setClinic:()=>{}},deny:()=>assert.fail("Authorized operator denied"),
+    can:action=>ctx.state.session.permissions.vielle.includes(`${module}.${action}`)};
+  vm.createContext(ctx);vm.runInContext(source.slice(begin,end)+";apply=applySession;",ctx);ctx.apply(session);
+  assert.match($("viewTabs").innerHTML,/data-target="\/crm.html\?clinic=vielle"/);
+  assert.ok(!$("viewTabs").innerHTML.includes("financialView"));
+  ctx.apply({...session,permissions:{vielle:session.permissions.vielle.filter(p=>p!=="crm.view")}});
+  assert.ok(!$("viewTabs").innerHTML.includes("crm.html"));
+}
 console.log("CRM staff: granted module in navigation, launcher and page; denied/revoked permissions stay hidden; administrative controls excluded OK");
