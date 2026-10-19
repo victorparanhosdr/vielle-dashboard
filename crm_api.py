@@ -59,6 +59,9 @@ def handle_request(handler, parsed):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "avatar":
+                from crm_avatars import serve
+                return serve(handler, store, doctor, query.get("contact", [""])[0], query.get("channel", [""])[0])
             if action == "kommo-import":
                 from crm_kommo_import import status
                 return handler.auth_json({"ok": True, **status(store, doctor, query.get("pipeline", [""])[0],
@@ -120,6 +123,9 @@ def handle_request(handler, parsed):
             for name, doc in PIPELINE_DOCTOR_MAP.items():
                 structure.setdefault(doc, []).append(name)
             store.bootstrap(structure)
+        elif action == "avatar-refresh":
+            from crm_avatars import refresh
+            result.update(refresh(store, EvolutionGateway(), p.get("doctor_id"), p.get("contact_id"), p.get("channel_id", "")))
         elif action in {"kommo-import-preview", "kommo-import-commit"}:
             from crm_kommo_import import prepare, commit
             if action.endswith("preview"):

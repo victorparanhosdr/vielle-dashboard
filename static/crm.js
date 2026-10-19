@@ -74,6 +74,7 @@
   const doctor = () => state.data?.doctors.find(p=>p.id===state.doctor);
   const selectedLeads = () => (state.data?.leads || []).filter(l=>l.pipeline_id===state.pipeline);
   const importer=window.createCrmImporter({api,modal,error,icons,esc,load});
+  const avatars=window.createCrmAvatars({api,esc,enabled:doc=>doc===state.doctor && state.data?.gateway_configured && state.data.channels.some(c=>c.state==="open")});
   const clientMode=()=>["board","inbox"].includes(state.mode);
   const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno"};
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
@@ -176,7 +177,7 @@
   function leadCard(l) {
     const agenda=l.appointment_filter?.item?l.appointment_filter:l.appointment;
     return `<button class="leadCard" draggable="true" data-tier="${esc(l.customer_value?.tier || "unclassified")}" data-lead="${esc(l.id)}" title="${esc(customerValueDescription(l.customer_value))}" aria-label="${esc(l.name+" · "+customerValueDescription(l.customer_value))}">
-      <span class="leadCardHead"><span class="leadAvatar" aria-hidden="true">${esc(initials(l.name))}</span><span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
+      <span class="leadCardHead">${avatars.markup(l.name,l.contact_id,state.doctor,"","leadAvatar")}<span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
       <span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${serviceLocationBadge(l)}</span>${appointmentBadge(agenda,true)}
       <span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
   }
@@ -455,7 +456,7 @@
   const voice=window.createCrmVoice({api,esc,icon,icons});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
     if(state.mode!=="inbox"){state.mode="inbox";render();load();}

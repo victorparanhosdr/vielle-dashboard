@@ -88,6 +88,15 @@ class EvolutionGateway:
         pages = messages.get("pages", 1)
         return messages["records"][:200], type(pages) is int and pages > 1
 
+    def profile_picture(self, channel, number):
+        data = self.request("POST", "/chat/fetchProfilePictureUrl/" + quote(channel["instance"], safe=""), {"number": number})
+        if not isinstance(data, dict) or "profilePictureUrl" not in data:
+            raise ValueError("Foto do WhatsApp indisponivel.")
+        url = data["profilePictureUrl"]
+        if url is not None and not isinstance(url, str):
+            raise ValueError("Resposta de foto invalida.")
+        return url or ""
+
 
 def sends_enabled():
     return os.getenv("CRM_SEND_ENABLED", "0") == "1" and EvolutionGateway().configured

@@ -175,6 +175,35 @@ if "--kommo-import-fixture" in sys.argv:
 
     crm_kommo_import.prepare = synthetic_prepare
 
+if "--avatars-fixture" in sys.argv:
+    from io import BytesIO
+    from PIL import Image
+    import crm_api
+    import crm_avatars
+    from crm_gateway import EvolutionGateway
+    original_avatar_refresh = crm_avatars.refresh
+    avatar_bytes = BytesIO()
+    Image.new("RGB", (160, 160), "#4b8e76").save(avatar_bytes, format="JPEG")
+
+    class SyntheticGateway(EvolutionGateway):
+        @property
+        def configured(self):
+            return True
+
+        def profile_picture(self, channel, number):
+            return "https://pps.whatsapp.net/synthetic"
+
+        def history(self, channel, number):
+            return [], False
+
+    crm_api.EvolutionGateway = SyntheticGateway
+    crm_avatars.refresh = lambda target, gateway, doctor, contact, channel="": original_avatar_refresh(
+        target, gateway, doctor, contact, channel, fetch=lambda url: avatar_bytes.getvalue())
+    with store.db() as c:
+        c.execute("UPDATE channels SET state='open'")
+        for name, location in (("Ana Exemplo", "capelinha"), ("Marina Exemplo", "belo-horizonte"), ("Renata Exemplo", "sao-paulo")):
+            c.execute("UPDATE contacts SET service_location=?,service_location_source='manual' WHERE name=?", (location, name))
+
 if "--communications-fixture" in sys.argv:
     from crm_voice import VoiceService
     voice = VoiceService(store)
