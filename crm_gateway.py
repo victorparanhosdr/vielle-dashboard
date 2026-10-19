@@ -75,3 +75,7 @@ class EvolutionGateway:
 
 def sends_enabled():
     return os.getenv("CRM_SEND_ENABLED", "0") == "1" and EvolutionGateway().configured
+
+
+def campaigns_enabled():
+    return sends_enabled() and os.getenv("CRM_CAMPAIGNS_ENABLED", "0") == "1"

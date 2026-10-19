@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from crm_store import CrmStore, Conflict, TZ
 from crm_worker import tick
-from crm_gateway import EvolutionGateway
+from crm_gateway import EvolutionGateway, campaigns_enabled, sends_enabled
 
 
 class CrmTests(unittest.TestCase):
@@ -214,6 +214,17 @@ class CrmTests(unittest.TestCase):
         with patch.dict(os.environ,env), patch.object(EvolutionGateway,"request",return_value={"key":{"id":"message-1"}}) as req:
             self.assertEqual(EvolutionGateway().send({**channel,"body":"Teste"}),"message-1")
             self.assertEqual(req.call_args.args[2],{"number":"5500000000011","text":"Teste"})
+
+    def test_campaigns_need_explicit_opt_in_separate_from_manual_replies(self):
+        env={"CRM_EVOLUTION_URL":"https://gateway.example","CRM_EVOLUTION_KEY":"private-key",
+             "CRM_SEND_ENABLED":"1","CRM_CAMPAIGNS_ENABLED":"0"}
+        with patch.dict(os.environ,env):
+            self.assertTrue(sends_enabled())
+            self.assertFalse(campaigns_enabled())
+            os.environ["CRM_CAMPAIGNS_ENABLED"]="1"
+            self.assertTrue(campaigns_enabled())
+            os.environ["CRM_SEND_ENABLED"]="0"
+            self.assertFalse(campaigns_enabled())
 
     def test_gateway_first_connection_creates_instance_after_lookup_404(self):
         channel={"instance":"doc4docs-vielle-test","phone":"5500000000011"}

@@ -187,6 +187,7 @@ CRM_EVOLUTION_KEY=<server-side api key>
 CRM_WEBHOOK_URL=https://doc4docs.com.br/api/crm-webhook
 CRM_WEBHOOK_SECRET=<random secret of at least 32 characters>
 CRM_SEND_ENABLED=0
+CRM_CAMPAIGNS_ENABLED=0
 ```
 
 Use TLS or a private encrypted network. The gateway URL is administrator-managed,
@@ -206,7 +207,11 @@ when `CRM_SEND_ENABLED=1`. It uses the same persistent volume, matching the
 existing single-replica SQLite deployment. Do not provision an extra Railway
 service expecting to share a mounted volume. A standalone worker can also be run
 with `python crm_worker.py` on the same host/DATA_DIR, for controlled tests.
-Set `CRM_SEND_ENABLED=1` only for an explicitly authorized live test. The UI
+Set `CRM_SEND_ENABLED=1` only for an explicitly authorized live test. Campaigns
+also require `CRM_CAMPAIGNS_ENABLED=1`; without it, the API blocks campaign starts
+and the worker skips campaign queue entries even if previously marked running.
+Manual replies retain connection, consent/recent-inbound and idempotency checks.
+The UI
 requires a recent worker heartbeat, a configured gateway and an open channel.
 
 - SQLite immediate transactions serialize claims across workers.

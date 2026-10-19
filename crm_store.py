@@ -682,7 +682,7 @@ class CrmStore:
             row = c.execute("SELECT value FROM runtime WHERE key='worker'").fetchone()
             return bool(row and 0 <= time.time() - row[0] < 75)
 
-    def claim(self, now=None):
+    def claim(self, now=None, *, allow_campaigns=True):
         now = time.time() if now is None else now
         local = datetime.fromtimestamp(now, TZ)
         midnight = local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -699,8 +699,9 @@ class CrmStore:
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
                 AND ch.state='open' AND ch.next_send_at<=? AND ct.opted_out=0
+                AND (? OR m.campaign_id IS NULL)
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
-                ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now)).fetchall()
+                ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
                 if r["campaign_id"] and not r["hour_from"] <= local.hour < r["hour_to"]:

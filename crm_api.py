@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from urllib.parse import parse_qs
 
-from crm_gateway import EvolutionGateway, sends_enabled
+from crm_gateway import EvolutionGateway, campaigns_enabled, sends_enabled
 from crm_store import Conflict, CrmStore
 from task_api import read_body
 
@@ -59,7 +59,8 @@ def handle_request(handler, parsed):
             filters = json.loads(query["filters"][0]) if action in {"", "inbox"} and "filters" in query else {}
             if not action:
                 return handler.auth_json({"ok": True, **store.listing(doctor, filters), "gateway_configured": EvolutionGateway().configured,
-                                          "sends_enabled": sends_enabled() and store.worker_online()})
+                                          "sends_enabled": sends_enabled() and store.worker_online(),
+                                          "campaigns_enabled": campaigns_enabled() and store.worker_online()})
             if action == "lead":
                 return handler.auth_json({"ok": True, **store.detail(query.get("id", [""])[0], doctor)})
             if action == "commercial":
@@ -121,7 +122,7 @@ def handle_request(handler, parsed):
         elif action == "campaign":
             result["id"] = store.campaign(p, actor, handler.current_user["id"])
         elif action == "campaign-status":
-            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), sends_enabled() and store.worker_online())
+            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), campaigns_enabled() and store.worker_online())
         else:
             raise LookupError()
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),

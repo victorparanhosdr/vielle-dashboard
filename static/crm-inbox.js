@@ -103,7 +103,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
     $("sendReply").disabled=sending || !available || !$("replyBody").value.trim();
     $("replyChannel").disabled=sending;
-    $("replyState").textContent=!state.data.sends_enabled?"Envios reais desativados · WhatsApp ainda não conectado":ch?.state!=="open"?"Número desconectado":!threadData?.reply_allowed?"Envio bloqueado · confira a autorização de contato":"Atendimento por texto";
+    $("replyState").textContent=!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?.reply_allowed?"Envio bloqueado · confira a autorização de contato":"Atendimento por texto";
     syncResolution();
   }
   function syncResolution() {

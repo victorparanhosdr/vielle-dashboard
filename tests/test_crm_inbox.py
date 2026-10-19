@@ -124,6 +124,23 @@ class InboxTests(unittest.TestCase):
         self.assertEqual(data["messages"][-1]["status"],"sent")
         self.assertEqual(data["resolution"],"replied")
 
+    def test_manual_only_worker_does_not_dispatch_even_running_campaigns(self):
+        campaign=self.campaign()
+        with self.store.db() as c:
+            c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))
+        self.store.campaign_status(campaign,self.a,"start",True)
+        item=self.incoming()
+        self.store.reply(self.payload(item,body="Resposta manual",request_id="manual-only"),"user",True)
+        gateway=Mock();gateway.send.return_value="manual-accepted"
+        self.assertTrue(tick(self.store,gateway,self.now,allow_campaigns=False))
+        self.assertFalse(tick(self.store,gateway,self.now+61,allow_campaigns=False))
+        gateway.send.assert_called_once()
+        self.assertIsNone(gateway.send.call_args.args[0]["campaign_id"])
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT status FROM messages WHERE campaign_id=?",(campaign,)).fetchone()[0],"queued")
+        gateway.send.return_value="campaign-accepted"
+        self.assertTrue(tick(self.store,gateway,self.now+61,allow_campaigns=True))
+
     def test_successful_reply_only_resolves_observed_boundary(self):
         item=self.incoming()
         with self.store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))

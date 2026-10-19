@@ -4,12 +4,12 @@ from pathlib import Path
 import threading
 import time
 
-from crm_gateway import EvolutionGateway, sends_enabled
+from crm_gateway import EvolutionGateway, campaigns_enabled, sends_enabled
 from crm_store import CrmStore
 
 
-def tick(store, gateway, now=None):
-    item = store.claim(now)
+def tick(store, gateway, now=None, *, allow_campaigns=True):
+    item = store.claim(now, allow_campaigns=allow_campaigns)
     if item is None:
         return False
     try:
@@ -33,7 +33,7 @@ def run(auth, stop):
     while not stop.wait(2):
         if sends_enabled():
             store.heartbeat()
-            tick(store, gateway)
+            tick(store, gateway, allow_campaigns=campaigns_enabled())
 
 
 if __name__ == "__main__":

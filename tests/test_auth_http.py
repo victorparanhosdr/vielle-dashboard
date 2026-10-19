@@ -293,6 +293,25 @@ class HttpAuthTests(unittest.TestCase):
         store.finish(store.claim(),"http-accepted")
         self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],0)
 
+    def test_crm_campaign_stays_blocked_when_manual_replies_are_enabled(self):
+        from crm_api import store_for
+        store=store_for(self.store)
+        store.bootstrap({"Doctor":["Pipeline"]})
+        listing=store.listing();doctor=listing["doctor_id"];pipeline=listing["pipelines"][0]
+        channel=store.channel({"doctor_id":doctor,"name":"Test","phone":"5500000000001"})
+        lead=store.lead({"doctor_id":doctor,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],
+            "phone":"5500000000002","name":"Test","title":"Test","consent":True,"consent_source":"Test"},"Master")
+        campaign=store.campaign({"doctor_id":doctor,"channel_id":channel,"name":"Test","body":"Test","lead_ids":[lead]},"Master")
+        with store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(channel,))
+        master=self.master_cookie()
+        with patch("crm_api.sends_enabled",return_value=True),patch("crm_api.campaigns_enabled",return_value=False),patch.object(store,"worker_online",return_value=True):
+            data=json.loads(self.request("GET",f"/api/crm?clinic=vielle&doctor={doctor}",cookie=master)[2])
+            self.assertTrue(data["sends_enabled"]);self.assertFalse(data["campaigns_enabled"])
+            status,_,raw=self.request("POST","/api/crm/campaign-status?clinic=vielle",
+                {"id":campaign,"doctor_id":doctor,"action":"start"},master,{"X-DOC4DOCS-Request":"1"})
+            self.assertEqual(status,400,raw)
+        with store.db() as c:self.assertEqual(c.execute("SELECT status FROM campaigns WHERE id=?",(campaign,)).fetchone()[0],"draft")
+
     def test_crm_customer_tier_settings_require_vielle_master_and_origin(self):
         payload={"silver_cents":700000,"gold_cents":2000000}
         user,_=self.login();master=self.master_cookie()
