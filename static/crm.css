@@ -43,13 +43,13 @@
 .crmTabs [role=tablist] { gap:3px;padding:4px;background:#e9eeebc9;border:1px solid #dee6e1;border-radius:8px;backdrop-filter:blur(16px); }
 .crmPage .crmTabs [role=tab] { background:transparent!important;border-color:transparent!important;font-weight:500;font-size:12px;min-height:36px;padding:8px 12px; }
 .crmPage .crmTabs [aria-selected=true] { background:#ffffffed!important;border-color:#dbe5df!important;color:var(--ui-green)!important;box-shadow:0 2px 5px #173e3210,inset 0 1px 0 white; }
-.crmWorkspace { display:grid;grid-template-columns:minmax(0,1fr) 235px;gap:24px; }
+.crmWorkspace { display:grid;grid-template-columns:minmax(0,1fr) 235px;gap:24px;align-items:start; }
 .boardSummary { display:flex;gap:28px;flex-wrap:wrap;margin:0 0 18px;font-size:11px;color:var(--ui-muted); }
 .boardSummary>span { display:flex;align-items:center;gap:9px; }.boardSummary svg { width:16px;height:16px;color:#769184;stroke-width:1.6; }
 .boardSummary strong { color:var(--ui-ink);margin-right:4px;font-size:13px; }
-.crmBoard { display:grid;grid-auto-flow:column;grid-auto-columns:258px;gap:14px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:16px;height:clamp(380px,calc(100dvh - 200px),740px);min-height:0;align-items:stretch;scrollbar-width:thin;scrollbar-color:#b8cdc0 transparent; }
+.crmBoard { display:grid;grid-auto-flow:column;grid-auto-columns:258px;gap:14px;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:16px;height:auto;min-height:460px;align-items:stretch;scrollbar-width:thin;scrollbar-color:#b8cdc0 transparent; }
 .crmColumn { --lane-accent:#76968b;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:#eaf0edb3;padding:0 7px 8px;border-radius:6px;border-top:2px solid #bacdc1; }
-.columnLeads { flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:thin;scrollbar-color:#b8cdc0 transparent;scrollbar-gutter:stable;padding:3px 2px 0; }
+.columnLeads { flex:none;min-height:0;overflow:visible;padding:3px 2px 0; }
 .columnLeads:focus-visible { outline:2px solid #4d8b73;outline-offset:-2px;border-radius:4px; }
 .columnFooter { display:grid;justify-items:center;gap:8px;padding:8px 0 12px;color:var(--ui-muted);font-size:10px; }
 .columnFooter small { font-size:10px; }.columnFooter p { margin:0;text-align:center;line-height:1.5;overflow-wrap:anywhere; }
@@ -244,7 +244,7 @@
   .crmFilters{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}.crmFilters>label{grid-column:1/-1}.boardSummary{gap:12px 20px;font-size:10px}.boardSummary strong{font-size:12px}.boardSummary svg{width:14px;height:14px}.boardSummary>span{gap:6px}
   .crmSearchBar{grid-template-columns:auto minmax(0,1fr) 40px;gap:8px}.crmSearchInput{grid-column:1/-1}.crmContent #toggleCrmFilters{padding:8px;font-size:12px;gap:5px}.crmPage .crmSort select{font-size:16px;padding:10px 8px}.crmPage #crmFilterForm{grid-template-columns:minmax(0,1fr);gap:22px}.crmFilterGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 9px}.financialFilterGrid label,.financialFilterGrid label:nth-child(-n+2){grid-column:auto}.financialFilterGrid label:last-child{grid-column:1/-1}.crmFilterGroup>header{align-items:start}.crmFilterGroup>header>span{max-width:55%}.crmFilterGrid :is(select,input){font-size:16px}.crmFilterActions{flex-wrap:wrap}.crmFilterActions>span{flex-basis:100%}.crmFilterActions button{flex:1}.crmContent .filterChip{font-size:10px}.leadCardHead{gap:7px}.leadCard .leadValue{font-size:11px;max-width:70px}
   .appointmentFilterGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 9px}.appointmentFilterGrid label:first-child,.appointmentFilterGrid label:last-child{grid-column:1/-1}.appointmentFilterGrid :is(input,select){font-size:16px}.crmContent #previousMonthReturns{font-size:10px;max-width:100%}.crmPage .appointmentReturnCheck{font-size:11px}
-  .crmTabs>.commands{width:100%}.crmTabs>.commands button{flex:1}.crmBoard{grid-auto-columns:min(280px,80vw);height:clamp(360px,70dvh,650px);min-height:0}.crmColumn{min-height:0}
+  .crmTabs>.commands{width:100%}.crmTabs>.commands button{flex:1}.crmBoard{grid-auto-columns:min(280px,80vw);height:auto;min-height:360px}.crmColumn{min-height:0}
   .formGrid,.leadDetail{grid-template-columns:1fr}.crmPage dialog{padding:18px;width:calc(100% - 20px);max-height:calc(100dvh - 20px)}
   .profileTabs{grid-template-columns:repeat(2,minmax(0,1fr))}.crmPage .profileTabs button{font-size:10px;padding:8px;flex:1;flex-wrap:wrap}.profileTabs svg{width:15px;height:15px}.commercialToolbar{align-items:start;gap:12px}.crmPage .commercialToolbar label{width:100%}.commercialTotals{gap:12px}.commercialTotals strong{font-size:18px}.commercialTotals span{font-size:10px}.commercialItemHead>strong{font-size:14px}.commercialPagination{font-size:10px}.appointmentHighlight .appointmentTime{font-size:18px}.appointmentItem .commercialItemHead>strong{font-size:12px}
   .stageRow{grid-template-columns:minmax(0,1fr) repeat(3,30px);gap:4px;padding-bottom:8px;border-bottom:1px solid var(--ui-line)}

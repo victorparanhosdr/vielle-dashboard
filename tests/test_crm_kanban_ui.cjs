@@ -29,10 +29,13 @@ const kanban=ctx.window.createCrmKanban({
 });
 const settings={doctor:"doctor-a",pipeline:"pipeline-a",filters:{search:"ana",sort:"spent"},columns:[{stage_id:"stage-a",loaded:20,total:45,next_cursor:"cursor-one"}]};
 let current;
-function mount(){current=lane();kanban.mount({querySelector:()=>({querySelector:()=>current})},settings);return current;}
+let boardTop=0;
+function mount(){current=lane();kanban.mount({getBoundingClientRect:()=>({top:boardTop}),querySelector:()=>({querySelector:()=>current})},settings);return current;}
 const batch=(start,end,next="cursor-two")=>({pipeline_id:"pipeline-a",stage_id:"stage-a",leads:Array.from({length:end-start},(_,i)=>({id:"lead-"+(start+i)})),loaded:end,total:45,next_cursor:next});
 (async()=>{
   const first=mount();assert.equal(kanban.interacting(),false);
+  assert.equal(observers.at(-1).options.root,null);
+  boardTop=-100;assert.equal(kanban.interacting(),true);boardTop=0;
   const initial=first.nodes[".columnLoadMore"].onclick();
   await first.nodes[".columnLoadMore"].onclick();assert.equal(requests.length,1);
   assert.equal(kanban.interacting(),true);assert.equal(first.attributes["aria-busy"],"true");
@@ -62,5 +65,10 @@ const batch=(start,end,next="cursor-two")=>({pipeline_id:"pipeline-a",stage_id:"
   assert.equal(retry.cards.ids.length,40);
   kanban.destroy();assert.equal(kanban.interacting(),false);
   assert.match(kanban.footer({loaded:0,total:0,next_cursor:""}),/hidden/);
+  const css=fs.readFileSync(path.join(__dirname,"../static/crm.css"),"utf8");
+  const boardRules=[...css.matchAll(/\.crmBoard\s*\{([^}]+)\}/g)].map(m=>m[1]);
+  assert.ok(boardRules.length>=2);assert.ok(boardRules.every(rule=>rule.includes("height:auto")));
+  const laneRule=css.match(/\.columnLeads\s*\{([^}]+)\}/)[1];
+  assert.match(laneRule,/overflow:visible/);assert.ok(!laneRule.includes("overflow-y:auto"));
   console.log("Kanban: bounded batches, fixed scope, duplicate guard, stale-response cancellation, retry and refresh OK");
 })().catch(error=>{console.error(error);process.exitCode=1;});

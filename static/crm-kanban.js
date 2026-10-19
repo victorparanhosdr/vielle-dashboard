@@ -11,7 +11,7 @@
     }
     function mount(board,{doctor,pipeline,filters,columns}) {
       destroy();
-      const session={valid:true,columns:[]};active=session;
+      const session={valid:true,columns:[],board};active=session;
       for(const meta of columns){
         const column=board.querySelector(`[data-stage="${CSS.escape(meta.stage_id)}"]`);
         if(!column)continue;
@@ -49,11 +49,11 @@
         }
         button.onclick=more;
         if(cursor && typeof IntersectionObserver!=="undefined"){
-          entry.observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting))more();},{root:lane,rootMargin:"0px 0px 200px 0px"});
+          entry.observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting))more();},{root:null,rootMargin:"0px 0px 200px 0px"});
           entry.observer.observe(button);
         }
       }
     }
-    return {footer,mount,destroy,interacting:()=>Boolean(active?.columns.some(c=>c.busy || c.loaded>20 || c.lane.scrollTop>0))};
+    return {footer,mount,destroy,interacting:()=>Boolean(active && (active.board.getBoundingClientRect().top<0 || active.columns.some(c=>c.busy || c.loaded>20)))};
   };
 })();
