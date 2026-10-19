@@ -179,7 +179,7 @@ class SessionAuthMixin:
             if query.get("clinic") != ["vielle"]:
                 self.auth_json({"ok": False, "error": "Piloto disponivel apenas na Vielle."}, 403)
                 return False
-            return self.require_master_auth()
+            return self.require_permission("vielle", "crm.view")
         if path == "/api/birthdays" or path.startswith("/api/birthdays/") or normalized == "/birthdays.html":
             if "clinic" not in query:
                 self.auth_json({"ok": False, "error": "Informe a clínica."}, 400)

@@ -132,6 +132,8 @@
       if(seq!==state.seq) return;
       state.data=data;state.doctor=data.doctor_id;
       $("setup").hidden=Boolean(data.doctors.length);$("crmApp").hidden=!data.doctors.length;
+      $("addDoctor").hidden=!data.can_manage;$("customerTierRules").hidden=!data.can_manage;
+      if(!data.doctors.length && !data.can_manage)$("setup").hidden=true;
       $("doctor").innerHTML=data.doctors.map(d=>option(d.id,d.name,d.id===state.doctor)).join("");
       if(!data.pipelines.some(p=>p.id===state.pipeline)) state.pipeline=data.pipelines[0]?.id || "";
       $("pipeline").innerHTML=data.pipelines.length ? data.pipelines.map(p=>option(p.id,p.name,p.id===state.pipeline)).join("") : option("","Nenhum funil");
@@ -212,10 +214,14 @@
     document.querySelector('.crmSearchBar').classList.toggle('columnSorting',state.mode==="board" && presentation==="list");
     $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="inbox" ? '<span class="connectionNote">WhatsApp · Atendimento da equipe</span>' : state.mode==="campaigns" ? `<span class="connectionNote">${state.data.campaigns_enabled?"Disparos habilitados":"Disparos de campanha desativados"}</span><button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : `<button class="primary" id="newChannel">${icon("plus")} Número</button>`;
     if(state.mode==="board" && pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="organico paranhos")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
+    if(!state.data.can_manage){
+      ["editPipeline","newPipeline","newChannel","importKommo"].forEach(id=>{if($(id))$(id).hidden=true;});
+    }
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
     $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():state.mode==="campaigns"?"":channels();
+    if(!state.data.can_manage)$("crmView").querySelectorAll("[data-connect]").forEach(button=>button.hidden=true);
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
       if(key!==listScope){listSeed=null;listScope=key;}
@@ -530,10 +536,11 @@
     if(!l || l.stage_id===col.dataset.stage || l.pipeline_id!==state.pipeline)return;
     try{await moveLead(l,col.dataset.stage);}catch(err){notice(err.message);}
   };
-  function session(data){state.session=data;if(!data.user.is_master || !data.clinics.some(c=>c.key==="vielle")){$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("Piloto disponível apenas para o Master da Vielle.");return;}if(!state.data)load();}
+  function sessionAllowed(data){return Boolean(data?.clinics?.some(c=>c.key==="vielle") && data.permissions?.vielle?.includes("crm.view"));}
+  function session(data){state.session=data;if(!sessionAllowed(data)){inbox.unmount();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}$("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();}
   window.addEventListener("doc4docs-session",e=>session(e.detail));
   if(window.doc4docsSession)session(window.doc4docsSession);
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden && state.session?.user.is_master && !$("crmDialog").open && !kanban.interacting())load();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && state.data && state.mode==="campaigns")load();},15000);
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
   icons();

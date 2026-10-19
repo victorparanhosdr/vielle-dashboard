@@ -28,9 +28,11 @@ const {chromium}=require("playwright");
       if(width!==320)await page.screenshot({path:path.resolve(__dirname,`../../doc4docs-crm-launcher-${width}.png`),fullPage:false});
     }
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent("doc4docs-session",{detail:{...window.doc4docsSession,user:{...window.doc4docsSession.user,is_master:false}}})));
+    assert.ok(await launcher.isVisible());
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent("doc4docs-session",{detail:{...window.doc4docsSession,user:{...window.doc4docsSession.user,is_master:false},permissions:{...window.doc4docsSession.permissions,vielle:[]}}})));
     assert.ok(await launcher.isHidden());
     await page.goto(new URL("/precificacao",target).href);assert.equal(await page.locator(".appAttendanceLauncher").count(),0);
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({ok:true,sharedLauncher:true,directInbox:true,preservedDraft:true,masterOnly:true,publicPageExcluded:true,viewports:[320,390,1440],pageErrors:errors}));
+    console.log(JSON.stringify({ok:true,sharedLauncher:true,directInbox:true,preservedDraft:true,permissionScoped:true,publicPageExcluded:true,viewports:[320,390,1440],pageErrors:errors}));
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

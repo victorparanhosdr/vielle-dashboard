@@ -1,4 +1,4 @@
-"""Master-only Vielle pilot; webhooks use an independent secret, never cookies."""
+"""Permission-scoped Vielle CRM; webhooks use an independent secret, never cookies."""
 import hmac
 import json
 import logging
@@ -12,6 +12,8 @@ from crm_store import Conflict, CrmStore
 from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
+MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "connect", "customer-tiers", "campaign-enable",
+                  "kommo-import", "kommo-import-preview", "kommo-import-commit"}
 
 
 def store_for(auth):
@@ -47,12 +49,17 @@ def webhook(handler):
 
 
 def handle_request(handler, parsed):
-    # Repeated here so direct dispatch cannot bypass the pilot's access boundary.
+    # Repeated here so direct dispatch cannot bypass clinic/module permissions.
     query = parse_qs(parsed.query, keep_blank_values=True)
-    if query.get("clinic") != ["vielle"] or not handler.current_user.get("is_master"):
-        return handler.auth_json({"ok": False, "error": "Piloto disponivel apenas para o Master da Vielle."}, 403)
-    store = store_for(handler.server.auth_store)
+    user = handler.current_user or {}
+    allowed = user.get("is_master") or (user.get("id") is not None and
+        handler.server.auth_store.has_permission(user["id"], "vielle", "crm.view") is True)
+    if query.get("clinic") != ["vielle"] or not allowed:
+        return handler.auth_json({"ok": False, "code": "permission_denied", "error": "CRM nao liberado para seu usuario nesta clinica."}, 403)
     action = parsed.path.removeprefix("/api/crm").strip("/")
+    if action in MASTER_ACTIONS and not user.get("is_master"):
+        return handler.auth_json({"ok": False, "code": "master_required", "error": "Configuracao exclusiva do Master."}, 403)
+    store = store_for(handler.server.auth_store)
     try:
         if action.startswith("voice/"):
             from crm_voice_api import handle_request as handle_voice
@@ -74,7 +81,8 @@ def handle_request(handler, parsed):
                 return handler.auth_json({"ok": True, **store.listing(doctor, filters, kanban_pipeline=query.get("pipeline", [""])[0] if query.get("view") == ["kanban"] else None), "gateway_configured": EvolutionGateway().configured,
                                           "sends_enabled": sends_enabled() and store.worker_online(),
                                           "campaigns_enabled": sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online(),
-                                          "can_enable_campaigns": sends_enabled() and store.worker_online()})
+                                          "can_enable_campaigns": bool(user.get("is_master")) and sends_enabled() and store.worker_online(),
+                                          "can_manage": bool(user.get("is_master"))})
             if action == "kanban-page":
                 return handler.auth_json({"ok": True, **store.kanban_page(doctor, query.get("pipeline", [""])[0],
                     query.get("stage", [""])[0], filters, query.get("cursor", [""])[0])})

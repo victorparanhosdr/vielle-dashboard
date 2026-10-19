@@ -99,7 +99,7 @@
     if (!attendance) return;
     const clinic = new URLSearchParams(location.search).get("clinic");
     const choosing = page === "dashboard" && $("#dashboardShell")?.classList.contains("dashboardHidden");
-    const allowed = shellSession?.user?.is_master && shellSession.clinics?.some(item => item.key === "vielle") &&
+    const allowed = shellSession?.clinics?.some(item => item.key === "vielle") &&
       shellSession.permissions?.vielle?.includes("crm.view");
     attendance.hidden = !allowed || choosing || (clinic && clinic !== "vielle") || institutePage;
     document.body.classList.toggle("appHasAttendance", !attendance.hidden);
@@ -427,7 +427,6 @@
     const views = Object.keys(navModels);
     Object.entries(data.modules || {}).sort(([, a], [, b]) => views.indexOf(a.view) - views.indexOf(b.view)).forEach(([key, module]) => {
       if (!data.permissions?.[clinic]?.includes(`${key}.view`)) return;
-      if (key === "crm" && !data.user?.is_master) return;
       const model = navModels[module.view];
       if (!model) return;
       const path = {tasks:"/tasks.html", birthdays:"/birthdays.html", body_evolution:"/body-evolution.html", crm:"/crm.html"}[key];

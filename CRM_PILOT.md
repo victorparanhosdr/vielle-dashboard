@@ -1,11 +1,15 @@
 # CRM Vielle Pilot
 
-Master-only Vielle pilot. Phone pairing requires a separately configured
+Permission-scoped Vielle pilot. Phone pairing requires a separately configured
 Evolution v2 service. Outbound sending is disabled by default.
 
 ## Data and scope
 
-- Master-only pilot, Vielle only. Existing users receive no new effective access.
+- Vielle only. Access follows the existing `crm.view` permission and clinic
+  membership assigned by the Master; no permission is granted by a migration.
+  This module permission enables routine CRM work, chats, calls and campaigns.
+  Number pairing, doctor/pipeline setup, tier rules, Kommo migration and global
+  campaign activation remain Master-only, enforced on the server and hidden in UI.
 - Separate database: `<auth data root>/crm/vielle/crm.sqlite3`.
 - A doctor owns multiple pipelines and channels. Every lead, stage and campaign
   is validated against that owner. Contacts share identity and a clinic-wide
@@ -41,8 +45,8 @@ exposes history. Missing cache is shown as unavailable, not a zero purchase tota
 
 Default scope is the selected doctor, using the configured Experts UUID or explicit
 full name when no UUID mapping is available. Conflicting UUIDs and unknown ownership
-are not guessed. Master can explicitly select the whole clinic. This does not open
-access to another clinic or any non-Master user.
+are not guessed. Authorized CRM operators can explicitly select the whole clinic.
+This does not open access to another clinic or users without CRM permission.
 
 Sales are sold values, not receipts. Cancelled/deleted/refunded/inactive sales are
 excluded. Quotes display open, expired and lost statuses (consistent with the current

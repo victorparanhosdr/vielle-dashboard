@@ -96,7 +96,7 @@ class SharedDesignTests(unittest.TestCase):
         css = (ROOT / "static/design-system.css").read_text()
         self.assertIn('/crm.html?clinic=vielle&mode=inbox', source)
         self.assertIn('shellSession.permissions?.vielle?.includes("crm.view")', source)
-        self.assertIn('shellSession?.user?.is_master', source)
+        self.assertNotIn('shellSession?.user?.is_master', source)
         self.assertIn('clinic && clinic !== "vielle"', source)
         self.assertIn('doc4docs-open-attendance', source)
         self.assertIn('env(safe-area-inset-bottom)', css)

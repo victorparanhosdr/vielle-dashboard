@@ -280,6 +280,11 @@ if "--communications-fixture" in sys.argv:
                     c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=?",(now-86400,now-86400,key))
 
 
+if "--staff-fixture" in sys.argv:
+    auth.create_user("Jane Teste", "preview-staff", password, clinic_keys=["vielle"], permissions={"vielle": ["crm.view"]})
+    token = auth.login("preview-staff", password)
+
+
 class Preview(app.Handler):
     def preview_session(self):
         # Loopback synthetic fixture only: other preview tabs share 127.0.0.1 cookies.

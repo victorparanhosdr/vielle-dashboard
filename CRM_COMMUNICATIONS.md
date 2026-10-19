@@ -1,6 +1,6 @@
 # CRM: Telefonia e Campanhas
 
-Piloto exclusivo do Master da Vielle. As clinicas e os institutos nao compartilham filas, clientes ou gravacoes.
+CRM da Vielle liberado por `crm.view` e vinculo a clinica, conforme configuracao do Master. As clinicas e os institutos nao compartilham filas, clientes ou gravacoes. Operacoes de atendimento usam o nome do usuario autenticado; configuracoes de integracao continuam exclusivas do Master.
 
 ## Telefonia
 
@@ -51,7 +51,7 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - Copia local MP3: `crm/vielle/voice-recordings/<id>.mp3`, fora de `static`, diretorio privado e arquivos 0600.
 - A fila de download roda em uma thread separada, independente do worker WhatsApp. Falhas de rede tem ate cinco tentativas, com espera progressiva; arquivos interrompidos sao recuperados depois de reiniciar.
 - Callback ausente pode ser reconciliado pelo RecordingSid conhecido. Falhas definitivas aparecem como gravacao a conferir, nao como audio disponivel.
-- A reproducao passa por sessao Master e verificacao de doutor; suporta Range, no-store e auditoria de acesso. Nao expomos RecordingUrl nem credenciais do provedor.
+- A reproducao passa por sessao com CRM autorizado e verificacao de doutor; suporta Range, no-store e auditoria de acesso. Nao expomos RecordingUrl nem credenciais do provedor.
 - Nao ha exclusao automatica. Definir politica de retencao, base legal, avisos, controle de acesso, protecao do volume, backups restauraveis e custos com o responsavel da clinica antes de uso real. A mensagem de consentimento nao substitui essa avaliacao.
 - O backup deve incluir tanto o banco CRM quanto a pasta de gravacoes. Nao basta manter somente um deles. Monitorar espaco do volume e pendencias de download.
 
@@ -103,7 +103,7 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - Imagens, videos e documentos levam a assinatura do atendente na legenda. Audio e enviado como nota de voz, precedido de uma mensagem assinada do atendente e da legenda opcional. A nota so entra na fila apos confirmacao do texto; apenas a nota aceita resolve as mensagens pendentes. Falhas incertas bloqueiam o canal, sem repeticao automatica.
 - Anexos recebidos e enviados externamente tem metadados privados vinculados ao contato e numero. `Carregar anexo` consulta o conector somente para aquela mensagem, confere o telefone e armazena o arquivo. Imagens possuem previa, audios e videos possuem player; documentos sao baixados como anexo. Abrir ou ouvir nao marca como respondida.
 - Registros antigos do tipo [Imagem]/[Audio]/[Video]/[Documento] usam busca pelo ID exato no provedor. A sincronizacao enriquece entradas ja existentes sem importar entradas antigas novas nem multiplicar nao lidas. Arquivos expirados no WhatsApp podem ficar indisponiveis. Midias de visualizacao unica nao sao arquivadas.
-- Arquivos em `crm/vielle/media/<uuid>`, fora de static, com diretorio 0700/arquivos 0600, rota autenticada Master, verificacao de doutor, cache privado no-store e suporte Range. O navegador nunca recebe chaves de midia, URLs do provedor ou caminhos do servidor. Incluir a pasta e o SQLite nos backups privados.
+- Arquivos em `crm/vielle/media/<uuid>`, fora de static, com diretorio 0700/arquivos 0600, rota autenticada com permissao CRM, verificacao de doutor, cache privado no-store e suporte Range. O navegador nunca recebe chaves de midia, URLs do provedor ou caminhos do servidor. Incluir a pasta e o SQLite nos backups privados.
 - Rascunhos nao enviados expiram depois de 24 horas na proxima inclusao. Ha cota de 100 MB de rascunhos por usuario e 1 GB total para o piloto, com erro explicito se lotar; arquivos vinculados ao historico nao sao apagados automaticamente. Definir retencao e acompanhar o volume antes de ampliar a operacao.
 - Os testes usam arquivos sinteticos e gateway simulado; nao enviam mensagens reais nem ativam microfone do usuario. Videos e audios devem usar codecs reproduziveis no navegador da equipe.
 

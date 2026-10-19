@@ -14,6 +14,7 @@ from unittest.mock import patch
 from auth_store import AuthStore
 from auth_http import LoginLimiter
 from clinic_catalog import SUPPORTED_CLINICS
+from access_policy import clinic_permissions
 
 
 class HttpAuthTests(unittest.TestCase):
@@ -34,7 +35,8 @@ class HttpAuthTests(unittest.TestCase):
         self.addCleanup(self.dbtemp.cleanup)
         self.store = AuthStore(Path(self.dbtemp.name) / "auth.sqlite3")
         self.store.initialize()
-        self.user_id = self.store.create_user("Usuario Local", "teste", "Temporary-test-password!", clinic_keys=["vielle"])
+        self.user_id = self.store.create_user("Usuario Local", "teste", "Temporary-test-password!", clinic_keys=["vielle"],
+            permissions={"vielle": [p for p in clinic_permissions("vielle") if p != "crm.view"]})
         # Exercise the actual Handler, while preventing clinic migrations and external calls.
         def start_patch(patcher):
             result = patcher.start()
@@ -250,6 +252,46 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/crm-webhook", {})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
+
+    def test_crm_staff_permission_allows_work_without_master_configuration(self):
+        from crm_api import store_for, MASTER_ACTIONS
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        self.limit_permissions(["crm.view"])
+        cookie, _ = self.login()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        status, _, raw = self.request("GET", "/api/crm?clinic=vielle", cookie=cookie)
+        self.assertEqual(status, 200, raw)
+        data = json.loads(raw)
+        self.assertFalse(data["can_manage"])
+        self.assertFalse(data["can_enable_campaigns"])
+        self.assertEqual(self.request("GET", "/crm.html?clinic=vielle", cookie=cookie)[0], 200)
+        self.assertEqual(self.request("GET", "/static/crm.html?clinic=vielle", cookie=cookie)[0], 200)
+        for action in MASTER_ACTIONS:
+            status, _, _ = self.request("POST", "/api/crm/" + action + "?clinic=vielle", {}, cookie, headers)
+            self.assertEqual(status, 403, action)
+        doctor, pipeline = data["doctor_id"], data["pipelines"][0]
+        status, _, raw = self.request("POST", "/api/crm/lead?clinic=vielle", {"doctor_id": doctor,
+            "pipeline_id": pipeline["id"], "stage_id": pipeline["stages"][0]["id"], "name": "Paciente sintetico",
+            "phone": "5500000000002", "title": "Retorno"}, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        lead_id = json.loads(raw)["id"]
+        contact = store.detail(lead_id, doctor)["lead"]["contact_id"]
+        channel = store.channel({"doctor_id": doctor, "name": "Atendimento", "phone": "5500000000001"})
+        with store.db() as c:
+            c.execute("UPDATE channels SET state='open' WHERE id=?", (channel,))
+        with patch("crm_api.sends_enabled", return_value=True), patch.object(store, "worker_online", return_value=True):
+            status, _, raw = self.request("POST", "/api/crm/reply?clinic=vielle", {"doctor_id": doctor,
+                "channel_id": channel, "contact_id": contact, "body": "Resposta de teste", "request_id": "staff-reply"}, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        message = store.conversation(doctor, channel, contact)["messages"][-1]
+        self.assertEqual(message["body"], "*Usuario Local*\n\nResposta de teste")
+        self.assertEqual(self.request("GET", "/api/crm?clinic=inspire", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/master", cookie=cookie)[0], 403)
+        self.limit_permissions([])
+        self.assertEqual(self.request("GET", "/api/crm?clinic=vielle", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/crm.html?clinic=vielle", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("POST", "/api/crm/lead?clinic=vielle", {}, cookie, headers)[0], 403)
 
     def test_crm_media_raw_upload_and_private_download_http(self):
         from crm_api import store_for

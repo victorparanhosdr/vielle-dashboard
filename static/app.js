@@ -450,7 +450,7 @@ function canAccess(permission, clinic = state.selectedClinic) {
 }
 function activeModule() { return Object.keys(accessModules).find(key => accessModules[key].view === state.activeView); }
 function permittedViews(clinic = state.selectedClinic) {
-  return Object.entries(accessModules).filter(([key]) => (key !== "crm" || sessionMaster) && canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
+  return Object.entries(accessModules).filter(([key]) => canAccess(`${key}.view`, clinic)).map(([,value]) => value.view);
 }
 function applyActionPermissions() {
   installChartExports();
