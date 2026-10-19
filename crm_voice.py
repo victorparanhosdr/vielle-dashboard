@@ -219,8 +219,8 @@ class VoiceService:
             self.expire(c, now)
             lead = self.store.owned(c, "leads", payload.get("lead_id"), doctor)
             contact = self.store.row(c, "contacts", lead["contact_id"])
-            if contact["opted_out"] or not lead["consent_at"]:
-                raise ValueError("Registre a autorizacao de contato antes de ligar. Contatos descadastrados nao podem receber ligacoes.")
+            if contact["opted_out"]:
+                raise ValueError("Contato descadastrado. As ligacoes para este contato estao bloqueadas.")
             if contact["experts_status"] == "review":
                 raise ValueError("Confira o vinculo do paciente antes de ligar.")
             destination = brazil_number("+" + contact["phone"])
@@ -254,12 +254,11 @@ class VoiceService:
         with self.store.db() as c:
             c.execute("BEGIN IMMEDIATE")
             call = self.row(c, key)
-            lead = self.store.row(c, "leads", call["lead_id"])
             contact = self.store.row(c, "contacts", call["contact_id"])
             if (not self.config.status(call["doctor_id"])["enabled"] or call["status"] != "prepared"
                 or params.get("AccountSid") != call["account_sid"]
                 or time.time()-call["created_at"] >= 120 or params.get("From") != "client:crm-call-" + key
-                or not sid(params.get("CallSid"), "CA") or contact["opted_out"] or not lead["consent_at"]
+                or not sid(params.get("CallSid"), "CA") or contact["opted_out"] or contact["experts_status"] == "review"
                 or contact["phone"] != call["destination"][1:]):
                 response.hangup()
                 return str(response)

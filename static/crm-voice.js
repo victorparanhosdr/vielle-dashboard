@@ -11,6 +11,12 @@ window.createCrmVoice = function ({api,esc,icon,icons}) {
   const stamp=s=>new Date(s*1000).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
   const endpoint=(action,payload,query={})=>api(`voice/${action}`,payload,{doctor:lead?.doctor_id,...query});
   const running=()=>busy || Boolean(current && !terminal.has(current.status));
+  function callRestriction(item) {
+    if(item?.opted_out)return "Contato descadastrado. As ligações para este contato estão bloqueadas.";
+    if(item?.experts_status==="review")return "Confira o vínculo do paciente com o Clínica Experts na ficha antes de ligar.";
+    if(!/^55[1-9]\d{9,10}$/.test(item?.phone || ""))return "Confira o telefone brasileiro com DDD na ficha antes de ligar.";
+    return "";
+  }
   function message(value="") {if($("voiceError")){$("voiceError").textContent=value;$("voiceError").hidden=!value;}}
   function init() {
     if(dialog)return;
@@ -20,13 +26,13 @@ window.createCrmVoice = function ({api,esc,icon,icons}) {
     window.addEventListener("beforeunload",event=>{if(running()){event.preventDefault();event.returnValue="";}});
   }
   function render() {
-    const active=running(), valid=config?.enabled && lead?.consent_at && !lead?.opted_out && lead?.experts_status!=="review";
+    const active=running(), restriction=callRestriction(lead), valid=config?.enabled && !restriction;
     dialog.innerHTML=`<header class="voiceHead"><span class="voiceSymbol">${icon("phone")}</span><div><p class="eyebrow">TELEFONIA · VIELLE CLINIC</p><h2 id="voiceTitle">${esc(lead.name)}</h2></div><button id="voiceClose" class="icon-button" aria-label="${active?"Minimizar ligação":"Fechar ligação"}" title="${active?"Minimizar ligação":"Fechar"}">${icon(active?"minus":"x")}</button></header>
-      <section class="voiceIdentity"><span>${esc(lead.experts_status==="matched"?"Paciente vinculado ao Clínica Experts":"Contato do CRM")}</span><strong>${esc(current?.destination || "+"+lead.phone)}</strong><p id="voiceState" role="status">${esc(current?labels[current.status]:config?.enabled?"Pronto para ligar":"Aguardando ativação da Twilio")}</p><time id="voiceTimer">${duration(current?.duration)}</time></section>
+      <section class="voiceIdentity"><span>${esc(lead.experts_status==="matched"?"Paciente vinculado ao Clínica Experts":"Contato do CRM")}</span><strong>${esc(current?.destination || "+"+lead.phone)}</strong><p id="voiceState" role="status">${esc(current?labels[current.status]:config?.enabled?(restriction?"Ligação indisponível":"Pronto para ligar"):"Aguardando ativação da Twilio")}</p><time id="voiceTimer">${duration(current?.duration)}</time></section>
       ${!config?.enabled?`<div class="voiceChecks">${[["credentials","Credenciais da Twilio"],["public_url","Endereço de conexão"],["number","Número do doutor"],["activation","Ativação das ligações"]].map(([k,label])=>`<div>${icon(config?.checks?.[k]?"circle-check":"circle-dashed")}<span>${label}</span><small>${config?.checks?.[k]?"Pronto":"Pendente"}</small></div>`).join("")}</div>`:""}
       <label class="voiceLine">Ligar pelo número<select id="voiceLine" ${active?"disabled":""}>${(config?.lines || []).map(line=>`<option value="${esc(line.id)}">${esc(line.name)} · ${esc(line.number)}</option>`).join("") || '<option value="">Número não conectado</option>'}</select></label>
       <div class="voicePrivacy">${icon("shield-check")}<span>O paciente confirma a gravação antes da conversa. Áudio e histórico ficam na ficha deste cliente.</span></div>
-      ${!lead.consent_at || lead.opted_out || lead.experts_status==="review"?'<p class="inlineWarning">Confira o cadastro e a autorização de contato na ficha antes de ligar.</p>':""}
+      ${restriction?`<p class="inlineWarning">${esc(restriction)}</p>`:""}
       <p id="voiceError" role="alert" hidden></p><div class="voiceControls">${active?`<button id="voiceMute" class="icon-button" aria-label="Silenciar microfone" title="Silenciar microfone" ${connection?"":"disabled"}>${icon("mic")}</button><button id="voiceEnd" class="voiceEnd">${icon("phone-off")} Encerrar</button>`:`<button id="voiceStart" class="primary" ${valid?"":"disabled"}>${icon("phone")} ${current?"Nova ligação":"Ligar para cliente"}</button>`}</div>
       ${active?'<label class="voiceDigits">Teclado<input id="voiceDigits" inputmode="tel" maxlength="20" pattern="[0-9*#]+" placeholder="0–9, * ou #" aria-label="Dígitos durante a ligação"><button id="voiceSendDigits" type="button">Enviar</button></label>':""}
       ${current && !active?`<form id="voiceNote"><h3>Resultado da ligação</h3><label>Resultado<select name="outcome">${Object.entries(outcomes).map(([id,label])=>`<option value="${id}" ${current.outcome===id?"selected":""}>${label}</option>`).join("")}</select></label><label>Nota interna<textarea name="note" maxlength="2000" rows="3">${esc(current.note)}</textarea></label><button type="submit">${icon("check")} Salvar na ficha</button><p id="voiceNoteStatus" role="status"></p></form>`:""}`;
@@ -55,7 +61,7 @@ window.createCrmVoice = function ({api,esc,icon,icons}) {
     await new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="/twilio-voice-2.18.5.min.js";script.onload=resolve;script.onerror=()=>{script.remove();reject(new Error("Não foi possível carregar a telefonia."));};document.head.append(script);});
   }
   async function start() {
-    if(running() || !config?.enabled)return;
+    if(running() || !config?.enabled || callRestriction(lead))return;
     if(current && terminal.has(current.status)){current=null;requestId="";}
     busy=true;requestId ||= crypto.randomUUID();message();$("voiceStart").disabled=true;
     try {

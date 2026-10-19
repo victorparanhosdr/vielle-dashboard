@@ -6,6 +6,7 @@ Piloto exclusivo do Master da Vielle. As clinicas e os institutos nao compartilh
 
 - O botao de telefone no atendimento abre a ligacao. Ficha do cliente > Ligacoes mostra historico, atendente, origem, destino, horario de Sao Paulo, duracao, resultado e notas.
 - Todas as chamadas desta fase sao de saida pelo navegador. Nao ha recebimento de ligacoes, discador automatico, transcricao ou IA de voz nesta entrega.
+- A ligacao manual segue a disponibilidade de contato da clinica: nao exige um registro individual em `leads.consent_at`. Descadastros, vinculos em revisao e telefones invalidos continuam bloqueados, inclusive na revalidacao anterior a discagem. Essa disponibilidade operacional nao cria evidencia de consentimento nem autoriza a gravacao.
 - O cliente ouve o aviso e precisa pressionar 1. A gravacao so e iniciada depois disso. Se iniciar a gravacao falhar, a conversa nao e conectada.
 - IDs do cliente, contato, doutor, paciente do Experts, numero e atendente sao congelados no registro. Alteracoes posteriores nao reescrevem essa identidade historica.
 - Webhooks exigem assinatura Twilio, conta correta e vinculo ao CallSid. Um token de navegador vale 120 segundos e permite somente a tentativa preparada. O cliente nao escolhe o numero de destino por parametro.

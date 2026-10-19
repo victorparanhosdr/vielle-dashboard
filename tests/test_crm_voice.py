@@ -71,16 +71,45 @@ class VoiceTests(unittest.TestCase):
         self.gateway.owns_number.return_value=False
         with self.assertRaises(ValueError):self.voice.prepare(self.payload,self.actor)
 
-    def test_optout_consent_and_identity_checks(self):
+    def test_optout_and_identity_checks(self):
         with self.store.db() as c:c.execute("UPDATE contacts SET opted_out=1")
         with self.assertRaises(ValueError):self.voice.prepare(self.payload,self.actor)
         with self.store.db() as c:
             c.execute("UPDATE contacts SET opted_out=0,experts_status='review'")
         with self.assertRaises(ValueError):self.voice.prepare(self.payload,self.actor)
+
+    def test_manual_call_without_individual_contact_consent_does_not_invent_consent(self):
         with self.store.db() as c:
             c.execute("UPDATE contacts SET experts_status='new'")
-            c.execute("UPDATE leads SET consent_at=NULL")
-        with self.assertRaises(ValueError):self.voice.prepare(self.payload,self.actor)
+            c.execute("UPDATE leads SET consent_at=NULL,consent_source=''")
+        key,xml=self.start()
+        self.assertIn("<Dial",xml)
+        self.gateway.record.assert_not_called()
+        with self.store.db() as c:
+            lead=c.execute("SELECT consent_at,consent_source FROM leads WHERE id=?",(self.lead,)).fetchone()
+            self.assertIsNone(lead["consent_at"])
+            self.assertEqual(lead["consent_source"],"")
+            self.assertIsNone(self.voice.row(c,key)["consent_at"])
+        self.voice.callback("consent",key,self.params(Digits="2"))
+        self.gateway.record.assert_not_called()
+
+    def test_optout_or_identity_review_after_preparation_prevents_dial(self):
+        for change in ("opted_out=1", "experts_status='review'"):
+            with self.subTest(change=change):
+                with self.store.db() as c:
+                    c.execute("UPDATE contacts SET opted_out=0,experts_status='matched'")
+                key=self.voice.prepare(self.payload,self.actor)["call"]["id"]
+                with self.store.db() as c:c.execute("UPDATE contacts SET "+change)
+                xml=self.voice.callback("twiml",key,{"AccountSid":self.config.account,"From":"client:crm-call-"+key,"CallSid":self.parent})
+                self.assertNotIn("<Dial",xml)
+                self.assertIn("<Hangup",xml)
+                self.voice.cancel({"id":key,"doctor_id":self.doc},self.actor)
+                self.payload["request_id"]="b"*32
+
+    def test_invalid_destination_does_not_prepare_call(self):
+        with self.store.db() as c:c.execute("UPDATE contacts SET phone='5511'")
+        with self.assertRaisesRegex(ValueError,"telefone brasileiro"):
+            self.voice.prepare(self.payload,self.actor)
 
     def test_twiml_ignores_client_destination_and_replays_do_not_dial(self):
         key,xml=self.start()
