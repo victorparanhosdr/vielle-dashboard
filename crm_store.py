@@ -149,6 +149,11 @@ class CrmStore:
                 PRIMARY KEY(channel_id,contact_id,user_id));
             CREATE TABLE IF NOT EXISTS reply_requests(request_id TEXT PRIMARY KEY,message_id TEXT NOT NULL REFERENCES messages(id),
                 user_id TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS message_media(id TEXT PRIMARY KEY,doctor_id TEXT NOT NULL REFERENCES doctors(id),
+                source_channel_id TEXT NOT NULL REFERENCES channels(id),contact_id TEXT NOT NULL REFERENCES contacts(id),
+                user_id TEXT NOT NULL,upload_request TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,kind TEXT NOT NULL,
+                size INTEGER NOT NULL,sha256 TEXT NOT NULL,created_at REAL NOT NULL,message_id TEXT NOT NULL DEFAULT '',
+                UNIQUE(user_id,upload_request));
             CREATE TABLE IF NOT EXISTS conversation_resolutions(channel_id TEXT NOT NULL REFERENCES channels(id),
                 contact_id TEXT NOT NULL REFERENCES contacts(id),resolved_through INTEGER NOT NULL,
                 reason TEXT NOT NULL CHECK(reason IN ('replied','closed')),actor_id TEXT NOT NULL,updated_at REAL NOT NULL,
@@ -169,9 +174,13 @@ class CrmStore:
                 if name not in columns:
                     c.execute(f"ALTER TABLE contacts ADD COLUMN {name} {definition}")
             columns = {r[1] for r in c.execute("PRAGMA table_info(messages)")}
-            for name in ("recipient_phone", "sender_name", "sender_user_id"):
+            for name in ("recipient_phone", "sender_name", "sender_user_id", "media_id", "depends_on"):
                 if name not in columns:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+            media_columns = {r[1] for r in c.execute("PRAGMA table_info(message_media)")}
+            for name, definition in (("provider_payload", "TEXT NOT NULL DEFAULT ''"), ("download_state", "TEXT NOT NULL DEFAULT 'ready'")):
+                if name not in media_columns:
+                    c.execute(f"ALTER TABLE message_media ADD COLUMN {name} {definition}")
             if "skip_reason" not in columns:
                 c.execute("ALTER TABLE messages ADD COLUMN skip_reason TEXT NOT NULL DEFAULT ''")
             for name, definition in (("origin", "TEXT NOT NULL DEFAULT 'crm'"), ("provider_timestamp", "REAL NOT NULL DEFAULT 0")):
@@ -709,6 +718,8 @@ class CrmStore:
                 OR (campaign_id IS NULL AND status='queued')) ORDER BY created_at DESC,rowid DESC LIMIT 81""",
                 (channel, contact, before, boundary[0] if boundary else 0, boundary[0] if boundary else 0, before)).fetchall()
             messages = [dict(r) for r in reversed(rows[:80])]
+            from crm_media import attach
+            attach(c, messages, legacy=True)
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
             allowed = not ct["opted_out"]
@@ -754,7 +765,8 @@ class CrmStore:
             return self.conversation_status(c, p["channel_id"], p["contact_id"])
 
     def reply(self, p, user, enabled=False, *, sender_name):
-        body = text(p.get("body"), 3000)
+        media_id = text(p.get("media_id", ""), 32, False)
+        body = text(p.get("body", ""), 3000, required=not media_id)
         name = sender_title(sender_name)
         request = text(p.get("request_id"), 100)
         doctor, channel, contact = p.get("doctor_id"), p.get("channel_id"), p.get("contact_id")
@@ -763,12 +775,23 @@ class CrmStore:
             c.execute("BEGIN IMMEDIATE")
             ch, ct = self.conversation_contact(c, doctor, channel, contact)
             self.conversation_contact(c, doctor, source, contact)
+            media = self.row(c, "message_media", media_id) if media_id else None
+            if media:
+                if (media["doctor_id"], media["source_channel_id"], media["contact_id"], media["user_id"]) != (doctor, source, contact, str(user)):
+                    raise ValueError("Anexo de outra conversa ou usuario.")
+                from crm_media import LABELS
+                body = body or f"[{LABELS[media['kind']]}] {media['name']}"
+                caption_limit = min(1000, 1024 - len(name) - 4)
+                if media["kind"] != "audio" and len(body) > caption_limit:
+                    raise ValueError(f"A legenda do anexo pode ter ate {caption_limit} caracteres, incluindo o espaco reservado ao atendente.")
             previous = c.execute("SELECT m.*,r.user_id,r.source_channel_id FROM reply_requests r JOIN messages m ON m.id=r.message_id WHERE request_id=?", (request,)).fetchone()
             if previous:
                 expected = signed_message(body, previous["sender_name"]) if previous["sender_name"] else body
-                if (previous["channel_id"], previous["contact_id"], previous["body"], previous["user_id"], previous["source_channel_id"] or previous["channel_id"]) != (channel, contact, expected, str(user), source) or (p.get("phone") and phone(p["phone"]) != previous["recipient_phone"]):
+                if (previous["channel_id"], previous["contact_id"], previous["body"], previous["user_id"], previous["source_channel_id"] or previous["channel_id"], previous["media_id"]) != (channel, contact, expected, str(user), source, media_id) or (p.get("phone") and phone(p["phone"]) != previous["recipient_phone"]):
                     raise Conflict("Identificador de envio ja utilizado.")
                 return previous["id"]
+            if media and (media["message_id"] or media["created_at"] < time.time() - 86400):
+                raise Conflict("Anexo ja utilizado ou expirado. Selecione o arquivo novamente.")
             if not enabled or ch["state"] != "open":
                 raise ValueError("Envios indisponiveis. Conecte o numero e habilite o servidor WhatsApp.")
             if ct["opted_out"]:
@@ -780,8 +803,15 @@ class CrmStore:
                 raise ValueError("Ha envio sem confirmacao neste numero. Confira antes de continuar.")
             marker = self.inbound_marker(c, source, contact, p.get("cursor", 0))
             key = uuid.uuid4().hex
-            c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id)
-                VALUES(?,?,?,?,'out',?,?,?,?)""", (key, channel, contact, signed_message(body, name), time.time(), recipient, name, str(user)))
+            now, dependency = time.time(), ""
+            if media and media["kind"] == "audio":
+                dependency = uuid.uuid4().hex
+                c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id)
+                    VALUES(?,?,?,?,'out',?,?,?,?)""", (dependency, channel, contact, signed_message(body, name), now - .000001, recipient, name, str(user)))
+            c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id,media_id,depends_on)
+                VALUES(?,?,?,?,'out',?,?,?,?,?,?)""", (key, channel, contact, signed_message(body, name), now, recipient, name, str(user), media_id, dependency))
+            if media:
+                c.execute("UPDATE message_media SET message_id=? WHERE id=?", (key, media_id))
             c.execute("INSERT INTO reply_requests(request_id,message_id,user_id,source_channel_id,inbound_cursor) VALUES(?,?,?,?,?)",
                       (request, key, str(user), source, marker))
             return key
@@ -919,6 +949,7 @@ class CrmStore:
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
                 AND ch.state='open' AND (m.campaign_id IS NULL OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
+                AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
@@ -943,6 +974,11 @@ class CrmStore:
                 c.execute("UPDATE messages SET status='unknown' WHERE id=? AND status='sending'", (item["id"],))
                 c.execute("UPDATE campaigns SET status='paused',last_error='Falha ou envio sem confirmacao. Confira o numero antes de continuar.' WHERE id=? AND status<>'cancelled'", (item["campaign_id"],))
             else:
+                echo = c.execute("SELECT id,contact_id,direction,origin,provider_timestamp FROM messages WHERE channel_id=? AND provider_id=? AND id<>?", (item["channel_id"], provider_id, item["id"])).fetchone()
+                if echo and (echo["contact_id"], echo["direction"], echo["origin"]) == (item["contact_id"], "out", "external"):
+                    c.execute("DELETE FROM message_media WHERE message_id=? AND download_state='remote'", (echo["id"],))
+                    c.execute("DELETE FROM messages WHERE id=?", (echo["id"],))
+                    c.execute("UPDATE messages SET provider_timestamp=? WHERE id=?", (echo["provider_timestamp"], item["id"]))
                 updated = c.execute("UPDATE messages SET status='sent',provider_id=?,sent_at=? WHERE id=? AND status='sending'", (provider_id, now, item["id"]))
                 reply = c.execute("""SELECT r.*,m.contact_id FROM reply_requests r JOIN messages m ON m.id=r.message_id
                     WHERE r.message_id=? AND m.campaign_id IS NULL""", (item["id"],)).fetchone()
@@ -983,7 +1019,7 @@ class CrmStore:
                 return False
             number = phone(jid.split("@")[0].split(":")[0])
             from_me = key.get("fromMe") is True
-            if (event == "send.message" or history) and not from_me:
+            if event == "send.message" and not from_me:
                 return False
             body = whatsapp_content(data.get("message"))
             provider_id = key.get("id")
@@ -995,7 +1031,12 @@ class CrmStore:
             known = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
             if expected_contact and (not known or known["id"] != expected_contact):
                 return False
-            if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND provider_id=?", (ch["id"], provider_id)).fetchone():
+            existing_message = c.execute("SELECT * FROM messages WHERE channel_id=? AND provider_id=?", (ch["id"], provider_id)).fetchone()
+            if existing_message:
+                from crm_media import register_received
+                register_received(c, dict(existing_message), ch, data)
+                return False
+            if history and not from_me:
                 return False
             if from_me:
                 # An echo can arrive before the sendText HTTP response returns its ID.
@@ -1007,11 +1048,14 @@ class CrmStore:
                     return False
             name = (known["name"] if known else number) if from_me else str(data.get("pushName") or number)[:160]
             contact = self.contact(c, number, name)
+            message_id = uuid.uuid4().hex
             c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,status,provider_id,created_at,
                 recipient_phone,sent_at,sender_name,origin,provider_timestamp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (uuid.uuid4().hex, ch["id"], contact["id"], body, "out" if from_me else "in", "sent" if from_me else "received",
+                (message_id, ch["id"], contact["id"], body, "out" if from_me else "in", "sent" if from_me else "received",
                  provider_id, stamp or now, number, (stamp or now) if from_me else None,
                  "WhatsApp / sistema externo" if from_me else "", "external" if from_me else "whatsapp", stamp))
+            from crm_media import register_received
+            register_received(c, {"id": message_id, "media_id": "", "contact_id": contact["id"], "channel_id": ch["id"], "created_at": stamp or now}, ch, data)
             normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().strip().upper()
             if not from_me and normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"}:
                 c.execute("UPDATE contacts SET opted_out=1 WHERE id=?", (contact["id"],))

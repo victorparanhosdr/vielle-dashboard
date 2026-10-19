@@ -59,6 +59,9 @@ def handle_request(handler, parsed):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "media":
+                from crm_media import serve
+                return serve(handler, store, doctor, query.get("id", [""])[0])
             if action == "avatar":
                 from crm_avatars import serve
                 return serve(handler, store, doctor, query.get("contact", [""])[0], query.get("channel", [""])[0])
@@ -114,6 +117,9 @@ def handle_request(handler, parsed):
             return handler.auth_json({"ok": False}, 405)
         if not handler.same_origin_request():
             return handler.auth_json({"ok": False}, 403)
+        if action == "media-upload":
+            from crm_media import receive_upload
+            return receive_upload(handler, store, doctor, query)
         limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create"} else 128*1024
         p = json.loads(read_body(handler, limit))
         if not isinstance(p, dict):
@@ -178,6 +184,11 @@ def handle_request(handler, parsed):
             store.save_customer_tier_rules(p)
         elif action == "reply":
             result["id"] = store.reply(p, handler.current_user["id"], sends_enabled() and store.worker_online(), sender_name=actor)
+        elif action == "media-fetch":
+            if p.get("doctor_id") != doctor:
+                raise ValueError("Doutor da solicitacao invalido.")
+            from crm_media import fetch_media
+            result["media"] = fetch_media(store, EvolutionGateway(), doctor, p.get("id"))
         elif action == "campaign":
             result["id"] = store.campaign(p, actor, handler.current_user["id"])
         elif action == "campaign-preview":

@@ -6,6 +6,10 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const syncing=new Set(),syncedAt=new Map();
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
+  const media=window.createCrmMedia({esc,icon,icons,onError:chatError,onBusy:()=>syncSend(),onChange:value=>{
+    if(!selected)return;const signature=key(selected),draft=drafts.get(signature) || {body:$("replyBody")?.value || "",requests:{}};
+    draft.media=value;draft.requests={};drafts.set(signature,draft);syncSend();
+  }});
   function conversationFacts(c) {
     const h=c.customer_history || {},ready=h.quotes_state==="ready" && Number.isSafeInteger(h.pending_quotes_cents);
     const detail=`${h.pending_quotes_count || 0} orçamento(s) pendente(s) · abertos e vencidos · Clínica Experts · ${money(h.pending_quotes_cents)} · ${c.customer_value?.doctor_name || "Doutor selecionado"}`;
@@ -20,9 +24,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function chatError(message="") {if($("chatError")){$("chatError").textContent=message;$("chatError").hidden=!message;}}
   function mount(target) {
     const changed=owner!==state.doctor;
-    if(changed){owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
+    if(changed){media.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
-    root=target;listSeq++;threadSeq++;
+    media.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><h2>Ponto de atendimento</h2><span id="inboxCount"></span></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Aguardando"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
     $("inboxChannel").onchange=()=>{channel=$("inboxChannel").value;refreshList();};
     $("inboxWorkspace").onclick=event=>{
@@ -37,6 +41,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.id==="closeConversation")closeConversation();
       if(b.id==="syncMessages")syncExternalMessages(true);
       if(b.id==="voiceCall"){const l=leadFor();if(l)voice.open(l);}
+      if(b.dataset.loadMedia)loadMedia(b);
     };
     refreshList();if(selected)select(selected);icons();
   }
@@ -70,6 +75,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }catch(e){if(root && request===openSeq){$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
   }
   function select(item) {
+    media.destroy();
     openSeq++;
     const previous=selected?.contact_id===item.contact_id?leadFor():null;
     selected={contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};
@@ -77,12 +83,13 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;
     const l=leadFor(), ch=state.data.channels.find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
     $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact");
-    $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button>${avatars.markup(l?.name || "Cliente",selected.contact_id,owner,selected.channel_id)}<div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><form id="replyForm"><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
+    $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button>${avatars.markup(l?.name || "Cliente",selected.contact_id,owner,selected.channel_id)}<div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><div id="mediaPreview" class="mediaPreview" hidden></div><form id="replyForm"><div id="mediaTools"></div><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
     $("chatPane").querySelector(".chatHeader").insertAdjacentHTML("afterend",`<div class="conversationActions"><span id="conversationStatus" role="status">Carregando…</span><button id="syncMessages" class="icon-button" title="Sincronizar mensagens do WhatsApp" aria-label="Sincronizar mensagens do WhatsApp" ${!state.data.gateway_configured || ch?.state!=="open"?"disabled":""}>${icon("refresh-cw")}</button><button id="closeConversation" title="Fechar conversa sem responder" disabled>${icon("check-check")} Fechar conversa</button></div>`);
     if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     drawSenderOptions();
     $("replyChannel").onchange=()=>{replyChannel=$("replyChannel").value;chatError();syncSend();};
-    $("replyBody").oninput=()=>{drafts.set(key(selected),{body:$("replyBody").value,requests:{}});syncSend();};
+    $("replyBody").oninput=()=>{drafts.set(key(selected),{...drafts.get(key(selected)),body:$("replyBody").value,requests:{}});syncSend();};
+    media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
     drawInfo();drawList();refreshThread().then(()=>syncExternalMessages());icons();
     if(!selectedRecord && selected.lead_id){
@@ -127,9 +134,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(!$("sendReply"))return;
     const ch=state.data.channels.find(c=>c.id===replyChannel);
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
-    $("sendReply").disabled=sending || !available || !$("replyBody").value.trim();
+    $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
+    media.availability(available && !sending);
+    $("replyBody").maxLength=media.value() && media.value().kind!=="audio"?Math.min(1000,1024-senderName().length-4):3000;
+    $("replyBody").placeholder=media.hasDraft()?"Legenda opcional…":"Escreva uma mensagem…";
     $("replyChannel").disabled=sending;
-    $("replyState").textContent=!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"Atendimento por texto";
+    $("replyState").textContent=!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"";
     syncResolution();
   }
   function syncResolution() {
@@ -174,13 +184,14 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const combined=new Map(messages.map(m=>[m.id,m]));data.messages.forEach(m=>combined.set(m.id,m));
       const next=[...combined.values()].sort((a,b)=>a.created_at-b.created_at || a.seq-b.seq);
       const timeline=$("messageTimeline"), nearBottom=timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<90, height=timeline.scrollHeight, scroll=timeline.scrollTop;
-      if(JSON.stringify(messages)!==JSON.stringify(next) || !timeline.querySelector(".chatMessages")){
+      const playing=[...timeline.querySelectorAll("audio,video")].some(player=>!player.paused && !player.ended);
+      if(!playing && (JSON.stringify(messages)!==JSON.stringify(next) || !timeline.querySelector(".chatMessages"))){
         messages=next;
         let day="";
         timeline.innerHTML=`${hasOlder?'<button id="olderMessages" class="olderMessages">Mensagens anteriores</button>':""}<div class="chatMessages">${messages.map(m=>{
           const d=new Date(m.created_at*1000).toLocaleDateString("pt-BR"), divider=day!==d?`<div class="chatDay">${d}</div>`:"";day=d;
           const status=m.origin==="external"?"Enviada externamente":labels[m.status] || m.status;
-          return `${divider}<article class="chatBubble ${m.direction} ${m.status}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}<p>${esc(messageText(m))}</p><small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
+          return `${divider}<article class="chatBubble ${m.direction} ${m.status}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind==="audio"?"":`<p>${esc(messageText(m))}</p>`}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
         }).join("") || '<p class="inboxEmpty">Nenhuma mensagem neste número</p>'}</div>`;
         if(older)timeline.scrollTop=scroll+timeline.scrollHeight-height;else if(nearBottom || !height)timeline.scrollTop=timeline.scrollHeight;
         icons();
@@ -190,24 +201,32 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       syncSend();
     }catch(e){if(root && request===threadSeq)chatError(e.message);}
   }
+  async function loadMedia(button){
+    if(button.disabled || !selected)return;
+    const signature=key(selected),doc=owner,error=button.parentElement.querySelector("[data-media-error]");
+    button.disabled=true;error.hidden=true;
+    try{await api("media-fetch",{doctor_id:doc,id:button.dataset.loadMedia},{doctor:doc});if(root && selected && signature===key(selected))await refreshThread();}
+    catch(e){if(button.isConnected){error.textContent=e.message;error.hidden=false;}}
+    finally{if(button.isConnected)button.disabled=false;}
+  }
   async function send(event) {
     event.preventDefault();if(sending || $("sendReply").disabled || !selected)return;
-    const doc=owner,target={...selected},signature=key(target),body=$("replyBody").value.trim(),sender=replyChannel,cursor=threadData?.inbound_cursor || 0,phone=threadData?.reply_phone;
+    const doc=owner,target={...selected},signature=key(target),body=$("replyBody").value.trim(),attachment=media.value(),sender=replyChannel,cursor=threadData?.inbound_cursor || 0,phone=threadData?.reply_phone;
     let draft=drafts.get(signature);if(!draft || draft.body.trim()!==body)draft={body,requests:{}};
     draft.requests ||= {};draft.requests[sender] ||= crypto.randomUUID();
     drafts.set(signature,draft);sending=true;syncSend();chatError();
     try {
-      await api("reply",{doctor_id:doc,channel_id:sender,source_channel_id:target.channel_id,contact_id:target.contact_id,cursor,phone,body,request_id:draft.requests[sender]});
+      await api("reply",{doctor_id:doc,channel_id:sender,source_channel_id:target.channel_id,contact_id:target.contact_id,cursor,phone,body,media_id:attachment?.id || "",request_id:draft.requests[sender]});
       drafts.delete(signature);
       if(root && selected && signature===key(selected)){
         if(sender!==target.channel_id)select({...target,channel_id:sender});
-        else{$("replyBody").value="";await refreshThread();}
+        else{$("replyBody").value="";media.clear();drafts.delete(signature);await refreshThread();}
         refreshList();
       }
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
     finally{if(root && selected && signature===key(selected)){sending=false;syncSend();}}
   }
-  function unmount(){root=null;listSeq++;threadSeq++;openSeq++;}
+  function unmount(){media.destroy();root=null;listSeq++;threadSeq++;openSeq++;}
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
   return {mount,unmount,openLead};
 };

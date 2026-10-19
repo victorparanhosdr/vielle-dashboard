@@ -22,7 +22,7 @@ class EvolutionGateway:
         return bool(p.scheme in {"http", "https"} and p.netloc and not p.username and not p.password and not p.query and not p.fragment
                     and self.key and self.key.isascii() and not any(ord(c) < 33 for c in self.key))
 
-    def request(self, method, path, payload=None, *, missing_ok=False):
+    def request(self, method, path, payload=None, *, missing_ok=False, maximum=2 * 1024 * 1024):
         if not self.configured:
             raise ValueError("Servidor WhatsApp nao configurado. Defina CRM_EVOLUTION_URL e CRM_EVOLUTION_KEY no servidor.")
         data = json.dumps(payload).encode() if payload is not None else None
@@ -30,8 +30,8 @@ class EvolutionGateway:
                       headers={"apikey": self.key, "Content-Type": "application/json"})
         try:
             with build_opener(NoRedirect()).open(req, timeout=30) as response:
-                raw = response.read(2 * 1024 * 1024 + 1)
-                if len(raw) > 2 * 1024 * 1024:
+                raw = response.read(maximum + 1)
+                if len(raw) > maximum:
                     raise ValueError("Resposta WhatsApp muito grande.")
                 return json.loads(raw)
         except HTTPError as error:
@@ -74,8 +74,16 @@ class EvolutionGateway:
         return (data.get("instance") or {}).get("state", "close")
 
     def send(self, item):
-        data = self.request("POST", "/message/sendText/" + quote(item["instance"], safe=""),
-                            {"number": item["phone"], "text": item["body"]})
+        media = item.get("media")
+        if media:
+            if media["kind"] == "audio":
+                path, payload = "sendWhatsAppAudio", {"number": item["phone"], "audio": media["base64"], "encoding": True}
+            else:
+                path, payload = "sendMedia", {"number": item["phone"], "mediatype": media["kind"], "mimetype": media["mime"],
+                    "fileName": media["name"], "caption": item["body"], "media": media["base64"]}
+        else:
+            path, payload = "sendText", {"number": item["phone"], "text": item["body"]}
+        data = self.request("POST", "/message/" + path + "/" + quote(item["instance"], safe=""), payload)
         key = data.get("key") or {}
         return key.get("id")
 
@@ -87,6 +95,18 @@ class EvolutionGateway:
             raise ValueError("Historico WhatsApp indisponivel no conector.")
         pages = messages.get("pages", 1)
         return messages["records"][:200], type(pages) is int and pages > 1
+
+    def media_message(self, channel, message_id):
+        data = self.request("POST", "/chat/findMessages/" + quote(channel["instance"], safe=""),
+            {"where": {"key": {"id": message_id}}, "offset": 1, "page": 1})
+        records = (data.get("messages") or {}).get("records", []) if isinstance(data, dict) else []
+        if len(records) != 1 or (records[0].get("key") or {}).get("id") != message_id:
+            raise ValueError("Mensagem nao encontrada no WhatsApp.")
+        return records[0]
+
+    def download_media(self, channel, message, maximum):
+        return self.request("POST", "/chat/getBase64FromMediaMessage/" + quote(channel["instance"], safe=""),
+            {"message": message, "convertToMp4": False}, maximum=4 * ((maximum + 2) // 3) + 32768)
 
     def profile_picture(self, channel, number):
         data = self.request("POST", "/chat/fetchProfilePictureUrl/" + quote(channel["instance"], safe=""), {"number": number})

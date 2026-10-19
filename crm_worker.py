@@ -25,6 +25,9 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
             if item["campaign_id"] and (current["experts_status"] == "review" or current["phone"] != item["phone"]):
                 c.execute("UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato' WHERE id=?", (item["id"],))
                 return True
+        if item.get("media_id"):
+            from crm_media import for_send
+            item["media"] = for_send(store, item)
         store.finish(item, gateway.send(item))
     except Exception:
         store.finish(item, error=True)

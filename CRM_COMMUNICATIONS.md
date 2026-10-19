@@ -92,9 +92,20 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - `messages.upsert` com `fromMe=true` e `send.message` sao capturados como saidas no mesmo contato/numero. Origem exibida como WhatsApp / sistema externo; nao inventamos o nome do usuario que respondeu fora do DOC4DOCS.
 - O worker atualiza os eventos do webhook dos numeros conectados ao iniciar, sem gerar outro QR nem desconectar. Mantem o mesmo destino HTTPS e segredo; inclui SEND_MESSAGE.
 - A abertura da conversa busca automaticamente ate os 200 registros mais recentes que a Evolution armazenou e recupera apenas as saidas ausentes daquele contato. Ha botao de sincronizacao e intervalo minimo de 30 segundos no servidor; repeticoes sao ignoradas pelo ID do provedor.
-- O historico anterior depende do que estiver salvo no provedor. Nao habilitamos syncFullHistory nem prometemos recuperar mensagens que a Evolution nao possui. Midias aparecem como registro de tipo/legenda, sem download ou reproducao do arquivo nesta entrega.
+- O historico anterior depende do que estiver salvo no provedor. Nao habilitamos syncFullHistory nem prometemos recuperar mensagens que a Evolution nao possui. Os anexos comuns podem ser carregados pelo atendimento conforme descrito abaixo.
 - Mensagens externas com data segura atualizam o status respondido somente para as entradas anteriores, naquele numero. Mensagens novas continuam pendentes; uma saida antiga nao resolve perguntas posteriores. Ausencia de data nao e tratada como prova de resposta.
 - Ecos de envios DOC4DOCS usam o ID do provedor e a unica saida em processamento para evitar duplicacao. Campanhas proprias nao sao tratadas como resposta manual; pedidos de SAIR continuam bloqueados. A importacao nao envia mensagens nem cria campanhas.
+
+## Midias No Atendimento
+
+- O clipe permite selecionar imagem, video, documento ou audio do dispositivo. O microfone grava com permissao explicita do navegador, ate cinco minutos, com parar, ouvir e descartar. Selecionar/gravar faz somente um upload privado de rascunho; exige clicar em enviar para criar a mensagem.
+- Limites por arquivo: imagem 10 MB, audio/video 16 MB, documento 25 MB. Validacao de extensao e assinatura de conteudo no servidor; nenhum URL externo fornecido pelo navegador e baixado. Um anexo por mensagem, legenda opcional, ate 1000 caracteres para imagem/video/documento.
+- Imagens, videos e documentos levam a assinatura do atendente na legenda. Audio e enviado como nota de voz, precedido de uma mensagem assinada do atendente e da legenda opcional. A nota so entra na fila apos confirmacao do texto; apenas a nota aceita resolve as mensagens pendentes. Falhas incertas bloqueiam o canal, sem repeticao automatica.
+- Anexos recebidos e enviados externamente tem metadados privados vinculados ao contato e numero. `Carregar anexo` consulta o conector somente para aquela mensagem, confere o telefone e armazena o arquivo. Imagens possuem previa, audios e videos possuem player; documentos sao baixados como anexo. Abrir ou ouvir nao marca como respondida.
+- Registros antigos do tipo [Imagem]/[Audio]/[Video]/[Documento] usam busca pelo ID exato no provedor. A sincronizacao enriquece entradas ja existentes sem importar entradas antigas novas nem multiplicar nao lidas. Arquivos expirados no WhatsApp podem ficar indisponiveis. Midias de visualizacao unica nao sao arquivadas.
+- Arquivos em `crm/vielle/media/<uuid>`, fora de static, com diretorio 0700/arquivos 0600, rota autenticada Master, verificacao de doutor, cache privado no-store e suporte Range. O navegador nunca recebe chaves de midia, URLs do provedor ou caminhos do servidor. Incluir a pasta e o SQLite nos backups privados.
+- Rascunhos nao enviados expiram depois de 24 horas na proxima inclusao. Ha cota de 100 MB de rascunhos por usuario e 1 GB total para o piloto, com erro explicito se lotar; arquivos vinculados ao historico nao sao apagados automaticamente. Definir retencao e acompanhar o volume antes de ampliar a operacao.
+- Os testes usam arquivos sinteticos e gateway simulado; nao enviam mensagens reais nem ativam microfone do usuario. Videos e audios devem usar codecs reproduziveis no navegador da equipe.
 
 ## Fontes
 

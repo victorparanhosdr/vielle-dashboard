@@ -204,6 +204,57 @@ if "--avatars-fixture" in sys.argv:
         for name, location in (("Ana Exemplo", "capelinha"), ("Marina Exemplo", "belo-horizonte"), ("Renata Exemplo", "sao-paulo")):
             c.execute("UPDATE contacts SET service_location=?,service_location_source='manual' WHERE name=?", (location, name))
 
+if "--media-fixture" in sys.argv:
+    import base64
+    from io import BytesIO
+    import wave
+    from PIL import Image, ImageDraw
+    import crm_api
+    from crm_gateway import EvolutionGateway
+    image = BytesIO()
+    canvas = Image.new("RGB", (480, 280), "#174c3c")
+    ImageDraw.Draw(canvas).text((30, 125), "VIELLE  /  ANEXO DE TESTE", fill="#ffffff")
+    canvas.save(image, format="PNG")
+    audio = BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setparams((1, 2, 8000, 0, "NONE", "not compressed"))
+        wav.writeframes(b"\0\0" * 8000)
+    contents = {"image": (image.getvalue(), "image/png", "imagem.png"),
+        "audio": (audio.getvalue(), "audio/wav", "recado.wav"),
+        "document": (b"%PDF-1.4\n%%EOF\n", "application/pdf", "orientacoes.pdf")}
+
+    class SyntheticMediaGateway(EvolutionGateway):
+        @property
+        def configured(self):
+            return True
+
+        def history(self, channel, number):
+            return [], False
+
+        def profile_picture(self, channel, number):
+            return ""
+
+        def download_media(self, channel, message, maximum):
+            kind = {"imageMessage": "image", "audioMessage": "audio", "documentMessage": "document"}[next(iter(message["message"]))]
+            raw, mime, name = contents[kind]
+            return {"base64": base64.b64encode(raw).decode(), "mimetype": mime, "fileName": name}
+
+        def send(self, item):
+            raise ValueError("Envio externo desativado na previa sintetica.")
+
+    crm_api.EvolutionGateway = SyntheticMediaGateway
+    crm_api.sends_enabled = lambda: True
+    store.worker_online = lambda: True
+    with store.db() as c:
+        c.execute("UPDATE channels SET state='open'")
+    for doc in store.listing()["doctors"]:
+        lead = next(l for l in store.listing(doc["id"])["leads"] if l["name"] == "Ana Exemplo")
+        channel = next(ch for ch in store.listing(doc["id"])["channels"] if ch["name"] == "Comercial")
+        for field, kind in (("imageMessage", "image"), ("audioMessage", "audio"), ("documentMessage", "document")):
+            raw, mime, name = contents[kind]
+            store.receive(channel["instance"], {"key": {"id": doc["id"] + "-" + kind, "remoteJid": lead["phone"] + "@s.whatsapp.net"},
+                "message": {field: {"mimetype": mime, "fileName": name, "fileLength": len(raw)}}}, "messages.upsert")
+
 if "--communications-fixture" in sys.argv:
     from crm_voice import VoiceService
     voice = VoiceService(store)

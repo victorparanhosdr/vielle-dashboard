@@ -251,6 +251,35 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
 
+    def test_crm_media_raw_upload_and_private_download_http(self):
+        from crm_api import store_for
+        from urllib.parse import urlencode
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        doctor = store.listing()["doctor_id"]
+        channel = store.channel({"doctor_id": doctor, "name": "Atendimento", "phone": "5500000000001"})
+        with store.db() as c:
+            instance = store.row(c, "channels", channel)["instance"]
+        store.receive(instance, {"key": {"id": "media-in", "remoteJid": "5500000000002@s.whatsapp.net"},
+            "message": {"conversation": "Ola"}}, "messages.upsert")
+        contact = store.inbox(doctor, "test")["conversations"][0]["contact_id"]
+        path = "/api/crm/media-upload?" + urlencode({"clinic": "vielle", "doctor": doctor, "channel": channel, "contact": contact, "kind": "document"})
+        master = self.master_cookie()
+        raw = b"Arquivo sintetico"
+        headers = {"X-DOC4DOCS-Request": "1", "X-File-Name": "arquivo.txt", "X-Upload-Id": "raw-http", "Content-Type": "text/plain"}
+        self.assertEqual(self.request("POST", path, raw, master)[0], 403)
+        status, _, body = self.request("POST", path, raw, master, headers)
+        self.assertEqual(status, 200, body)
+        media = json.loads(body)["media"]
+        self.assertEqual(self.request("GET", media["url"])[0], 401)
+        user, _ = self.login()
+        self.assertEqual(self.request("GET", media["url"], cookie=user)[0], 403)
+        status, result_headers, body = self.request("GET", media["url"], cookie=master)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body, raw)
+        self.assertIn("no-store", dict(result_headers)["Cache-Control"])
+        self.assertTrue(dict(result_headers)["Content-Disposition"].startswith("attachment;"))
+
     def test_crm_patient_picker_and_refresh_keep_master_origin_and_doctor_boundaries(self):
         from crm_api import store_for
         store = store_for(self.store)
