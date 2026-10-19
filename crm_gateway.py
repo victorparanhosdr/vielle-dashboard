@@ -22,7 +22,7 @@ class EvolutionGateway:
         return bool(p.scheme in {"http", "https"} and p.netloc and not p.username and not p.password and not p.query and not p.fragment
                     and self.key and self.key.isascii() and not any(ord(c) < 33 for c in self.key))
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, *, missing_ok=False):
         if not self.configured:
             raise ValueError("Servidor WhatsApp nao configurado. Defina CRM_EVOLUTION_URL e CRM_EVOLUTION_KEY no servidor.")
         data = json.dumps(payload).encode() if payload is not None else None
@@ -34,7 +34,12 @@ class EvolutionGateway:
                 if len(raw) > 2 * 1024 * 1024:
                     raise ValueError("Resposta WhatsApp muito grande.")
                 return json.loads(raw)
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError):
+        except HTTPError as error:
+            # Evolution returns 404, not an empty list, for a new instance name.
+            if error.code == 404 and missing_ok and method == "GET":
+                return []
+            raise ValueError("Nao foi possivel confirmar a operacao no servidor WhatsApp.") from None
+        except (URLError, TimeoutError, json.JSONDecodeError, OSError):
             # Provider error bodies may contain credentials or patient content.
             raise ValueError("Nao foi possivel confirmar a operacao no servidor WhatsApp.") from None
 
@@ -44,7 +49,7 @@ class EvolutionGateway:
         if not callback.startswith("https://") or len(secret) < 32:
             raise ValueError("Configure um webhook HTTPS com segredo de pelo menos 32 caracteres antes de conectar.")
         name = quote(channel["instance"], safe="")
-        instances = self.request("GET", "/instance/fetchInstances?instanceName=" + name)
+        instances = self.request("GET", "/instance/fetchInstances?instanceName=" + name, missing_ok=True)
         if not isinstance(instances, list):
             raise ValueError("O servidor nao retornou instancias no formato Evolution v2.")
         if not instances:

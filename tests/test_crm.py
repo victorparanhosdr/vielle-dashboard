@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import Mock, patch
 
 from crm_store import CrmStore, Conflict, TZ
@@ -213,6 +214,35 @@ class CrmTests(unittest.TestCase):
         with patch.dict(os.environ,env), patch.object(EvolutionGateway,"request",return_value={"key":{"id":"message-1"}}) as req:
             self.assertEqual(EvolutionGateway().send({**channel,"body":"Teste"}),"message-1")
             self.assertEqual(req.call_args.args[2],{"number":"5500000000011","text":"Teste"})
+
+    def test_gateway_first_connection_creates_instance_after_lookup_404(self):
+        channel={"instance":"doc4docs-vielle-test","phone":"5500000000011"}
+        env={"CRM_EVOLUTION_URL":"https://gateway.example","CRM_EVOLUTION_KEY":"private-key",
+             "CRM_WEBHOOK_URL":"https://doc4docs.example/api/crm-webhook","CRM_WEBHOOK_SECRET":"x"*40}
+        def provider(request, timeout):
+            if request.full_url.endswith("fetchInstances?instanceName=doc4docs-vielle-test"):
+                raise HTTPError(request.full_url,404,"private provider body",{},None)
+            response=Mock()
+            response.read.return_value=(b'{"base64":"data:image/png;base64,AAA"}'
+                                        if "/instance/connect/" in request.full_url else b'{}')
+            response.__enter__=Mock(return_value=response)
+            response.__exit__=Mock(return_value=False)
+            return response
+        with patch.dict(os.environ,env), patch("crm_gateway.build_opener") as opener:
+            opener.return_value.open.side_effect=provider
+            self.assertEqual(EvolutionGateway().connect(channel),{"qr":"data:image/png;base64,AAA"})
+            paths=[call.args[0].full_url for call in opener.return_value.open.call_args_list]
+            self.assertEqual(paths[1],"https://gateway.example/instance/create")
+            self.assertEqual(len(paths),4)
+
+    def test_gateway_lookup_only_accepts_404_and_other_errors_stay_private(self):
+        env={"CRM_EVOLUTION_URL":"https://gateway.example","CRM_EVOLUTION_KEY":"private-key"}
+        with patch.dict(os.environ,env), patch("crm_gateway.build_opener") as opener:
+            for status,method,missing_ok in [(401,"GET",True),(500,"GET",True),(404,"GET",False),(404,"POST",True)]:
+                with self.subTest(status=status,method=method,missing_ok=missing_ok):
+                    opener.return_value.open.side_effect=HTTPError("https://gateway.example",status,"private provider body",{},None)
+                    with self.assertRaisesRegex(ValueError,"^Nao foi possivel confirmar a operacao no servidor WhatsApp\\.$"):
+                        EvolutionGateway().request(method,"/instance/fetchInstances",missing_ok=missing_ok)
 
 
 if __name__ == "__main__":
