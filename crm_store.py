@@ -698,7 +698,7 @@ class CrmStore:
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
-                AND ch.state='open' AND ch.next_send_at<=? AND ct.opted_out=0
+                AND ch.state='open' AND (m.campaign_id IS NULL OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
@@ -706,11 +706,13 @@ class CrmStore:
                 r = dict(row)
                 if r["campaign_id"] and not r["hour_from"] <= local.hour < r["hour_to"]:
                     continue
-                used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
-                if used >= r["daily_limit"]:
-                    continue
+                if r["campaign_id"]:
+                    used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
+                    if used >= r["daily_limit"]:
+                        continue
                 c.execute("UPDATE messages SET status='sending',claimed_at=? WHERE id=?", (now, r["id"]))
-                c.execute("UPDATE channels SET next_send_at=? WHERE id=?", (now + r["interval_seconds"], r["channel_id"]))
+                if r["campaign_id"]:
+                    c.execute("UPDATE channels SET next_send_at=? WHERE id=?", (now + r["interval_seconds"], r["channel_id"]))
                 return r
         return None
 

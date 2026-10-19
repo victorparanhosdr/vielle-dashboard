@@ -215,11 +215,12 @@ The UI
 requires a recent worker heartbeat, a configured gateway and an open channel.
 
 - SQLite immediate transactions serialize claims across workers.
-- Fixed user-configurable interval (30-3,600 seconds), operational daily cap
-  (1-100), scheduled start and sending hours (08:00-20:00 Sao Paulo).
-- One in-flight send per channel. Cadence and daily cap are shared by replies
-  and campaigns. Manual replies take queue priority, with a 30-second operational
-  interval; campaign schedules/hours apply only to campaign messages.
+- Campaigns only: configurable interval (30-3,600 seconds), daily cap (1-100),
+  scheduled start and sending hours (08:00-20:00 Sao Paulo).
+- Manual replies have no DOC4DOCS daily quota and do not wait for campaign
+  intervals or consume campaign quota. They retain queue priority. One in-flight
+  send per channel, connection, consent/recent-inbound, opt-out, idempotency and
+  unknown-send safeguards remain unchanged. No throughput or anti-ban guarantee.
 - A campaign is drafted first, deduplicated by contact, and explicitly started.
   Another campaign may intentionally contact the same person; this is not a
   cross-campaign marketing frequency policy.

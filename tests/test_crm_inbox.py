@@ -141,6 +141,49 @@ class InboxTests(unittest.TestCase):
         gateway.send.return_value="campaign-accepted"
         self.assertTrue(tick(self.store,gateway,self.now+61,allow_campaigns=True))
 
+    def test_manual_replies_have_no_daily_quota_or_campaign_interval(self):
+        item=self.incoming()
+        future=self.now+86400
+        with self.store.db() as c:
+            c.execute("UPDATE channels SET state='open',daily_limit=1,next_send_at=? WHERE id=?",(future,self.channel))
+        for i in range(12):
+            self.store.reply(self.payload(item,body=f"Resposta {i}",request_id=f"no-manual-cap-{i}"),"user",True)
+            message=self.store.claim(self.now+i*2,allow_campaigns=False)
+            self.assertIsNotNone(message)
+            self.assertIsNone(message["campaign_id"])
+            self.assertIsNone(self.store.claim(self.now+i*2,allow_campaigns=False))
+            self.store.finish(message,f"accepted-{i}")
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM messages WHERE direction='out' AND status='sent'").fetchone()[0],12)
+            self.assertEqual(c.execute("SELECT next_send_at FROM channels WHERE id=?",(self.channel,)).fetchone()[0],future)
+
+    def test_campaign_quota_and_cooldown_do_not_block_manual_replies(self):
+        campaign=self.campaign()
+        with self.store.db() as c:c.execute("UPDATE channels SET state='open',daily_limit=1 WHERE id=?",(self.channel,))
+        self.store.campaign_status(campaign,self.a,"start",True)
+        first=self.store.claim(self.now)
+        self.store.finish(first,"campaign-accepted")
+        second_campaign=self.campaign(name="Outra campanha")
+        self.store.campaign_status(second_campaign,self.a,"start",True)
+        with self.store.db() as c:c.execute("UPDATE messages SET sent_at=? WHERE id=?",(self.now,first["id"]))
+        item=self.incoming()
+        self.store.reply(self.payload(item,body="Atendimento",request_id="after-campaign-cap"),"user",True)
+        manual=self.store.claim(self.now+1)
+        self.assertIsNotNone(manual);self.assertIsNone(manual["campaign_id"])
+        self.store.finish(manual,"manual-accepted")
+        self.assertIsNone(self.store.claim(self.now+61))
+
+    def test_manual_replies_do_not_consume_campaign_quota(self):
+        campaign=self.campaign()
+        with self.store.db() as c:c.execute("UPDATE channels SET state='open',daily_limit=1 WHERE id=?",(self.channel,))
+        self.store.campaign_status(campaign,self.a,"start",True)
+        item=self.incoming()
+        self.store.reply(self.payload(item,body="Atendimento",request_id="manual-before-campaign"),"user",True)
+        manual=self.store.claim(self.now)
+        self.assertIsNone(manual["campaign_id"])
+        self.store.finish(manual,"manual-accepted")
+        self.assertEqual(self.store.claim(self.now+1)["campaign_id"],campaign)
+
     def test_successful_reply_only_resolves_observed_boundary(self):
         item=self.incoming()
         with self.store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))
