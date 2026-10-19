@@ -86,12 +86,72 @@ class MediaTests(unittest.TestCase):
         item = gateway.send.call_args.args[0]
         self.assertEqual(base64.b64decode(item["media"]["base64"]), PNG)
         self.assertEqual(item["media"]["kind"], "image")
-        self.assertTrue(item["body"].startswith("*Jane Equipe*\n\n"))
+        self.assertEqual(item["body"], "*Jane Equipe*")
         conversation = self.store.conversation(self.a, self.channel, self.contact)
         self.assertEqual(conversation["unread"], 0)
         self.assertEqual(conversation["messages"][-1]["media"], media)
         self.assertEqual(conversation["messages"][-1]["status"], "sent")
         self.assertFalse(tick(self.store, gateway))
+
+    def test_blank_attachment_captions_never_send_generated_labels_or_filenames(self):
+        for kind, name, data in (("image", "foto.png", PNG), ("video", "video.mp4", VIDEO),
+                                 ("document", "matricula.pdf", PDF), ("audio", "audio-data.wav", WAV)):
+            with self.subTest(kind=kind):
+                media = self.upload(kind, name, data, request="upload-" + kind)
+                self.reply(media, request="reply-" + kind)
+                gateway = EvolutionGateway()
+                with patch.object(gateway, "request", return_value={"key": {"id": "accepted-" + kind}}) as request:
+                    self.assertTrue(tick(self.store, gateway))
+                    payload = request.call_args.args[2]
+                    if kind == "audio":
+                        self.assertIn("/message/sendText/", request.call_args.args[1])
+                        self.assertEqual(payload["text"], "*Jane Equipe*")
+                        self.assertTrue(tick(self.store, gateway))
+                        payload = request.call_args.args[2]
+                        self.assertIn("/message/sendWhatsAppAudio/", request.call_args.args[1])
+                        self.assertNotIn("text", payload)
+                        self.assertNotIn("caption", payload)
+                        self.assertNotIn("fileName", payload)
+                    else:
+                        self.assertEqual(payload["caption"], "*Jane Equipe*")
+                        self.assertEqual(payload["fileName"], name)
+                thread = self.store.inbox(self.a, "operator")["conversations"][0]
+                self.assertEqual(thread["media_kind"], kind)
+                self.assertEqual(thread["body"], "*Jane Equipe*")
+
+    def test_typed_attachment_captions_are_preserved_without_generated_text(self):
+        for kind, name, data in (("image", "foto.png", PNG), ("video", "video.mp4", VIDEO),
+                                 ("document", "matricula.pdf", PDF), ("audio", "recado.wav", WAV)):
+            with self.subTest(kind=kind):
+                media = self.upload(kind, name, data, request="upload-" + kind)
+                key = self.reply(media, request="reply-" + kind, body="Segue o material solicitado.")
+                with self.store.db() as c:
+                    self.assertEqual(self.store.row(c, "messages", key)["body"], "*Jane Equipe*\n\nSegue o material solicitado.")
+                gateway = Mock()
+                gateway.send.return_value = "accepted-" + kind
+                self.assertTrue(tick(self.store, gateway))
+                self.assertEqual(gateway.send.call_args.args[0]["body"], "*Jane Equipe*\n\nSegue o material solicitado.")
+                if kind == "audio":
+                    self.assertTrue(tick(self.store, gateway))
+
+    def test_pre_fix_attachment_request_retries_keep_original_message_without_resending(self):
+        from crm_media import LABELS
+        for kind, name, data in (("image", "foto.png", PNG), ("video", "video.mp4", VIDEO),
+                                 ("document", "matricula.pdf", PDF), ("audio", "recado.wav", WAV)):
+            with self.subTest(kind=kind):
+                media = self.upload(kind, name, data, request="upload-" + kind)
+                request = "reply-" + kind
+                key = self.reply(media, request=request)
+                legacy = f"*Jane Equipe*\n\n[{LABELS[kind]}] {name}"
+                with self.store.db() as c:
+                    c.execute("UPDATE messages SET body=? WHERE id=?", (legacy, key))
+                    count = c.execute("SELECT count(*) FROM messages").fetchone()[0]
+                self.assertEqual(self.reply(media, request=request), key)
+                with self.assertRaises(Conflict):
+                    self.reply(media, request=request, body="Outra legenda")
+                with self.store.db() as c:
+                    self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0], count)
+                    self.assertEqual(self.store.row(c, "messages", key)["body"], legacy)
 
     def test_audio_identification_precedes_audio_and_only_audio_resolves_reply(self):
         media = self.upload("audio", "recado.wav", WAV)

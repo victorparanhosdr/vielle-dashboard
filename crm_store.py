@@ -89,7 +89,7 @@ def sender_title(name):
 
 
 def signed_message(body, name):
-    return f"*{name}*\n\n{body}"
+    return f"*{name}*" + (f"\n\n{body}" if body else "")
 
 
 class Conflict(ValueError):
@@ -685,7 +685,8 @@ class CrmStore:
                     AND coalesce(nullif(provider_timestamp,0),created_at)>=coalesce((SELECT external_reply_at FROM conversation_resolutions r
                     WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0) THEN 1 ELSE 0 END) unread
                 FROM visible GROUP BY channel_id,contact_id
-            ) SELECT m.*,t.unread,ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
+            ) SELECT m.*,t.unread,(SELECT kind FROM message_media WHERE id=m.media_id) media_kind,
+                ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
                 ct.service_location,ct.service_location_source,ct.service_location_revision,ch.name channel_name,
                 (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
@@ -779,14 +780,19 @@ class CrmStore:
             if media:
                 if (media["doctor_id"], media["source_channel_id"], media["contact_id"], media["user_id"]) != (doctor, source, contact, str(user)):
                     raise ValueError("Anexo de outra conversa ou usuario.")
-                from crm_media import LABELS
-                body = body or f"[{LABELS[media['kind']]}] {media['name']}"
                 caption_limit = min(1000, 1024 - len(name) - 4)
                 if media["kind"] != "audio" and len(body) > caption_limit:
                     raise ValueError(f"A legenda do anexo pode ter ate {caption_limit} caracteres, incluindo o espaco reservado ao atendente.")
             previous = c.execute("SELECT m.*,r.user_id,r.source_channel_id FROM reply_requests r JOIN messages m ON m.id=r.message_id WHERE request_id=?", (request,)).fetchone()
             if previous:
                 expected = signed_message(body, previous["sender_name"]) if previous["sender_name"] else body
+                if media and not body:
+                    # Retries of pre-fix requests must return the original send, not queue another.
+                    from crm_media import LABELS
+                    legacy = f"[{LABELS[media['kind']]}] {media['name']}"
+                    legacy = signed_message(legacy, previous["sender_name"]) if previous["sender_name"] else legacy
+                    if previous["body"] == legacy:
+                        expected = legacy
                 if (previous["channel_id"], previous["contact_id"], previous["body"], previous["user_id"], previous["source_channel_id"] or previous["channel_id"], previous["media_id"]) != (channel, contact, expected, str(user), source, media_id) or (p.get("phone") and phone(p["phone"]) != previous["recipient_phone"]):
                     raise Conflict("Identificador de envio ja utilizado.")
                 return previous["id"]

@@ -20,7 +20,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const labels={received:"Recebida",queued:"Na fila",sending:"Em envio",sent:"Aceita pelo conector",unknown:"Sem confirmação · não reenviar",cancelled:"Cancelada",skipped:"Não enviada"};
   const leadFor=()=>selected && (state.data.leads.find(l=>l.id===selected.lead_id) || state.data.leads.find(l=>l.contact_id===selected.contact_id) || selectedRecord);
   const senderName=()=>String(state.session?.user.nome || "").replace(/[*_~`\u0000-\u001f\u007f]/g," ").trim().replace(/\s+/g," ");
-  const messageText=m=>m.sender_name && m.body.startsWith(`*${m.sender_name}*\n\n`)?m.body.slice(m.sender_name.length+4):m.body;
+  const messageText=m=>m.sender_name && m.body===`*${m.sender_name}*`?"":m.sender_name && m.body.startsWith(`*${m.sender_name}*\n\n`)?m.body.slice(m.sender_name.length+4):m.body;
+  const messagePreview=m=>messageText(m) || ({audio:"Áudio",document:"Arquivo",image:"Imagem",video:"Vídeo"}[m.media_kind] || "");
   function chatError(message="") {if($("chatError")){$("chatError").textContent=message;$("chatError").hidden=!message;}}
   function mount(target) {
     const changed=owner!==state.doctor;
@@ -60,7 +61,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function drawList() {
     if(!root)return;
-    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,owner,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${date(c.created_at)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messageText(c))}</span>${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
+    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,owner,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${date(c.created_at)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
     icons();
   }
   async function openLead(l) {
@@ -191,7 +192,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
         timeline.innerHTML=`${hasOlder?'<button id="olderMessages" class="olderMessages">Mensagens anteriores</button>':""}<div class="chatMessages">${messages.map(m=>{
           const d=new Date(m.created_at*1000).toLocaleDateString("pt-BR"), divider=day!==d?`<div class="chatDay">${d}</div>`:"";day=d;
           const status=m.origin==="external"?"Enviada externamente":labels[m.status] || m.status;
-          return `${divider}<article class="chatBubble ${m.direction} ${m.status}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind==="audio"?"":`<p>${esc(messageText(m))}</p>`}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
+          return `${divider}<article class="chatBubble ${m.direction} ${m.status}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind!=="audio" && messageText(m)?`<p>${esc(messageText(m))}</p>`:""}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
         }).join("") || '<p class="inboxEmpty">Nenhuma mensagem neste número</p>'}</div>`;
         if(older)timeline.scrollTop=scroll+timeline.scrollHeight-height;else if(nearBottom || !height)timeline.scrollTop=timeline.scrollHeight;
         icons();

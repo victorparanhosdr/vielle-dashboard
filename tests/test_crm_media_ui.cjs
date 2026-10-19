@@ -45,6 +45,16 @@ function mount(initial=null){tools=new Element();preview=new Element();media.mou
 function choose(kind,file){tools.querySelectorAll("[data-kind]").find(n=>n.dataset.kind===kind).click();const input=tools.querySelector("[data-file]");input.files=[file];input.onchange();}
 const ready={id:"private-id",name:'<photo>.png',kind:"image",size:3,state:"ready",url:"/api/crm/media?clinic=vielle&doctor=doctor-a&id=private-id"};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+const inboxSource=fs.readFileSync(path.join(__dirname,"../static/crm-inbox.js"),"utf8");
+const captions=vm.runInNewContext(`${inboxSource.slice(inboxSource.indexOf("  const messageText="),inboxSource.indexOf("  function chatError"))};({messageText,messagePreview})`);
+for(const [kind,label] of [["image","Imagem"],["video","Vídeo"],["audio","Áudio"],["document","Arquivo"]]){
+  const message={sender_name:"Jane Equipe",body:"*Jane Equipe*",media_kind:kind};
+  assert.equal(captions.messageText(message),"");
+  assert.equal(captions.messagePreview(message),label);
+  assert.equal(captions.messagePreview({...message,body:"*Jane Equipe*\n\nSegue o material."}),"Segue o material.");
+}
+assert.equal(captions.messageText({sender_name:"",body:"Mensagem do cliente"}),"Mensagem do cliente");
+assert.equal(captions.messageText({sender_name:"Jane Equipe",body:"*Jane Equipe*\n\n[Arquivo] texto digitado"}),"[Arquivo] texto digitado");
 (async()=>{
   mount();assert.equal(requests.length,0);assert.equal(permissionCalls,0);assert.equal(preview.hidden,true);
   tools.querySelector("[data-attach]").click();assert.equal(tools.querySelector("[data-menu]").hidden,false);
