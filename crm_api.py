@@ -59,6 +59,10 @@ def handle_request(handler, parsed):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "kommo-import":
+                from crm_kommo_import import status
+                return handler.auth_json({"ok": True, **status(store, doctor, query.get("pipeline", [""])[0],
+                    query.get("id", [""])[0], query.get("page", [1])[0])})
             filters = json.loads(query["filters"][0]) if action in {"", "inbox"} and "filters" in query else {}
             if not action:
                 return handler.auth_json({"ok": True, **store.listing(doctor, filters), "gateway_configured": EvolutionGateway().configured,
@@ -116,6 +120,12 @@ def handle_request(handler, parsed):
             for name, doc in PIPELINE_DOCTOR_MAP.items():
                 structure.setdefault(doc, []).append(name)
             store.bootstrap(structure)
+        elif action in {"kommo-import-preview", "kommo-import-commit"}:
+            from crm_kommo_import import prepare, commit
+            if action.endswith("preview"):
+                result.update(prepare(store, p.get("doctor_id"), p.get("pipeline_id")))
+            else:
+                result.update(commit(store, p.get("doctor_id"), p.get("pipeline_id"), p.get("id"), actor))
         elif action == "doctor":
             result["id"] = store.doctor(p)
         elif action == "pipeline":

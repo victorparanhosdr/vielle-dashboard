@@ -160,6 +160,21 @@ if "--locations-fixture" in sys.argv:
         store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],
             "name":f"Paciente Local {i+1}","phone":f"55{ddd}90000000{i}","title":"Avaliação de retorno"},"Equipe Vielle")
 
+if "--kommo-import-fixture" in sys.argv:
+    import crm_kommo_import
+    original_prepare = crm_kommo_import.prepare
+
+    def synthetic_prepare(target, doctor, pipeline):
+        records = [{"source_id": i, "source_contact": i, "name": f"Contato Exemplo {i}",
+                    "title": "Avaliação", "phones": [f"553399990{i:04d}"],
+                    "stage": {"name": "Negociação", "kind": "open"}, "value_cents": 250000,
+                    "created_at": 1700000000, "updated_at": 1700000001,
+                    "reason": "phone" if i > 4 else ""} for i in range(1, 32)]
+        return original_prepare(target, doctor, pipeline, background=False,
+            source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records})
+
+    crm_kommo_import.prepare = synthetic_prepare
+
 if "--communications-fixture" in sys.argv:
     from crm_voice import VoiceService
     voice = VoiceService(store)

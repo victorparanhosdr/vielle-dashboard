@@ -73,6 +73,7 @@
   const pipeline = () => state.data?.pipelines.find(p=>p.id===state.pipeline);
   const doctor = () => state.data?.doctors.find(p=>p.id===state.doctor);
   const selectedLeads = () => (state.data?.leads || []).filter(l=>l.pipeline_id===state.pipeline);
+  const importer=window.createCrmImporter({api,modal,error,icons,esc,load});
   const clientMode=()=>["board","inbox"].includes(state.mode);
   const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno"};
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
@@ -208,6 +209,7 @@
     document.querySelector('.crmSort').hidden=state.mode==="board" && presentation==="list";
     document.querySelector('.crmSearchBar').classList.toggle('columnSorting',state.mode==="board" && presentation==="list");
     $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="inbox" ? '<span class="connectionNote">WhatsApp · Atendimento da equipe</span>' : state.mode==="campaigns" ? `<span class="connectionNote">${state.data.campaigns_enabled?"Disparos habilitados":"Disparos de campanha desativados"}</span><button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : `<button class="primary" id="newChannel">${icon("plus")} Número</button>`;
+    if(state.mode==="board" && pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="organico paranhos")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
@@ -493,7 +495,7 @@
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
   document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;render();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";render();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm}[b.id])?.();};
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";render();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="pendingLocations"){state.filters={service_location:"pending"};state.search="";$("search").value="";fillFilterForm();paintFilters();return load();}
