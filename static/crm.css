@@ -61,6 +61,18 @@
 .leadCardHead { display:flex;align-items:center;gap:9px;width:100%;min-width:0; }.leadAvatar { width:30px;height:34px;flex:none;border-radius:6px;display:grid;place-items:center;background:linear-gradient(140deg,#f5f9f7,#e3ede7);border:1px solid #e1eae4;color:#4e7561;font-size:10px;font-weight:650; }.leadPerson { display:flex;flex-direction:column;gap:3px;min-width:0;flex:1; }
 .leadCard strong { font-size:13px;line-height:1.4;overflow-wrap:anywhere; }
 .leadCard .leadTitle { font-size:11px;font-weight:400;color:var(--ui-muted);line-height:1.45;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.leadMeta { display:flex;align-items:center;gap:6px;width:100%;min-width:0;height:16px; }
+.leadMeta .leadTitle { flex:1;min-width:0; }
+.serviceLocation { display:inline-flex;align-items:center;gap:3px;min-width:0;max-width:100%;font-size:10px;line-height:16px;font-weight:500;color:#477564;vertical-align:middle; }
+.serviceLocation svg { flex:none;width:11px;height:11px; }
+.serviceLocation>span { min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis; }
+.leadMeta .serviceLocation { flex:none;max-width:58%;font-size:9px; }
+.serviceLocation.pending { color:#a47737; }
+.contactSummary>.serviceLocation { display:flex;margin-top:8px; }
+.serviceLocationForm { padding:16px 0;border-block:1px solid var(--ui-line);margin:18px 0; }
+.serviceLocationForm .commands { flex-wrap:wrap; }
+.crmContent .locationPendingLink { padding:6px 0!important;background:transparent!important;border:0!important;box-shadow:none!important;color:#9a7034;font-size:11px;text-align:left;line-height:1.5; }
+.locationPendingLink svg { width:14px;height:14px;flex:none; }
 .leadCard .patientIdentity { display:flex;align-items:center;gap:5px;font-size:10px;font-weight:450;color:#7d8484;line-height:1.4; }
 .leadCard .patientIdentity.matched { color:#32785d; }
 .leadCard .patientIdentity svg { width:12px;height:12px; }

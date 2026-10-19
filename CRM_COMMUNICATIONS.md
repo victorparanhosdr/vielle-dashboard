@@ -53,6 +53,13 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 
 ## Campanhas
 
+### Local de Atendimento
+
+- Campo persistido no contato unico do paciente, compartilhado entre funis e doutores da Vielle. Nao e escrito no Clinica Experts.
+- Predefinicao operacional solicitada: DDD 33/38 = Capelinha, 31 = Belo Horizonte, 11 = Sao Paulo, apenas para telefones brasileiros completos. Nao representa comprovacao de residencia.
+- Outros DDDs e telefones internacionais ficam sem local, com pendencia de definicao. A ficha permite escolher um dos locais ou reaplicar a regra do DDD; escolhas manuais nao sao sobrescritas por sincronizacao.
+- Cartao compacto, filtro compartilhado por funis/Lista, atendimento e publico de campanhas, e contador de pendencias por funil. Alterar o local invalida revisoes de publico anteriores, sem iniciar ou cancelar campanhas existentes.
+
 - Criacao em tres etapas: mensagem/expediente, publico, revisao. A campanha e salva como rascunho; nunca e iniciada pelo salvamento.
 - A selecao e calculada no servidor para todos os resultados (ate 5000 oportunidades por campanha), nao apenas os primeiros 1000 cards. Funil, fase e filtros financeiros/agendamentos do CRM sao respeitados.
 - A visao Lista dos funis permite selecionar por oportunidade, pagina ou todos os resultados do filtro, com exclusoes preservadas entre paginas. Criar disparo transfere exatamente essa selecao para o assistente; nao inicia envios.

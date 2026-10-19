@@ -11,6 +11,7 @@ OPTIONS = {
     "quotes": {"", "active", "pending", "expired", "lost", "none"},
     "sort": {"updated", "spent", "sales"},
     "appointment_status": {"", "any", "completed", "scheduled", "missed", "none"},
+    "service_location": {"", "capelinha", "belo-horizonte", "sao-paulo", "pending"},
 }
 NUMBERS = {"min_spent_cents", "max_spent_cents", "min_sales"}
 DATES = {"appointment_from", "appointment_to"}
@@ -77,6 +78,9 @@ def appointment_ready(item, filters):
 
 
 def matches(item, filters, extra_search=""):
+    location = filters["service_location"]
+    if location and (item.get("service_location") or "pending") != location:
+        return False
     if filters["tier"] and (item.get("customer_value", {}).get("tier") or "unclassified") != filters["tier"]:
         return False
     identity = item.get("experts_status")

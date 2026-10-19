@@ -9,6 +9,13 @@
   const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:new URLSearchParams(location.search).get("mode")==="inbox"?"inbox":"board",seq:0,search:"",filters:{},sort:"updated",session:null};
   let presentation="board",listPicker=null,listSeed=null,listScope="";
   const tierLabels={bronze:"Bronze",silver:"Prata",gold:"Ouro"};
+  const locationLabels={capelinha:"Capelinha","belo-horizonte":"Belo Horizonte","sao-paulo":"São Paulo"};
+  function serviceLocationBadge(lead) {
+    const label=locationLabels[lead.service_location],pending=!label;
+    const source=lead.service_location_source==="ddd"?" · pré-definido pelo DDD":lead.service_location_source==="manual"?" · definido manualmente":"";
+    const title=`Local de Atendimento: ${label || "não definido · pendente"}${source}`;
+    return `<span class="serviceLocation ${pending?"pending":""}" title="${esc(title)}" aria-label="${esc(title)}">${icon(pending?"map-pin-off":"map-pin")}<span>${esc(label || "Definir local")}</span></span>`;
+  }
   const patientRefreshes=new Set();
   const initials=name=>String(name).split(/\s+/).slice(0,2).map(n=>n[0]).join("").toUpperCase();
   const exactMoney=value=>(Number(value || 0)/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -67,8 +74,8 @@
   const doctor = () => state.data?.doctors.find(p=>p.id===state.doctor);
   const selectedLeads = () => (state.data?.leads || []).filter(l=>l.pipeline_id===state.pipeline);
   const clientMode=()=>["board","inbox"].includes(state.mode);
-  const filterNames={tier:"Classificação",identity:"Cadastro",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno"};
-  const filterChoices={tier:tierLabels,identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
+  const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno"};
+  const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
   function appointmentRange(kind) {
     const today=state.data?.today || new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
     const anchor=new Date(`${today}T12:00:00Z`), year=anchor.getUTCFullYear(), month=anchor.getUTCMonth();
@@ -169,13 +176,14 @@
     const agenda=l.appointment_filter?.item?l.appointment_filter:l.appointment;
     return `<button class="leadCard" draggable="true" data-tier="${esc(l.customer_value?.tier || "unclassified")}" data-lead="${esc(l.id)}" title="${esc(customerValueDescription(l.customer_value))}" aria-label="${esc(l.name+" · "+customerValueDescription(l.customer_value))}">
       <span class="leadCardHead"><span class="leadAvatar" aria-hidden="true">${esc(initials(l.name))}</span><span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
-      <span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${appointmentBadge(agenda,true)}
+      <span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${serviceLocationBadge(l)}</span>${appointmentBadge(agenda,true)}
       <span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
   }
   function board() {
     const p=pipeline(), leads=selectedLeads(), active=leads.filter(l=>l.kind==="open");
     const overdue=active.filter(l=>l.next_action && l.next_action<state.data.today);
     const stale=active.filter(l=>Date.now()/1000-l.updated_at>7*86400);
+    const pendingLocations=state.data.service_location_pending?.[state.pipeline] || 0;
     if(!p) return '<p class="emptyState">Nenhum funil cadastrado para este doutor.</p>';
     const customers=[...new Map(leads.map(l=>[l.contact_id,l])).values()], known=customers.filter(l=>l.customer_value?.tier);
     const {cents:quoteTotal,pending:quotePending}=pendingQuotesSummary(customers);
@@ -185,7 +193,7 @@
       const items=leads.filter(l=>l.stage_id===s.id);
       const quotes=pendingQuotesSummary(items);
       return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${items.length}</span></div><small title="Orçamentos pendentes · Abertos e vencidos · Clínica Experts${quotes.pending?` · Parcial: ${quotes.pending} cadastro(s) a conferir`:""}">${exactMoney(quotes.cents)}${quotes.pending?"*":""}<b>${String(index+1).padStart(2,"0")}</b></small></div>${items.map(leadCard).join("") || `<div class="emptyColumn">${icon(s.kind==="won"?"flag":"circle-dashed")}<span>Nenhuma oportunidade</span></div>`}</section>`;
-    }).join("")}</div><aside class="salesRadar"><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${overdue.length}</div><span>próximos passos<br>vencidos</span></div><p>${stale.length} oportunidades sem atualização há 7 dias.</p></div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(known.length,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${customers.length-known.length} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
+    }).join("")}</div><aside class="salesRadar"><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${overdue.length}</div><span>próximos passos<br>vencidos</span></div><p>${stale.length} oportunidades sem atualização há 7 dias.</p>${pendingLocations?`<button id="pendingLocations" class="locationPendingLink">${icon("map-pin-off")} ${pendingLocations} com Local de Atendimento pendente</button>`:""}</div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(known.length,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${customers.length-known.length} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
   }
   function channels() {
     return `<article class="record" id="voiceSettings"><p class="connectionNote">Carregando telefonia…</p></article>${!state.data.gateway_configured?'<p class="connectionNote">Servidor WhatsApp ainda não configurado. Os números podem ser cadastrados, mas não serão conectados nem enviarão mensagens.</p>':""}${state.data.channels.map(c=>`<article class="record"><div class="recordMain"><span class="recordIcon">${icon("smartphone")}</span><div><h3>${esc(c.name)} ${pill(c.state)}</h3><p>+${esc(c.phone)} · ${esc(doctor()?.name)}</p><div class="recordMetrics"><span>Atendimento manual <strong>sem cota diária</strong></span><span>${state.data.campaigns_enabled?`Campanhas <strong>${c.daily_limit}</strong>/dia`:"Campanhas desativadas"}</span></div></div></div><div class="commands"><button data-connect="${c.id}" ${state.data.gateway_configured?"":"disabled"}>${icon("qr-code")} Conectar</button><button data-channel-state="${c.id}" class="icon-button" title="Conferir conexão" aria-label="Conferir conexão ${esc(c.name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button></div></article>`).join("") || '<p class="emptyState">Nenhum número cadastrado para este doutor.</p>'}<p class="inlineWarning">Conexão não oficial. Intervalos e limites não garantem proteção contra bloqueio.</p>`;
@@ -402,6 +410,14 @@
       };
       const value=document.createElement("div");value.className="profileCustomerValue";value.innerHTML=customerValuePanel(l.customer_value);$("leadEdit").before(value);
       const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=appointmentBadge(l.appointment);$("leadEdit").before(appointment);
+      const locationForm=document.createElement("form");locationForm.className="serviceLocationForm";
+      locationForm.innerHTML=`<label>Local de Atendimento<select name="service_location">${option("","Não definido · pendente",!l.service_location)}${Object.entries(locationLabels).map(([key,label])=>option(key,label,l.service_location===key)).join("")}</select></label><p class="connectionNote">${!l.service_location?"Pendência: Local de Atendimento não definido.":l.service_location_source==="ddd"?`Pré-definido pelo DDD ${esc(l.phone.slice(2,4))}.`:"Definido manualmente."}</p><div class="commands"><button type="submit">${icon("check")} Salvar local</button><button type="submit" id="useDddLocation" class="icon-button" title="Reaplicar regra do DDD" aria-label="Reaplicar regra do DDD">${icon("rotate-ccw")}</button></div>`;
+      $("leadEdit").after(locationForm);
+      locationForm.onsubmit=async e=>{
+        e.preventDefault();const buttons=locationForm.querySelectorAll("button");buttons.forEach(b=>b.disabled=true);$("formError").hidden=true;
+        try {await api("service-location",{id:l.id,doctor_id:l.doctor_id,service_location_revision:l.service_location_revision,service_location:new FormData(locationForm).get("service_location"),use_ddd:e.submitter?.id==="useDddLocation"});await load();await profile(l.id);}
+        catch(err){error(err.message);buttons.forEach(b=>b.disabled=false);}
+      };
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
       const tabs=document.createElement("div");tabs.className="profileTabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Ficha do cliente");
       tabs.innerHTML=[["record","notebook-pen","Ficha"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"],["calls","phone-call","Ligações"]].map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
@@ -437,7 +453,7 @@
   const voice=window.createCrmVoice({api,esc,icon,icons});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes,voice});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
     if(state.mode!=="inbox"){state.mode="inbox";render();load();}
@@ -480,6 +496,7 @@
   $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";render();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
+    if(b.id==="pendingLocations"){state.filters={service_location:"pending"};state.search="";$("search").value="";fillFilterForm();paintFilters();return load();}
     if(b.dataset.lead) return detail(b.dataset.lead);
     if(b.dataset.connect) return connect(b.dataset.connect);
     if(b.dataset.channelState){b.disabled=true;try{await api("channel-state",{id:b.dataset.channelState,doctor_id:state.doctor});await load();}catch(err){notice(err.message);b.disabled=false;}}

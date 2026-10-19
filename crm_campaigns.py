@@ -9,7 +9,7 @@ import uuid
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_store import Conflict, TZ, integer, text
 
-FINGERPRINT_FIELDS=("id","contact_id","revision","consent_at","phone","name","opted_out","experts_status","experts_uuid")
+FINGERPRINT_FIELDS=("id","contact_id","revision","consent_at","phone","name","opted_out","experts_status","experts_uuid","service_location_revision")
 
 
 def rows_fingerprint(rows):
@@ -20,7 +20,7 @@ def rows_fingerprint(rows):
 def fingerprint(c, doctor, ids):
     wanted = set(ids)
     rows = c.execute("""SELECT l.id,l.contact_id,l.revision,l.consent_at,ct.phone,ct.name,ct.opted_out,
-        ct.experts_status,ct.experts_uuid FROM leads l JOIN contacts ct ON ct.id=l.contact_id
+        ct.experts_status,ct.experts_uuid,ct.service_location_revision FROM leads l JOIN contacts ct ON ct.id=l.contact_id
         WHERE l.doctor_id=? ORDER BY l.id""", (doctor,)).fetchall()
     return rows_fingerprint([r for r in rows if r["id"] in wanted])
 
@@ -56,7 +56,8 @@ def selection(store, payload):
             owner = store.owned(c,"pipelines",row["pipeline_id"],doctor)
             if pipelines and owner["id"] not in pipelines:
                 raise ValueError("Fase de outro funil.")
-        leads = [dict(r) for r in c.execute("""SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.experts_uuid,ct.experts_status,s.kind
+        leads = [dict(r) for r in c.execute("""SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.experts_uuid,ct.experts_status,
+            ct.service_location,ct.service_location_source,ct.service_location_revision,s.kind
             FROM leads l JOIN contacts ct ON ct.id=l.contact_id JOIN stages s ON s.id=l.stage_id
             WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id""", (doctor,))]
         store.attach_customer_values(c,leads,doc["name"],bool(filters["search"]))

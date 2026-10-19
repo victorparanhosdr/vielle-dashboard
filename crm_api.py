@@ -148,6 +148,8 @@ def handle_request(handler, parsed):
             result.update(start_refresh(store))
         elif action == "activity":
             store.activity(p, actor)
+        elif action == "service-location":
+            store.save_service_location(p, actor)
         elif action == "conversation-close":
             result.update(store.close_conversation(p, handler.current_user["id"]))
         elif action == "customer-tiers":

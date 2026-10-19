@@ -150,6 +150,13 @@ if "--audience-fixture" in sys.argv:
             "name":f"Cliente Exemplo {i+1:02d}","phone":f"5500015{i:06d}","title":"Retorno de avaliação",
             "consent":i%4!=0,"consent_source":"Autorização sintética" if i%4 else ""},"Equipe Vielle")
 
+if "--locations-fixture" in sys.argv:
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    pipeline=store.listing(doc)["pipelines"][0]
+    for i, ddd in enumerate(("33", "38", "31", "11", "21")):
+        store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],
+            "name":f"Paciente Local {i+1}","phone":f"55{ddd}90000000{i}","title":"Avaliação de retorno"},"Equipe Vielle")
+
 if "--communications-fixture" in sys.argv:
     from crm_voice import VoiceService
     voice = VoiceService(store)

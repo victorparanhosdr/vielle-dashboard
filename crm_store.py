@@ -14,6 +14,15 @@ from crm_filters import appointment_active, appointment_ready, financial_ready, 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
 CAMPAIGN_DAILY_LIMIT = 200
+SERVICE_LOCATIONS = {"capelinha": "Capelinha", "belo-horizonte": "Belo Horizonte", "sao-paulo": "São Paulo"}
+LOCATION_DDDS = {"33": "capelinha", "38": "capelinha", "31": "belo-horizonte", "11": "sao-paulo"}
+
+
+def location_from_phone(number):
+    number = re.sub(r"\D", "", number)
+    if len(number) not in {12, 13} or not number.startswith("55"):
+        return ""
+    return LOCATION_DDDS.get(number[2:4], "")
 
 
 def text(value, maximum=160, required=True):
@@ -121,7 +130,10 @@ class CrmStore:
             columns = {r[1] for r in c.execute("PRAGMA table_info(contacts)")}
             for name, definition in (("experts_uuid", "TEXT NOT NULL DEFAULT ''"),
                                      ("experts_status", "TEXT NOT NULL DEFAULT 'unchecked'"),
-                                     ("experts_checked_at", "REAL NOT NULL DEFAULT 0")):
+                                     ("experts_checked_at", "REAL NOT NULL DEFAULT 0"),
+                                     ("service_location", "TEXT NOT NULL DEFAULT ''"),
+                                     ("service_location_source", "TEXT NOT NULL DEFAULT 'pending'"),
+                                     ("service_location_revision", "INTEGER NOT NULL DEFAULT 1")):
                 if name not in columns:
                     c.execute(f"ALTER TABLE contacts ADD COLUMN {name} {definition}")
             columns = {r[1] for r in c.execute("PRAGMA table_info(messages)")}
@@ -160,6 +172,12 @@ class CrmStore:
             if changed.rowcount:
                 c.execute("UPDATE channels SET daily_limit=? WHERE daily_limit<?",
                           (CAMPAIGN_DAILY_LIMIT, CAMPAIGN_DAILY_LIMIT))
+            changed = c.execute("INSERT OR IGNORE INTO runtime(key,value) VALUES('service_locations_v1',1)")
+            if changed.rowcount:
+                for contact in c.execute("SELECT id,phone FROM contacts WHERE service_location_source<>'manual'").fetchall():
+                    location = location_from_phone(contact["phone"])
+                    c.execute("UPDATE contacts SET service_location=?,service_location_source=? WHERE id=?",
+                              (location, "ddd" if location else "pending", contact["id"]))
 
     def contact(self, c, number, name):
         match = self.patient_lookup(number)
@@ -184,6 +202,12 @@ class CrmStore:
             # patient into a new person or overwrite an established name.
             status = "unchecked" if status == "unchecked" else "review"
         c.execute("UPDATE contacts SET experts_status=?,experts_checked_at=? WHERE id=?", (status, time.time(), cid))
+        if current["service_location_source"] != "manual":
+            location = location_from_phone(current["phone"])
+            if location != current["service_location"]:
+                c.execute("""UPDATE contacts SET service_location=?,service_location_source=?,
+                    service_location_revision=service_location_revision+1 WHERE id=?""",
+                          (location, "ddd" if location else "pending", cid))
         return dict(c.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone())
 
     def reconcile_patients(self):
@@ -369,7 +393,8 @@ class CrmStore:
             contact = self.row(c, "contacts", lead["contact_id"])
             self.contact(c, contact["phone"], contact["name"])
             contact = self.row(c, "contacts", lead["contact_id"])
-            lead.update({k: contact[k] for k in ("name", "phone", "opted_out", "experts_uuid", "experts_status", "experts_checked_at")})
+            lead.update({k: contact[k] for k in ("name", "phone", "opted_out", "experts_uuid", "experts_status", "experts_checked_at",
+                                               "service_location", "service_location_source", "service_location_revision")})
             self.attach_appointments([lead], self.row(c, "doctors", doctor)["name"])
             self.attach_customer_values(c, [lead], self.row(c, "doctors", doctor)["name"])
             preferred = c.execute("""SELECT m.channel_id FROM messages m JOIN channels ch ON ch.id=m.channel_id
@@ -377,6 +402,31 @@ class CrmStore:
             return {"lead": lead, "events": [dict(r) for r in c.execute("SELECT * FROM events WHERE lead_id=? ORDER BY id DESC LIMIT 100", (key,))],
                     "preferred_channel_id": preferred[0] if preferred else "",
                     "messages": [dict(r) for r in c.execute("SELECT m.*,ch.name channel_name FROM messages m JOIN channels ch ON ch.id=m.channel_id WHERE m.contact_id=? AND ch.doctor_id=? ORDER BY m.created_at DESC LIMIT 100", (contact["id"], doctor))]}
+
+    def save_service_location(self, payload, actor):
+        revision = integer(payload.get("service_location_revision"), 1, 2**63-1)
+        auto = payload.get("use_ddd", False)
+        location = payload.get("service_location", "")
+        if type(auto) is not bool or not isinstance(location, str) or location not in {"", *SERVICE_LOCATIONS}:
+            raise ValueError("Local de Atendimento invalido.")
+        with self.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            lead = self.owned(c, "leads", payload.get("id"), payload.get("doctor_id"))
+            contact = self.row(c, "contacts", lead["contact_id"])
+            if contact["service_location_revision"] != revision:
+                raise Conflict("O Local de Atendimento foi alterado. Atualize a ficha e tente novamente.")
+            if auto:
+                location = location_from_phone(contact["phone"])
+            source = ("ddd" if location else "pending") if auto else "manual"
+            if (contact["service_location"], contact["service_location_source"]) == (location, source):
+                return
+            c.execute("""UPDATE contacts SET service_location=?,service_location_source=?,
+                service_location_revision=service_location_revision+1 WHERE id=?""", (location, source, contact["id"]))
+            body = "Local de Atendimento: " + SERVICE_LOCATIONS.get(location, "Nao definido - pendente")
+            body += " (regra do DDD)" if auto else " (definido manualmente)"
+            now = time.time()
+            for linked in c.execute("SELECT id FROM leads WHERE contact_id=?", (contact["id"],)).fetchall():
+                self.event(c, linked["id"], actor, "service_location", body, now)
 
     def attach_appointments(self, leads, doctor_name):
         patients = list({l["experts_uuid"] for l in leads if l["experts_uuid"] and l["experts_status"] == "matched"})
@@ -470,7 +520,8 @@ class CrmStore:
             pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name", (doctor,))]
             for p in pipelines:
                 p["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (p["id"],))]
-            leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id", (doctor,))]
+            leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id", (doctor,))]
+            location_pending = {p["id"]: len({l["contact_id"] for l in leads if l["pipeline_id"] == p["id"] and not l["service_location"]}) for p in pipelines}
             self.attach_customer_values(c, leads, next((d["name"] for d in doctors if d["id"] == doctor), ""), bool(filters["search"]))
             if appointment_active(filters):
                 self.attach_appointment_filters(leads, next((d["name"] for d in doctors if d["id"] == doctor), ""), filters)
@@ -491,6 +542,7 @@ class CrmStore:
             team = [dict(r) for r in c.execute("SELECT actor,sum(points) points FROM xp WHERE doctor_id=? GROUP BY actor ORDER BY points DESC LIMIT 10", (doctor,))]
             return {"doctors": doctors, "doctor_id": doctor, "pipelines": pipelines, "leads": leads,
                     "customer_tier_rules": self.customer_tier_rules(c),
+                    "service_locations": SERVICE_LOCATIONS, "service_location_pending": location_pending,
                     "matched_leads": matched_count, "filter_incomplete": incomplete,
                     "total_leads": c.execute("SELECT count(*) FROM leads WHERE doctor_id=?", (doctor,)).fetchone()[0],
                     "channels": [dict(r) for r in c.execute("SELECT * FROM channels WHERE doctor_id=? ORDER BY name", (doctor,))],
@@ -534,7 +586,8 @@ class CrmStore:
                 sum(CASE WHEN direction='in' AND seq>coalesce((SELECT resolved_through FROM conversation_resolutions r
                     WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0) THEN 1 ELSE 0 END) unread
                 FROM visible GROUP BY channel_id,contact_id
-            ) SELECT m.*,t.unread,ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,ch.name channel_name,
+            ) SELECT m.*,t.unread,ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
+                ct.service_location,ct.service_location_source,ct.service_location_revision,ch.name channel_name,
                 (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
                 JOIN channels ch ON ch.id=t.channel_id ORDER BY m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
