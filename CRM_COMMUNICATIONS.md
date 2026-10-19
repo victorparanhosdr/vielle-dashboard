@@ -7,7 +7,9 @@ Piloto exclusivo do Master da Vielle. As clinicas e os institutos nao compartilh
 - O botao de telefone no atendimento abre a ligacao. Ficha do cliente > Ligacoes mostra historico, atendente, origem, destino, horario de Sao Paulo, duracao, resultado e notas.
 - Todas as chamadas desta fase sao de saida pelo navegador. Nao ha recebimento de ligacoes, discador automatico, transcricao ou IA de voz nesta entrega.
 - A ligacao manual segue a disponibilidade de contato da clinica: nao exige um registro individual em `leads.consent_at`. Descadastros, vinculos em revisao e telefones invalidos continuam bloqueados, inclusive na revalidacao anterior a discagem. Essa disponibilidade operacional nao cria evidencia de consentimento nem autoriza a gravacao.
-- O cliente ouve o aviso e precisa pressionar 1. A gravacao so e iniciada depois disso. Se iniciar a gravacao falhar, a conversa nao e conectada.
+- No fluxo solicitado pelo Master em 19/10/2026 (`CRM_VOICE_NOTICE_MODE=staff`, padrao), a chamada entra diretamente, sem robo, pedido de tecla ou gravacao automatica. O colaborador informa sobre a gravacao e pede a concordancia verbal. Somente durante uma conversa conectada, o proprio atendente pode marcar a confirmacao e clicar em Iniciar gravacao. O audio comeca nesse momento, sem recuperar o trecho anterior.
+- A confirmacao e individual por ligacao, nunca pre-marcada nem copiada de autorizacoes de contato/WhatsApp. O registro guarda fonte `staff_verbal`, atendente e horario; nao e apresentado como confirmacao direta do paciente por teclado. Falha ou timeout ao iniciar a gravacao nao derruba a conversa nem dispara outra tentativa automaticamente.
+- O modo `automated` conserva o aviso por voz e a confirmacao por tecla 1. As chamadas antigas mantem esse modo; nenhuma autorizacao historica e reescrita. Em ambos os modos, o audio so pode ser arquivado depois da confirmacao registrada naquela chamada.
 - IDs do cliente, contato, doutor, paciente do Experts, numero e atendente sao congelados no registro. Alteracoes posteriores nao reescrevem essa identidade historica.
 - Webhooks exigem assinatura Twilio, conta correta e vinculo ao CallSid. Um token de navegador vale 120 segundos e permite somente a tentativa preparada. O cliente nao escolhe o numero de destino por parametro.
 - O numero de origem precisa pertencer a conta Twilio e ter capacidade Voice. Somente destinos brasileiros sao aceitos nesta fase.
@@ -27,6 +29,7 @@ CRM_VOICE_PUBLIC_URL=https://doc4docs.com.br
 CRM_VOICE_ENABLED=0
 CRM_VOICE_MAX_SECONDS=1200
 CRM_VOICE_DAILY_LIMIT=100
+CRM_VOICE_NOTICE_MODE=staff
 ```
 
 `CRM_VOICE_LINES_JSON` e uma lista de numeros de voz por doutor, separados dos canais de WhatsApp:

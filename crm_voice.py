@@ -42,6 +42,7 @@ class VoiceConfig:
     enabled: bool = False
     max_seconds: int = 1200
     daily_limit: int = 100
+    notice_mode: str = "staff"
 
     @classmethod
     def from_env(cls):
@@ -57,12 +58,15 @@ class VoiceConfig:
                 raise ValueError()
         except (ValueError, KeyError, TypeError):
             clean = []
+        notice_mode = os.getenv("CRM_VOICE_NOTICE_MODE", "staff")
+        if notice_mode not in {"staff", "automated"}:
+            notice_mode = "automated"
         return cls(os.getenv("TWILIO_ACCOUNT_SID", ""), os.getenv("TWILIO_AUTH_TOKEN", ""),
                    os.getenv("TWILIO_API_KEY_SID", ""), os.getenv("TWILIO_API_KEY_SECRET", ""),
                    os.getenv("TWILIO_TWIML_APP_SID", ""), os.getenv("CRM_VOICE_PUBLIC_URL", "").rstrip("/"),
                    tuple(clean), os.getenv("CRM_VOICE_ENABLED") == "1",
                    integer(os.getenv("CRM_VOICE_MAX_SECONDS", "1200"), 60, 3600),
-                   integer(os.getenv("CRM_VOICE_DAILY_LIMIT", "100"), 1, 1000))
+                   integer(os.getenv("CRM_VOICE_DAILY_LIMIT", "100"), 1, 1000), notice_mode)
 
     @property
     def credentials_ready(self):
@@ -83,7 +87,7 @@ class VoiceConfig:
         lines = [x for x in self.lines if x["doctor_id"] == doctor]
         ready = bool(self.credentials_ready and self.origin_ready and lines)
         return {"ready": ready, "enabled": bool(ready and self.enabled), "lines": lines,
-                "max_seconds": self.max_seconds, "daily_limit": self.daily_limit,
+                "max_seconds": self.max_seconds, "daily_limit": self.daily_limit, "notice_mode": self.notice_mode,
                 "checks": {"credentials": bool(self.credentials_ready), "public_url": self.origin_ready,
                            "number": bool(lines), "activation": self.enabled}}
 
@@ -163,11 +167,17 @@ class VoiceService:
                 recording_status TEXT NOT NULL DEFAULT 'waiting',recording_duration INTEGER NOT NULL DEFAULT 0,
                 audio_hash TEXT NOT NULL DEFAULT '',audio_bytes INTEGER NOT NULL DEFAULT 0,
                 download_attempts INTEGER NOT NULL DEFAULT 0,retry_at REAL NOT NULL DEFAULT 0,
-                outcome TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',max_seconds INTEGER NOT NULL);
+                outcome TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',max_seconds INTEGER NOT NULL,
+                notice_mode TEXT NOT NULL DEFAULT 'automated',consent_source TEXT NOT NULL DEFAULT 'patient_keypad');
             CREATE INDEX IF NOT EXISTS voice_customer ON voice_calls(doctor_id,contact_id,created_at);
             CREATE UNIQUE INDEX IF NOT EXISTS voice_parent ON voice_calls(parent_sid) WHERE parent_sid<>'';
             CREATE UNIQUE INDEX IF NOT EXISTS voice_recording ON voice_calls(recording_sid) WHERE recording_sid<>'';
             """)
+            c.execute("BEGIN IMMEDIATE")
+            columns = {r[1] for r in c.execute("PRAGMA table_info(voice_calls)")}
+            for name, default in (("notice_mode", "automated"), ("consent_source", "patient_keypad")):
+                if name not in columns:
+                    c.execute(f"ALTER TABLE voice_calls ADD COLUMN {name} TEXT NOT NULL DEFAULT '{default}'")
 
     def row(self, c, key, doctor=None):
         call = self.store.row(c, "voice_calls", key)
@@ -179,7 +189,7 @@ class VoiceService:
     def public(call):
         result = {k: call[k] for k in ("id", "lead_id", "contact_id", "doctor_id", "customer_name", "destination",
             "line_name", "caller_number", "actor_name", "status", "created_at", "answered_at", "ended_at", "duration",
-            "consent_at", "recording_status", "recording_duration", "outcome", "note")}
+            "consent_at", "consent_source", "notice_mode", "recording_status", "recording_duration", "outcome", "note")}
         result["can_retry_recording"] = bool(call["recording_sid"] and call["recording_status"] == "error")
         return result
 
@@ -240,10 +250,11 @@ class VoiceService:
                 raise ValueError("Limite diario de telefonia atingido. Consulte o Master.")
             key = uuid.uuid4().hex
             c.execute("""INSERT INTO voice_calls(id,request_id,lead_id,contact_id,doctor_id,patient_uuid,customer_name,
-                destination,line_id,caller_number,line_name,actor_id,actor_name,account_sid,created_at,updated_at,notice,max_seconds)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (key, request_id, lead["id"], contact["id"], doctor,
+                destination,line_id,caller_number,line_name,actor_id,actor_name,account_sid,created_at,updated_at,notice,max_seconds,notice_mode,consent_source)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (key, request_id, lead["id"], contact["id"], doctor,
                 contact["experts_uuid"], contact["name"], destination, line["id"], line["number"], line["name"],
-                str(actor["id"]), actor["nome"], self.config.account, now, now, NOTICE, self.config.max_seconds))
+                str(actor["id"]), actor["nome"], self.config.account, now, now,
+                NOTICE if self.config.notice_mode == "automated" else "", self.config.max_seconds, self.config.notice_mode, ""))
             c.execute("INSERT INTO events(lead_id,actor,kind,body,created_at) VALUES(?,?,?,?,?)", (lead["id"], actor["nome"], "call", "Ligacao preparada para " + destination, now))
             call = self.row(c, key)
         return {"call": self.public(call), "token": self.gateway.token(key)}
@@ -265,7 +276,8 @@ class VoiceService:
             c.execute("UPDATE voice_calls SET parent_sid=?,status='initiated',updated_at=? WHERE id=?", (params["CallSid"], time.time(), key))
         dial = response.dial(caller_id=call["caller_number"], answer_on_bridge=True, timeout=30,
                              time_limit=call["max_seconds"], action=self.config.url("finished", key), method="POST")
-        dial.number(call["destination"], url=self.config.url("notice", key), method="POST",
+        notice = {"url": self.config.url("notice", key), "method": "POST"} if call["notice_mode"] == "automated" else {}
+        dial.number(call["destination"], **notice,
                     status_callback=self.config.url("status", key), status_callback_method="POST",
                     status_callback_event="initiated ringing answered completed")
         return str(response)
@@ -291,6 +303,8 @@ class VoiceService:
             call = self.row(c, key)
             if params.get("AccountSid") != call["account_sid"]:
                 raise ValueError("Conta nao reconhecida.")
+            if action in {"notice", "consent"} and call["notice_mode"] != "automated":
+                raise ValueError("Esta ligacao exige confirmacao verbal pelo atendente.")
             if action in {"notice", "consent", "status"}:
                 call = self.child(c, key, params)
             elif action in {"recording", "finished"} and params.get("CallSid") != call["parent_sid"]:
@@ -311,7 +325,7 @@ class VoiceService:
                     response.hangup()
                     return str(response)
                 # Claim once before the external recording request. Unknown failures never re-record automatically.
-                c.execute("UPDATE voice_calls SET consent_at=?,recording_status='starting',status='in-progress',answered_at=?,updated_at=? WHERE id=?", (now, now, now, key))
+                c.execute("UPDATE voice_calls SET consent_at=?,consent_source='patient_keypad',recording_status='starting',status='in-progress',answered_at=?,updated_at=? WHERE id=?", (now, now, now, key))
             elif action == "status":
                 status = params.get("CallStatus")
                 if status not in {"initiated", "ringing", "in-progress", "completed", "busy", "no-answer", "failed", "canceled"}:
@@ -320,6 +334,8 @@ class VoiceService:
                 if call["status"] not in TERMINAL and (status in TERMINAL or order.get(status, 0) > order.get(call["status"], 0)):
                     c.execute("UPDATE voice_calls SET status=?,updated_at=?,ended_at=coalesce(?,ended_at),duration=max(duration,?) WHERE id=?", (status, now, now if status in TERMINAL else None,
                         integer(params.get("CallDuration", "0"), 0, 86400), key))
+                    if status == "in-progress" and call["notice_mode"] == "staff":
+                        c.execute("UPDATE voice_calls SET answered_at=coalesce(answered_at,?) WHERE id=?", (now, key))
                 return str(response)
             elif action == "finished":
                 if call["status"] not in {"declined", "canceled", "failed", "busy", "no-answer"}:
@@ -355,6 +371,41 @@ class VoiceService:
             response.say("Não foi possível iniciar a gravação. A ligação será encerrada.", language="pt-BR", voice="alice")
             response.hangup()
             return str(response)
+
+    def start_recording(self, payload, actor):
+        if payload.get("verbal_authorization") is not True:
+            raise ValueError("Confirme que avisou o paciente e que ele concordou com a gravacao.")
+        now = time.time()
+        with self.store.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            call = self.row(c, payload.get("id"), payload.get("doctor_id"))
+            if call["actor_id"] != str(actor["id"]):
+                raise ValueError("Somente o atendente desta ligacao pode iniciar a gravacao.")
+            if (call["notice_mode"] != "staff" or not self.config.status(call["doctor_id"])["enabled"]
+                or call["account_sid"] != self.config.account or call["status"] != "in-progress"
+                or not sid(call["parent_sid"], "CA")):
+                raise ValueError("Aguarde a conversa conectar antes de iniciar a gravacao.")
+            contact = self.store.row(c, "contacts", call["contact_id"])
+            if contact["opted_out"] or contact["experts_status"] == "review" or "+" + contact["phone"] != call["destination"]:
+                raise ValueError("Confira o cadastro do contato antes de gravar.")
+            if call["consent_at"] or call["recording_status"] != "waiting":
+                return {"call": self.public(call)}
+            # One deliberate, audited attestation per call; timeouts never start a second recording.
+            c.execute("UPDATE voice_calls SET consent_at=?,consent_source='staff_verbal',recording_status='starting',updated_at=? WHERE id=?", (now, now, call["id"]))
+            c.execute("INSERT INTO events(lead_id,actor,kind,body,created_at) VALUES(?,?,?,?,?)", (call["lead_id"], actor["nome"],
+                "call_recording_authorization", json.dumps({"call_id": call["id"], "source": "staff_verbal",
+                "statement": "Atendente confirmou que avisou o paciente e obteve concordancia verbal para iniciar a gravacao."}, ensure_ascii=False), now))
+        try:
+            recording = self.gateway.record(call["parent_sid"], call["id"])
+            if not sid(recording, "RE"):
+                raise ValueError()
+            with self.store.db() as c:
+                c.execute("UPDATE voice_calls SET recording_sid=?,recording_status=CASE WHEN recording_status='starting' THEN 'recording' ELSE recording_status END WHERE id=?", (recording, call["id"]))
+        except Exception:
+            with self.store.db() as c:
+                c.execute("UPDATE voice_calls SET recording_status=CASE WHEN recording_status='starting' THEN 'error' ELSE recording_status END,updated_at=? WHERE id=?", (time.time(), call["id"]))
+        with self.store.db() as c:
+            return {"call": self.public(self.row(c, call["id"], call["doctor_id"]))}
 
     def save_note(self, payload, actor):
         note = text(payload.get("note", ""), 2000, required=False)

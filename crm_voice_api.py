@@ -59,6 +59,8 @@ def handle_request(handler, store, action, query):
     actor = handler.current_user
     if suffix == "prepare":
         result = voice.prepare(payload, actor)
+    elif suffix == "start-recording":
+        result = voice.start_recording(payload, actor)
     elif suffix == "note":
         voice.save_note(payload, actor)
         result = {}

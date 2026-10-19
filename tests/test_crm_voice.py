@@ -28,6 +28,7 @@ class VoiceTests(unittest.TestCase):
         self.actor = {"id":"user-1","nome":"Equipe Vielle"}
         self.config = VoiceConfig("AC"+"1"*32,"t"*32,"SK"+"2"*32,"s"*32,"AP"+"3"*32,"https://example.test",
             ({"id":"line-a","doctor_id":self.doc,"name":"Atendimento","number":"+551140000001"},), True)
+        self.config.notice_mode="automated"
         self.gateway = Mock()
         self.gateway.owns_number.return_value = True
         self.gateway.token.return_value = "short-lived-token"
@@ -130,6 +131,118 @@ class VoiceTests(unittest.TestCase):
         self.voice.callback("consent",key,self.params(Digits="2"))
         self.gateway.record.assert_not_called()
         self.assertEqual(self.voice.history(self.lead,self.doc)["calls"][0]["status"],"declined")
+
+    def staff_call(self):
+        self.config.notice_mode="staff"
+        key,xml=self.start()
+        self.voice.callback("status",key,self.params(CallStatus="in-progress"))
+        return key,xml
+
+    def authorize_recording(self,key,**changes):
+        return self.voice.start_recording({"id":key,"doctor_id":self.doc,"verbal_authorization":True,**changes},self.actor)
+
+    def test_staff_notice_call_connects_directly_without_recording_or_robot(self):
+        from xml.etree import ElementTree
+        key,xml=self.staff_call()
+        dial=ElementTree.fromstring(xml).find("Dial")
+        self.assertNotIn("record",dial.attrib)
+        self.assertNotIn("url",dial.find("Number").attrib)
+        self.assertNotIn("<Say",xml)
+        self.assertNotIn("<Gather",xml)
+        self.gateway.record.assert_not_called()
+        row=self.voice.history(self.lead,self.doc)["calls"][0]
+        self.assertEqual((row["notice_mode"],row["consent_source"]),("staff",""))
+        self.assertIsNone(row["consent_at"])
+        self.assertIsNotNone(row["answered_at"])
+        with self.assertRaises(ValueError):self.voice.callback("consent",key,self.params(Digits="1"))
+        with self.assertRaises(ValueError):self.voice.callback("recording",key,{"AccountSid":self.config.account,"CallSid":self.parent,"RecordingSid":"RE"+"4"*32,"RecordingStatus":"completed"})
+
+    def test_staff_recording_requires_fresh_explicit_attestation_for_this_call(self):
+        key,_=self.staff_call()
+        for value in (None,False,1,"true"):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                self.authorize_recording(key,verbal_authorization=value)
+        self.gateway.record.assert_not_called()
+        row=self.authorize_recording(key)["call"]
+        self.assertEqual(row["consent_source"],"staff_verbal")
+        self.assertIsNotNone(row["consent_at"])
+        self.assertEqual(row["recording_status"],"recording")
+        self.assertEqual(row["status"],"in-progress")
+        self.gateway.record.assert_called_once_with(self.parent,key)
+        events=self.store.detail(self.lead,self.doc)["events"]
+        event=next(e for e in events if e["kind"]=="call_recording_authorization")
+        self.assertEqual(event["actor"],self.actor["nome"])
+        self.assertEqual(json.loads(event["body"])["call_id"],key)
+        self.assertEqual(self.store.detail(self.lead,self.doc)["lead"]["consent_source"],"Solicitado pelo paciente")
+
+    def test_staff_recording_is_owned_connected_and_bound_to_current_contact(self):
+        key,_=self.staff_call()
+        payload={"id":key,"doctor_id":self.doc,"verbal_authorization":True}
+        with self.assertRaises(ValueError):self.voice.start_recording(payload,{**self.actor,"id":"other-user"})
+        with self.assertRaises(LookupError):self.voice.start_recording({**payload,"doctor_id":self.other},self.actor)
+        with self.store.db() as c:c.execute("UPDATE voice_calls SET status='ringing'")
+        with self.assertRaises(ValueError):self.voice.start_recording(payload,self.actor)
+        with self.store.db() as c:c.execute("UPDATE voice_calls SET status='in-progress'")
+        for change in ("opted_out=1", "experts_status='review'", "phone='5511999990002'"):
+            with self.subTest(change=change):
+                with self.store.db() as c:
+                    c.execute("UPDATE contacts SET opted_out=0,experts_status='matched',phone='5511999990001'")
+                    c.execute("UPDATE contacts SET "+change)
+                with self.assertRaises(ValueError):self.voice.start_recording(payload,self.actor)
+        self.gateway.record.assert_not_called()
+
+    def test_staff_recording_concurrent_requests_start_only_once(self):
+        key,_=self.staff_call()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda _:self.authorize_recording(key),range(2)))
+        self.authorize_recording(key)
+        self.gateway.record.assert_called_once_with(self.parent,key)
+
+    def test_staff_recording_failure_keeps_conversation_and_never_retries_automatically(self):
+        key,_=self.staff_call()
+        self.gateway.record.side_effect=TimeoutError()
+        row=self.authorize_recording(key)["call"]
+        self.assertEqual((row["status"],row["recording_status"]),("in-progress","error"))
+        self.authorize_recording(key)
+        self.gateway.record.assert_called_once_with(self.parent,key)
+        self.gateway.hangup.assert_not_called()
+
+    def test_staff_authorized_audio_uses_the_same_private_archive(self):
+        key,_=self.staff_call()
+        self.authorize_recording(key)
+        self.voice.callback("recording",key,{"AccountSid":self.config.account,"CallSid":self.parent,"RecordingSid":"RE"+"4"*32,"RecordingStatus":"completed","RecordingDuration":"20"})
+        self.assertTrue(self.voice.archive_one())
+        self.assertEqual(self.voice.audio_path(key,self.doc).stat().st_mode&0o777,0o600)
+        self.assertEqual(self.voice.history(self.lead,self.doc)["calls"][0]["consent_source"],"staff_verbal")
+
+    def test_staff_authorization_is_not_reused_for_next_call(self):
+        key,_=self.staff_call()
+        self.authorize_recording(key)
+        self.voice.callback("status",key,self.params(CallStatus="completed"))
+        self.payload["request_id"]="b"*32
+        row=self.voice.prepare(self.payload,self.actor)["call"]
+        self.assertIsNone(row["consent_at"])
+        self.assertEqual(row["consent_source"],"")
+        self.assertEqual(row["recording_status"],"waiting")
+
+    def test_notice_mode_is_per_call_and_migration_preserves_history(self):
+        key,_=self.start()
+        self.voice.callback("consent",key,self.params(Digits="1"))
+        previous=self.voice.history(self.lead,self.doc)["calls"][0]
+        with self.store.db() as c:
+            c.execute("ALTER TABLE voice_calls DROP COLUMN notice_mode")
+            c.execute("ALTER TABLE voice_calls DROP COLUMN consent_source")
+        self.config.notice_mode="staff"
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            services=list(pool.map(lambda _:VoiceService(self.store,self.config,self.gateway),range(2)))
+        row=services[0].history(self.lead,self.doc)["calls"][0]
+        self.assertEqual((row["notice_mode"],row["consent_source"]),("automated","patient_keypad"))
+        self.assertEqual(row["consent_at"],previous["consent_at"])
+
+    def test_staff_is_default_and_unknown_configuration_keeps_automated_notice(self):
+        with patch.dict("os.environ",{},clear=True):self.assertEqual(VoiceConfig.from_env().notice_mode,"staff")
+        with patch.dict("os.environ",{"CRM_VOICE_NOTICE_MODE":"invalid"},clear=True):
+            self.assertEqual(VoiceConfig.from_env().notice_mode,"automated")
 
     def test_recording_once_only_after_consent(self):
         key,_=self.start()
@@ -245,6 +358,8 @@ class VoiceHttpTests(unittest.TestCase):
                 self.assertEqual((status,body),(206,b"ID3"));self.assertIn("no-store",headers["Cache-Control"])
                 self.assertEqual(request("GET",path,headers={"Range":"bytes=999999-"})[0],416)
                 self.assertEqual(request("POST",f"/api/crm/voice/note?clinic=vielle&doctor={self.doc}",json.dumps({"id":key,"doctor_id":self.doc}),headers={"Content-Type":"application/json"})[0],403)
+                self.assertEqual(request("POST",f"/api/crm/voice/start-recording?clinic=vielle&doctor={self.doc}",json.dumps({"id":key,"doctor_id":self.doc,"verbal_authorization":True}),headers={"Content-Type":"application/json"})[0],403)
+                self.assertEqual(request("POST",f"/api/crm/voice/start-recording?clinic=vielle&doctor={self.doc}",json.dumps({"id":key,"doctor_id":self.doc,"verbal_authorization":True}),headers={"Content-Type":"application/json"},cookie=False)[0],401)
                 webhook=f"/api/crm-voice-webhook/status?id={key}"
                 params=self.params(CallStatus="completed",CallDuration="65")
                 headers={"Content-Type":"application/x-www-form-urlencoded"}
