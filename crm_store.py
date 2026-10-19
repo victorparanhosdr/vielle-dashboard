@@ -411,11 +411,26 @@ class CrmStore:
                 source = text(p.get("body"), 300)
                 contact = self.row(c, "contacts", lead["contact_id"])
                 if contact["opted_out"]:
-                    raise ValueError("Contato descadastrado. Nao e permitido reativar pelo piloto.")
+                    raise ValueError("Contato descadastrado. Use Reativar contato para corrigir um descadastro.")
                 c.execute("UPDATE leads SET consent_at=?,consent_source=? WHERE id=?", (now, source, lead["id"]))
             elif kind == "optout":
                 c.execute("UPDATE contacts SET opted_out=1 WHERE id=?", (lead["contact_id"],))
                 c.execute("UPDATE messages SET status='skipped' WHERE contact_id=? AND status='queued'", (lead["contact_id"],))
+            elif kind == "reactivate":
+                body = text(p.get("body"), 2000)
+                if p.get("confirm_reactivation") is not True:
+                    raise ValueError("Confirme que o cliente deseja voltar a receber contato.")
+                revision = integer(p.get("revision"), 1, 2**63-1)
+                contact = self.row(c, "contacts", lead["contact_id"])
+                if not contact["opted_out"] or lead["revision"] != revision:
+                    raise Conflict("O cadastro foi alterado. Atualize a ficha antes de reativar.")
+                # Never revive an old queue, including one not yet inspected by the worker.
+                c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado; reativacao nao retoma envios antigos' WHERE contact_id=? AND status='queued'", (contact["id"],))
+                c.execute("UPDATE contacts SET opted_out=0 WHERE id=?", (contact["id"],))
+                for row in c.execute("SELECT id FROM leads WHERE contact_id=?", (contact["id"],)).fetchall():
+                    self.event(c, row["id"], actor, kind, "Cliente confirmou que deseja voltar a receber contato. Motivo: " + body, now)
+                c.execute("UPDATE leads SET updated_at=?,revision=revision+1 WHERE contact_id=?", (now, contact["id"]))
+                return
             elif kind not in {"note", "followup"}:
                 raise ValueError("Atividade invalida.")
             body = text(p.get("body", "Descadastro registrado" if kind == "optout" else ""), 2000)
