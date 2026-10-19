@@ -98,6 +98,8 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 
 ## Midias No Atendimento
 
+- A lupa no cabecalho busca em todo o texto de mensagens ja salvo naquela conversa e numero, com filtro Paciente/Equipe/Todos. A busca ignora caixa e acentos, navega em lotes de 50 sem limite de mil registros e abre ate 20 mensagens anteriores/posteriores ao resultado. Abrir/buscar nao resolve nao lidas; nao consulta o provedor, nao transcreve audio nem recupera historico que ainda nao foi sincronizado. Fechar a busca retorna ao trecho recente.
+
 - O clipe permite selecionar imagem, video, documento ou audio do dispositivo. O microfone grava com permissao explicita do navegador, ate cinco minutos, com parar, ouvir e descartar. Selecionar/gravar faz somente um upload privado de rascunho; exige clicar em enviar para criar a mensagem.
 - Limites por arquivo: imagem 10 MB, audio/video 16 MB, documento 25 MB. Validacao de extensao e assinatura de conteudo no servidor; nenhum URL externo fornecido pelo navegador e baixado. Um anexo por mensagem, legenda opcional, ate 1000 caracteres para imagem/video/documento.
 - Imagens, videos e documentos levam a assinatura do atendente na legenda. Audio e enviado como nota de voz, precedido de uma mensagem assinada do atendente e da legenda opcional. A nota so entra na fila apos confirmacao do texto; apenas a nota aceita resolve as mensagens pendentes. Falhas incertas bloqueiam o canal, sem repeticao automatica.

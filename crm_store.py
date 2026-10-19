@@ -10,13 +10,14 @@ import time
 import unicodedata
 import uuid
 from zoneinfo import ZoneInfo
-from crm_filters import appointment_active, appointment_ready, financial_ready, matches, ordered, parse_filters
+from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
 CAMPAIGN_DAILY_LIMIT = 200
 SERVICE_LOCATIONS = {"capelinha": "Capelinha", "belo-horizonte": "Belo Horizonte", "sao-paulo": "São Paulo"}
 LOCATION_DDDS = {"33": "capelinha", "38": "capelinha", "31": "belo-horizonte", "11": "sao-paulo"}
+THREAD_VISIBLE = "(direction='in' OR status IN ('sent','sending','unknown') OR (campaign_id IS NULL AND status='queued'))"
 
 
 def location_from_phone(number):
@@ -707,24 +708,62 @@ class CrmStore:
             items = [r for r in items if kind == "all" or r["unread"]]
             return {"conversations": items[:200], "total": len(items), "counts": counts, "filter_incomplete": incomplete}
 
-    def conversation(self, doctor, channel, contact, before=0):
+    @staticmethod
+    def conversation_marker(c, channel, contact, marker):
+        row = c.execute(f"SELECT rowid seq,* FROM messages WHERE rowid=? AND channel_id=? AND contact_id=? AND {THREAD_VISIBLE}",
+                        (marker, channel, contact)).fetchone()
+        if row is None:
+            raise ValueError("Marcador de conversa invalido.")
+        return row
+
+    def conversation_search(self, doctor, channel, contact, search, before=0, direction="all"):
+        term = fold(text(search, 160))
         before = integer(before, 0, 2**63-1)
+        if not term or direction not in {"all", "in", "out"}:
+            raise ValueError("Busca de conversa invalida.")
+        with self.db() as c:
+            self.conversation_contact(c, doctor, channel, contact)
+            c.create_function("crm_fold", 1, fold, deterministic=True)
+            where = f"channel_id=? AND contact_id=? AND {THREAD_VISIBLE} AND (?='all' OR direction=?) AND instr(crm_fold(body),?)>0"
+            args = (channel, contact, direction, direction, term)
+            total = c.execute(f"SELECT count(*) FROM messages WHERE {where}", args).fetchone()[0]
+            boundary = self.conversation_marker(c, channel, contact, before) if before else None
+            rows = c.execute(f"""SELECT rowid seq FROM messages WHERE {where}
+                AND (?=0 OR created_at<? OR (created_at=? AND rowid<?)) ORDER BY created_at DESC,rowid DESC LIMIT 51""",
+                (*args, before, boundary["created_at"] if boundary else 0, boundary["created_at"] if boundary else 0, before)).fetchall()
+            results = [dict(r) for r in rows[:50]]
+            return {"results": results, "total": total, "has_more": len(rows)>50,
+                    "next_before": results[-1]["seq"] if len(rows)>50 else 0}
+
+    def conversation(self, doctor, channel, contact, before=0, *, around=0):
+        before = integer(before, 0, 2**63-1)
+        around = integer(around, 0, 2**63-1)
+        if before and around:
+            raise ValueError("Use apenas um marcador de conversa.")
         with self.db() as c:
             ch, ct = self.conversation_contact(c, doctor, channel, contact)
-            boundary = c.execute("SELECT created_at FROM messages WHERE rowid=? AND channel_id=? AND contact_id=?", (before, channel, contact)).fetchone() if before else None
-            if before and boundary is None:
-                raise ValueError("Marcador de conversa invalido.")
-            rows = c.execute("""SELECT rowid seq,* FROM messages WHERE channel_id=? AND contact_id=?
-                AND (?=0 OR created_at<? OR (created_at=? AND rowid<?)) AND (direction='in' OR status IN ('sent','sending','unknown')
-                OR (campaign_id IS NULL AND status='queued')) ORDER BY created_at DESC,rowid DESC LIMIT 81""",
-                (channel, contact, before, boundary[0] if boundary else 0, boundary[0] if boundary else 0, before)).fetchall()
-            messages = [dict(r) for r in reversed(rows[:80])]
+            boundary = self.conversation_marker(c, channel, contact, before or around) if before or around else None
+            if around:
+                scope = (channel, contact, boundary["created_at"], boundary["created_at"], around)
+                previous = c.execute(f"""SELECT rowid seq,* FROM messages WHERE channel_id=? AND contact_id=? AND {THREAD_VISIBLE}
+                    AND (created_at<? OR (created_at=? AND rowid<?)) ORDER BY created_at DESC,rowid DESC LIMIT 20""", scope).fetchall()
+                following = c.execute(f"""SELECT rowid seq,* FROM messages WHERE channel_id=? AND contact_id=? AND {THREAD_VISIBLE}
+                    AND (created_at>? OR (created_at=? AND rowid>?)) ORDER BY created_at,rowid LIMIT 20""", scope).fetchall()
+                messages = [dict(r) for r in [*reversed(previous), boundary, *following]]
+                has_older = False
+            else:
+                rows = c.execute(f"""SELECT rowid seq,* FROM messages WHERE channel_id=? AND contact_id=?
+                    AND (?=0 OR created_at<? OR (created_at=? AND rowid<?)) AND {THREAD_VISIBLE}
+                    ORDER BY created_at DESC,rowid DESC LIMIT 81""",
+                    (channel, contact, before, boundary["created_at"] if boundary else 0, boundary["created_at"] if boundary else 0, before)).fetchall()
+                messages = [dict(r) for r in reversed(rows[:80])]
+                has_older = len(rows)>80
             from crm_media import attach
             attach(c, messages, legacy=True)
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
             allowed = not ct["opted_out"]
-            return {"contact": ct, "channel": ch, "messages": messages, "has_older": len(rows)>80,
+            return {"contact": ct, "channel": ch, "messages": messages, "has_older": has_older,
                     "inbound_cursor": max((m["seq"] for m in messages if m["direction"] == "in"), default=0),
                     **self.conversation_status(c, channel, contact),
                     "reply_allowed": allowed, "reply_phone": reply_phone}

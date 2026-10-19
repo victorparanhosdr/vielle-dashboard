@@ -119,7 +119,11 @@ def handle_request(handler, parsed):
                     query.get("channel", [""])[0], query.get("kind", ["all"])[0], query.get("search", [""])[0], filters)})
             if action == "conversation":
                 return handler.auth_json({"ok": True, **store.conversation(doctor, query.get("channel", [""])[0],
-                    query.get("contact", [""])[0], query.get("before", [0])[0])})
+                    query.get("contact", [""])[0], query.get("before", [0])[0], around=query.get("around", [0])[0])})
+            if action == "conversation-search":
+                return handler.auth_json({"ok": True, **store.conversation_search(doctor, query.get("channel", [""])[0],
+                    query.get("contact", [""])[0], query.get("search", [""])[0], query.get("before", [0])[0],
+                    query.get("direction", ["all"])[0])})
             raise LookupError()
         if handler.command != "POST":
             return handler.auth_json({"ok": False}, 405)
