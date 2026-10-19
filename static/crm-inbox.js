@@ -11,6 +11,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     draft.media=value;draft.requests={};drafts.set(signature,draft);syncSend();
   }});
   const chatSearch=window.createCrmChatSearch({api,esc,icon,icons,onResult:seq=>{messages=[];hasOlder=false;refreshThread(false,seq);},onClose:()=>{messages=[];hasOlder=false;refreshThread();}});
+  const templates=window.createCrmMessageTemplates({api,esc,icon,icons,onError:chatError,getContext:()=>({name:threadData?.contact.name || leadFor()?.name || "",doctor:state.data.doctors.find(d=>d.id===owner)?.name || ""})});
   function conversationFacts(c) {
     const h=c.customer_history || {},ready=h.quotes_state==="ready" && Number.isSafeInteger(h.pending_quotes_cents);
     const detail=`${h.pending_quotes_count || 0} orçamento(s) pendente(s) · abertos e vencidos · Clínica Experts · ${money(h.pending_quotes_cents)} · ${c.customer_value?.doctor_name || "Doutor selecionado"}`;
@@ -26,9 +27,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function chatError(message="") {if($("chatError")){$("chatError").textContent=message;$("chatError").hidden=!message;}}
   function mount(target) {
     const changed=owner!==state.doctor;
-    if(changed){media.destroy();chatSearch.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
+    if(changed){media.destroy();chatSearch.destroy();templates.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
-    media.destroy();chatSearch.destroy();root=target;listSeq++;threadSeq++;
+    media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><h2>Ponto de atendimento</h2><span id="inboxCount"></span></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Aguardando"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
     $("inboxChannel").onchange=()=>{channel=$("inboxChannel").value;refreshList();};
     $("inboxWorkspace").onclick=event=>{
@@ -77,7 +78,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }catch(e){if(root && request===openSeq){$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
   }
   function select(item) {
-    media.destroy();chatSearch.destroy();renderedSearch="";
+    media.destroy();chatSearch.destroy();templates.destroy();renderedSearch="";
     openSeq++;
     const previous=selected?.contact_id===item.contact_id?leadFor():null;
     selected={contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};
@@ -89,9 +90,11 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     $("chatPane").querySelector(".chatHeader").insertAdjacentHTML("afterend",`<div class="conversationActions"><span id="conversationStatus" role="status">Carregando…</span><button id="syncMessages" class="icon-button" title="Sincronizar mensagens do WhatsApp" aria-label="Sincronizar mensagens do WhatsApp" ${!state.data.gateway_configured || ch?.state!=="open"?"disabled":""}>${icon("refresh-cw")}</button><button id="closeConversation" title="Fechar conversa sem responder" disabled>${icon("check-check")} Fechar conversa</button></div>`);
     if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     chatSearch.mount($("chatSearch"),$("toggleChatSearch"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id});
+    $("chatPane").querySelector(".replyOptions").insertAdjacentHTML("beforeend",'<div id="messageTemplateTools" class="messageTemplateTools"></div>');
     drawSenderOptions();
     $("replyChannel").onchange=()=>{replyChannel=$("replyChannel").value;chatError();syncSend();};
     $("replyBody").oninput=()=>{drafts.set(key(selected),{...drafts.get(key(selected)),body:$("replyBody").value,requests:{}});syncSend();};
+    templates.mount($("messageTemplateTools"),$("replyBody"));
     media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
     drawInfo();drawList();refreshThread().then(()=>syncExternalMessages());icons();
@@ -139,6 +142,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
     $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
     media.availability(available && !sending);
+    templates.availability(!sending);
     $("replyBody").maxLength=media.value() && media.value().kind!=="audio"?Math.min(1000,1024-senderName().length-4):3000;
     $("replyBody").placeholder=media.hasDraft()?"Legenda opcional…":"Escreva uma mensagem…";
     $("replyChannel").disabled=sending;
@@ -230,7 +234,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
     finally{if(root && selected && signature===key(selected)){sending=false;syncSend();}}
   }
-  function unmount(){media.destroy();chatSearch.destroy();root=null;listSeq++;threadSeq++;openSeq++;}
+  function unmount(){media.destroy();chatSearch.destroy();templates.destroy();root=null;listSeq++;threadSeq++;openSeq++;}
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
   return {mount,unmount,openLead};
 };

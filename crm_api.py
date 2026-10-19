@@ -66,6 +66,9 @@ def handle_request(handler, parsed):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "message-templates":
+                from crm_templates import listing
+                return handler.auth_json({"ok": True, "templates": listing(store, query.get("archived") == ["1"])})
             if action == "media":
                 from crm_media import serve
                 return serve(handler, store, doctor, query.get("id", [""])[0])
@@ -196,6 +199,16 @@ def handle_request(handler, parsed):
             store.save_customer_tier_rules(p)
         elif action == "reply":
             result["id"] = store.reply(p, handler.current_user["id"], sends_enabled() and store.worker_online(), sender_name=actor)
+        elif action == "message-template-save":
+            from crm_templates import save
+            result["template"] = save(store, p, handler.current_user["id"], actor)
+            result["id"] = result["template"]["id"]
+        elif action == "message-template-archive":
+            from crm_templates import archive
+            archive(store, p, handler.current_user["id"], actor)
+        elif action == "message-template-restore":
+            from crm_templates import restore
+            restore(store, p, handler.current_user["id"], actor)
         elif action == "media-fetch":
             if p.get("doctor_id") != doctor:
                 raise ValueError("Doutor da solicitacao invalido.")

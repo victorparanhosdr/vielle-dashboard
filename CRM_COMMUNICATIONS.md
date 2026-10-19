@@ -98,6 +98,8 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 
 ## Midias No Atendimento
 
+- Modelos de mensagens sao compartilhados pela equipe da Vielle (permissao CRM existente), com nome, texto e atalho unico que ignora acentos/caixa. O menu Modelos permite criar/editar, arquivar e restaurar. Edicoes guardam o usuario/data e usam revisao para impedir sobrescrita de outra sessao. Atalhos digitados no campo, como /endereco ou /endereço, abrem sugestoes; Enter/Tab ou clique insere somente no rascunho. {nome} usa o primeiro nome do contato aberto e {doutor} o doutor selecionado. Nao inventamos endereco nem criamos modelos clinicos iniciais. Nada e enviado sem o comando Enviar, e a assinatura autenticada continua aplicada pelo servidor. Limite de 500 modelos ativos/3000 caracteres; textos expandidos respeitam o limite atual da legenda. Auditoria nao inclui o conteudo da mensagem.
+
 - A lupa no cabecalho busca em todo o texto de mensagens ja salvo naquela conversa e numero, com filtro Paciente/Equipe/Todos. A busca ignora caixa e acentos, navega em lotes de 50 sem limite de mil registros e abre ate 20 mensagens anteriores/posteriores ao resultado. Abrir/buscar nao resolve nao lidas; nao consulta o provedor, nao transcreve audio nem recupera historico que ainda nao foi sincronizado. Fechar a busca retorna ao trecho recente.
 
 - O clipe permite selecionar imagem, video, documento ou audio do dispositivo. O microfone grava com permissao explicita do navegador, ate cinco minutos, com parar, ouvir e descartar. Selecionar/gravar faz somente um upload privado de rascunho; exige clicar em enviar para criar a mensagem.

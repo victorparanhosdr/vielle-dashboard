@@ -160,6 +160,11 @@ class CrmStore:
                 reason TEXT NOT NULL CHECK(reason IN ('replied','closed')),actor_id TEXT NOT NULL,updated_at REAL NOT NULL,
                 PRIMARY KEY(channel_id,contact_id));
             CREATE TABLE IF NOT EXISTS runtime(key TEXT PRIMARY KEY,value REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS message_templates(id TEXT PRIMARY KEY,title TEXT NOT NULL,shortcut TEXT NOT NULL,
+                shortcut_key TEXT NOT NULL,body TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,updated_at REAL NOT NULL,updated_by TEXT NOT NULL,updated_by_name TEXT NOT NULL,
+                archived_at REAL);
+            CREATE UNIQUE INDEX IF NOT EXISTS message_templates_shortcut ON message_templates(shortcut_key) WHERE archived_at IS NULL;
             CREATE TABLE IF NOT EXISTS customer_tier_rules(id INTEGER PRIMARY KEY CHECK(id=1),
                 silver_cents INTEGER NOT NULL,gold_cents INTEGER NOT NULL,
                 CHECK(silver_cents>0 AND gold_cents>silver_cents));
