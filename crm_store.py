@@ -562,7 +562,36 @@ class CrmStore:
             return {"state": "unavailable", "items": [], "summary": {}}
         return self.commercial_lookup(contact["experts_uuid"], name, scope, kind, page)
 
-    def listing(self, doctor="", filters=None):
+    def filtered_leads(self, c, doctor, doctor_name, filters):
+        leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id", (doctor,))]
+        location_pending = {}
+        for lead in leads:
+            if not lead["service_location"]:
+                location_pending.setdefault(lead["pipeline_id"], set()).add(lead["contact_id"])
+        self.attach_customer_values(c, leads, doctor_name, bool(filters["search"]))
+        if appointment_active(filters):
+            self.attach_appointment_filters(leads, doctor_name, filters)
+        incomplete = len({l["contact_id"] for l in leads if not financial_ready(l, filters) or not appointment_ready(l, filters)})
+        return ordered([l for l in leads if matches(l, filters)], filters), incomplete, {key: len(value) for key, value in location_pending.items()}
+
+    def kanban_page(self, doctor, pipeline, stage, filters=None, cursor=""):
+        from crm_kanban import page
+        filters = parse_filters(filters)
+        self.reconcile_patients()
+        with self.db() as c:
+            doc = self.row(c, "doctors", doctor)
+            self.owned(c, "pipelines", pipeline, doctor)
+            if self.row(c, "stages", stage)["pipeline_id"] != pipeline:
+                raise ValueError("A fase nao pertence a este funil.")
+            leads, _, _ = self.filtered_leads(c, doctor, doc["name"], filters)
+            result = page([l for l in leads if l["pipeline_id"] == pipeline and l["stage_id"] == stage], [doctor, pipeline, stage, filters], cursor)
+            if not appointment_active(filters):
+                self.attach_appointments(result["leads"], doc["name"])
+            for lead in result["leads"]:
+                lead.pop("_experts_search", None)
+            return {"pipeline_id": pipeline, "stage_id": stage, **result}
+
+    def listing(self, doctor="", filters=None, *, kanban_pipeline=None):
         filters = parse_filters(filters)
         self.reconcile_patients()
         with self.db() as c:
@@ -573,15 +602,19 @@ class CrmStore:
             pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name", (doctor,))]
             for p in pipelines:
                 p["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (p["id"],))]
-            leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id", (doctor,))]
-            location_pending = {p["id"]: len({l["contact_id"] for l in leads if l["pipeline_id"] == p["id"] and not l["service_location"]}) for p in pipelines}
-            self.attach_customer_values(c, leads, next((d["name"] for d in doctors if d["id"] == doctor), ""), bool(filters["search"]))
-            if appointment_active(filters):
-                self.attach_appointment_filters(leads, next((d["name"] for d in doctors if d["id"] == doctor), ""), filters)
-            incomplete = len({l["contact_id"] for l in leads if not financial_ready(l, filters) or not appointment_ready(l, filters)})
-            leads = ordered([l for l in leads if matches(l, filters)], filters)
+            name = next((d["name"] for d in doctors if d["id"] == doctor), "")
+            leads, incomplete, location_pending = self.filtered_leads(c, doctor, name, filters)
+            location_pending = {p["id"]: location_pending.get(p["id"], 0) for p in pipelines}
             matched_count = len(leads)
-            leads = leads[:1000]
+            kanban = None
+            if kanban_pipeline is not None:
+                from crm_kanban import overview
+                selected = next((p for p in pipelines if p["id"] == kanban_pipeline), None) if kanban_pipeline else next(iter(pipelines), None)
+                if kanban_pipeline and not selected:
+                    raise ValueError("Funil indisponivel para este doutor.")
+                leads, kanban = overview(leads, selected, doctor, filters, datetime.now(TZ).date().isoformat())
+            else:
+                leads = leads[:1000]
             if not appointment_active(filters):
                 self.attach_appointments(leads, next((d["name"] for d in doctors if d["id"] == doctor), ""))
             for lead in leads:
@@ -594,6 +627,7 @@ class CrmStore:
             xp = c.execute("SELECT coalesce(sum(points),0) FROM xp WHERE doctor_id=?", (doctor,)).fetchone()[0]
             team = [dict(r) for r in c.execute("SELECT actor,sum(points) points FROM xp WHERE doctor_id=? GROUP BY actor ORDER BY points DESC LIMIT 10", (doctor,))]
             return {"doctors": doctors, "doctor_id": doctor, "pipelines": pipelines, "leads": leads,
+                    **({"kanban": kanban} if kanban is not None else {}),
                     "customer_tier_rules": self.customer_tier_rules(c),
                     "service_locations": SERVICE_LOCATIONS, "service_location_pending": location_pending,
                     "matched_leads": matched_count, "filter_incomplete": incomplete,

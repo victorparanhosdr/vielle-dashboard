@@ -117,13 +117,15 @@
   function notice(message="") { $("notice").textContent=message;$("notice").hidden=!message; }
   async function api(action="", payload, query={}) {
     const filters=payload===undefined && ["","inbox"].includes(action) && clientMode()?{filters:JSON.stringify({...state.filters,search:state.search,sort:state.sort})}:{};
-    const res=await fetch(`/api/crm${action?"/"+action:""}?${new URLSearchParams({clinic:"vielle",doctor:state.doctor,...filters,...query})}`, payload===undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const view=!action && payload===undefined && state.mode==="board" && presentation==="board"?{view:"kanban",pipeline:state.pipeline}:{};
+    const res=await fetch(`/api/crm${action?"/"+action:""}?${new URLSearchParams({clinic:"vielle",doctor:state.doctor,...filters,...view,...query})}`, payload===undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const data=await res.json().catch(()=>({}));
-    if(!res.ok || !data.ok) throw new Error(data.error || "Não foi possível concluir a operação.");
+    if(!res.ok || !data.ok){const error=new Error(data.error || "Não foi possível concluir a operação.");error.status=res.status;throw error;}
     return data;
   }
   async function load() {
     const seq=++state.seq;
+    kanban.destroy();
     $("crmView").setAttribute("aria-busy","true");
     try {
       const data=await api();
@@ -182,26 +184,25 @@
       <span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
   }
   function board() {
-    const p=pipeline(), leads=selectedLeads(), active=leads.filter(l=>l.kind==="open");
-    const overdue=active.filter(l=>l.next_action && l.next_action<state.data.today);
-    const stale=active.filter(l=>Date.now()/1000-l.updated_at>7*86400);
+    const p=pipeline(), leads=selectedLeads(), data=state.data.kanban;
     const pendingLocations=state.data.service_location_pending?.[state.pipeline] || 0;
     if(!p) return '<p class="emptyState">Nenhum funil cadastrado para este doutor.</p>';
-    const customers=[...new Map(leads.map(l=>[l.contact_id,l])).values()], known=customers.filter(l=>l.customer_value?.tier);
-    const {cents:quoteTotal,pending:quotePending}=pendingQuotesSummary(customers);
-    const tiers=["gold","silver","bronze"].map(tier=>({tier,count:known.filter(l=>l.customer_value.tier===tier).length}));
+    if(data?.pipeline_id!==p.id)return '<p class="emptyState" role="status">Carregando funil…</p>';
+    const summary=data.summary,{cents:quoteTotal,pending:quotePending}=summary.quotes;
+    const tiers=["gold","silver","bronze"].map(tier=>({tier,count:summary.tiers[tier]})),knownCount=tiers.reduce((total,t)=>total+t.count,0);
     const leaderboard=`<section class="teamLeaderboard"><h2>${icon("trophy")} Conquistas da equipe</h2>${state.data.game.team.map((m,i)=>`<div class="rankRow"><b class="rankPosition">${String(i+1).padStart(2,"0")}</b><span>${esc(m.actor)}</span><strong>${m.points} XP</strong></div>`).join("") || '<p>As conquistas aparecerão com os primeiros avanços.</p>'}</section>`;
-    return `<div class="boardSummary"><span>${icon("users-round")}<span><strong>${leads.length}</strong> oportunidades</span></span><span title="Clínica Experts · Abertos e vencidos · ${esc(doctor().name)} · funil e filtros atuais${quotePending?` · Total parcial: ${quotePending} cadastro(s) a conferir`:""}">${icon("file-clock")}<span><strong>${exactMoney(quoteTotal)}${quotePending?"*":""}</strong> em orçamentos pendentes${quotePending?` · ${quotePending} a conferir`:""}</span></span><span>${icon("badge-check")}<span><strong>${leads.filter(l=>l.kind==="won").length}</strong> ganhos</span></span></div><div class="crmWorkspace"><div class="crmBoard" data-pipeline="${esc(p.id)}" aria-label="Funil ${esc(p.name)}">${p.stages.map((s,index)=>{
+    return `<div class="boardSummary"><span>${icon("users-round")}<span><strong>${summary.total}</strong> oportunidades</span></span><span title="Clínica Experts · Abertos e vencidos · ${esc(doctor().name)} · funil e filtros atuais${quotePending?` · Total parcial: ${quotePending} cadastro(s) a conferir`:""}">${icon("file-clock")}<span><strong>${exactMoney(quoteTotal)}${quotePending?"*":""}</strong> em orçamentos pendentes${quotePending?` · ${quotePending} a conferir`:""}</span></span><span>${icon("badge-check")}<span><strong>${summary.won}</strong> ganhos</span></span></div><div class="crmWorkspace"><div class="crmBoard" data-pipeline="${esc(p.id)}" aria-label="Funil ${esc(p.name)}">${p.stages.map((s,index)=>{
       const items=leads.filter(l=>l.stage_id===s.id);
-      const quotes=pendingQuotesSummary(items);
-      return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${items.length}</span></div><small title="Orçamentos pendentes · Abertos e vencidos · Clínica Experts${quotes.pending?` · Parcial: ${quotes.pending} cadastro(s) a conferir`:""}">${exactMoney(quotes.cents)}${quotes.pending?"*":""}<b>${String(index+1).padStart(2,"0")}</b></small></div>${items.map(leadCard).join("") || `<div class="emptyColumn">${icon(s.kind==="won"?"flag":"circle-dashed")}<span>Nenhuma oportunidade</span></div>`}</section>`;
-    }).join("")}</div><aside class="salesRadar"><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${overdue.length}</div><span>próximos passos<br>vencidos</span></div><p>${stale.length} oportunidades sem atualização há 7 dias.</p>${pendingLocations?`<button id="pendingLocations" class="locationPendingLink">${icon("map-pin-off")} ${pendingLocations} com Local de Atendimento pendente</button>`:""}</div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(known.length,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${customers.length-known.length} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
+      const column=data.columns.find(c=>c.stage_id===s.id),quotes=column.quotes;
+      return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${column.total}</span></div><small title="Orçamentos pendentes · Abertos e vencidos · Clínica Experts${quotes.pending?` · Parcial: ${quotes.pending} cadastro(s) a conferir`:""}">${exactMoney(quotes.cents)}${quotes.pending?"*":""}<b>${String(index+1).padStart(2,"0")}</b></small></div><div class="columnLeads" tabindex="0" role="region" aria-label="Oportunidades em ${esc(s.name)}"><div class="columnCards">${items.map(leadCard).join("") || `<div class="emptyColumn">${icon(s.kind==="won"?"flag":"circle-dashed")}<span>Nenhuma oportunidade</span></div>`}</div>${kanban.footer(column)}</div></section>`;
+    }).join("")}</div><aside class="salesRadar"><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${summary.overdue}</div><span>próximos passos<br>vencidos</span></div><p>${summary.stale} oportunidades sem atualização há 7 dias.</p>${pendingLocations?`<button id="pendingLocations" class="locationPendingLink">${icon("map-pin-off")} ${pendingLocations} com Local de Atendimento pendente</button>`:""}</div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(knownCount,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${summary.unclassified} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
   }
   function channels() {
     return `<article class="record" id="voiceSettings"><p class="connectionNote">Carregando telefonia…</p></article>${!state.data.gateway_configured?'<p class="connectionNote">Servidor WhatsApp ainda não configurado. Os números podem ser cadastrados, mas não serão conectados nem enviarão mensagens.</p>':""}${state.data.channels.map(c=>`<article class="record"><div class="recordMain"><span class="recordIcon">${icon("smartphone")}</span><div><h3>${esc(c.name)} ${pill(c.state)}</h3><p>+${esc(c.phone)} · ${esc(doctor()?.name)}</p><div class="recordMetrics"><span>Atendimento manual <strong>sem cota diária</strong></span><span>${state.data.campaigns_enabled?`Campanhas <strong>${c.daily_limit}</strong>/dia`:"Campanhas desativadas"}</span></div></div></div><div class="commands"><button data-connect="${c.id}" ${state.data.gateway_configured?"":"disabled"}>${icon("qr-code")} Conectar</button><button data-channel-state="${c.id}" class="icon-button" title="Conferir conexão" aria-label="Conferir conexão ${esc(c.name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button></div></article>`).join("") || '<p class="emptyState">Nenhum número cadastrado para este doutor.</p>'}<p class="inlineWarning">Conexão não oficial. Intervalos e limites não garantem proteção contra bloqueio.</p>`;
   }
   function render() {
     if(!state.data) return;
+    kanban.destroy();
     if(listPicker){listSeed=listPicker.payload();listPicker.destroy();listPicker=null;}
     const oldBoard=$("crmView").querySelector(".crmBoard"), oldPipeline=oldBoard?.dataset.pipeline, scrollX=oldBoard?.scrollLeft || 0;
     $("pipelineField").hidden=state.mode!=="board";$("newLead").disabled=!pipeline();
@@ -214,13 +215,14 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=(state.mode==="board" && presentation==="board" && state.data.matched_leads>state.data.leads.length?`<p class="inlineWarning">Exibindo ${state.data.leads.length} de ${state.data.matched_leads} oportunidades compatíveis com os filtros. Refine a busca.</p>`:"")+(state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():state.mode==="campaigns"?"":channels());
+    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():state.mode==="campaigns"?"":channels();
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
       if(key!==listScope){listSeed=null;listScope=key;}
       listPicker=audiencePicker($("crmFunnelList"),{doctor:state.doctor,pipelines:state.data.pipelines,initial:listSeed || {pipeline_id:state.pipeline,filters},manual:true,editable:false,onOpen:detail,onCampaign:payload=>campaignCenter.create(payload)});
     }
     const newBoard=$("crmView").querySelector(".crmBoard");if(newBoard && newBoard.dataset.pipeline===oldPipeline)newBoard.scrollLeft=scrollX;
+    if(newBoard && state.data.kanban?.pipeline_id===state.pipeline)kanban.mount(newBoard,{doctor:state.doctor,pipeline:state.pipeline,filters:{...state.filters,search:state.search,sort:state.sort},columns:state.data.kanban.columns});
     if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
     }
     if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
@@ -317,8 +319,11 @@
       return api("lead",{doctor_id:doc,pipeline_id:p.id,stage_id:f.get("stage_id"),name:f.get("name"),phone:f.get("phone"),experts_uuid:mode==="experts"?selected.uuid:"",title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action"),consent:f.has("consent"),consent_source:f.get("consent_source")},{doctor:doc});
     });
   }
-  function detail(id) {
-    const lead=state.data.leads.find(l=>l.id===id);if(!lead)return;
+  async function detail(id) {
+    const owner=state.doctor;
+    let lead=state.data.leads.find(l=>l.id===id);
+    if(!lead){try{lead=(await api("lead",undefined,{id,doctor:owner})).lead;}catch(e){notice(e.message);return;}}
+    if(state.doctor!==owner)return;
     state.mode="inbox";state.search="";$("search").value="";render();inbox.openLead(lead);
   }
   let feedbackTimer, transitionTimer;
@@ -463,6 +468,9 @@
     } catch(e){error(e.message);}
   }
   const voice=window.createCrmVoice({api,esc,icon,icons});
+  const kanban=window.createCrmKanban({api,esc,icon,icons,leadCard,onRefresh:load,onLeads:rows=>{
+    const known=new Set(state.data.leads.map(l=>l.id));state.data.leads.push(...rows.filter(l=>!known.has(l.id)));
+  }});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars});
@@ -476,7 +484,7 @@
   $("addDoctor").onclick=doctorForm;$("newLead").onclick=leadForm;$("reload").onclick=load;
   $("bootstrap").onclick=async e=>{e.currentTarget.disabled=true;try{await api("bootstrap",{});await load();}catch(err){notice(err.message);}finally{e.target.disabled=false;}};
   $("doctor").onchange=()=>{inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
-  $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;render();};
+  $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;if(presentation==="board")load();else render();};
   $("customerTierRules").onclick=customerTierForm;
   let searchTimer;
   $("search").oninput=()=>{state.search=$("search").value.trim();clearTimeout(searchTimer);searchTimer=setTimeout(load,300);};
@@ -505,7 +513,7 @@
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
   document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;render();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";render();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline)}[b.id])?.();};
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="pendingLocations"){state.filters={service_location:"pending"};state.search="";$("search").value="";fillFilterForm();paintFilters();return load();}
@@ -525,8 +533,8 @@
   function session(data){state.session=data;if(!data.user.is_master || !data.clinics.some(c=>c.key==="vielle")){$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("Piloto disponível apenas para o Master da Vielle.");return;}if(!state.data)load();}
   window.addEventListener("doc4docs-session",e=>session(e.detail));
   if(window.doc4docsSession)session(window.doc4docsSession);
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden && state.session?.user.is_master && !$("crmDialog").open)load();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden && state.session?.user.is_master && !$("crmDialog").open && !kanban.interacting())load();});
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && state.data && state.mode==="campaigns")load();},15000);
-  setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && state.data && ["board","inbox"].includes(state.mode))load();},60000);
+  setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
   icons();
 })();

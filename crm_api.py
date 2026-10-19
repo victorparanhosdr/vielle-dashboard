@@ -66,12 +66,15 @@ def handle_request(handler, parsed):
                 from crm_kommo_import import status
                 return handler.auth_json({"ok": True, **status(store, doctor, query.get("pipeline", [""])[0],
                     query.get("id", [""])[0], query.get("page", [1])[0])})
-            filters = json.loads(query["filters"][0]) if action in {"", "inbox"} and "filters" in query else {}
+            filters = json.loads(query["filters"][0]) if action in {"", "inbox", "kanban-page"} and "filters" in query else {}
             if not action:
-                return handler.auth_json({"ok": True, **store.listing(doctor, filters), "gateway_configured": EvolutionGateway().configured,
+                return handler.auth_json({"ok": True, **store.listing(doctor, filters, kanban_pipeline=query.get("pipeline", [""])[0] if query.get("view") == ["kanban"] else None), "gateway_configured": EvolutionGateway().configured,
                                           "sends_enabled": sends_enabled() and store.worker_online(),
                                           "campaigns_enabled": sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online(),
                                           "can_enable_campaigns": sends_enabled() and store.worker_online()})
+            if action == "kanban-page":
+                return handler.auth_json({"ok": True, **store.kanban_page(doctor, query.get("pipeline", [""])[0],
+                    query.get("stage", [""])[0], filters, query.get("cursor", [""])[0])})
             if action == "lead":
                 return handler.auth_json({"ok": True, **store.detail(query.get("id", [""])[0], doctor)})
             if action == "campaign-dashboard":
