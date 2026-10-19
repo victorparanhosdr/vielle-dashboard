@@ -1,5 +1,7 @@
 .crmAudience{min-width:0;display:grid;gap:16px;letter-spacing:0}
 .crmAudience>div,#crmFunnelList{min-width:0}
+.crmPage .crmSort[hidden]{display:none}
+.crmPage .crmSearchBar.columnSorting{grid-template-columns:minmax(0,1fr) auto 40px}
 .journey[hidden],.crmAudience [data-audience=activeFilters][hidden]{display:none}
 .campaignAudienceOwner{display:flex;align-items:center;gap:9px;font-size:13px;color:#255c48}
 .crmPresentation{display:flex;gap:3px;background:#e9efeb;padding:3px;border:1px solid #d4dfd7;border-radius:6px}
@@ -43,10 +45,15 @@
 #crmDialog .audienceTableScroll{max-height:320px}
 .audienceTable{border-collapse:collapse;width:100%;min-width:820px;text-align:left;font-size:12px}
 .audienceTable th{font-size:10px;font-weight:600;color:#698171;background:#f0f5f1;padding:12px 10px;white-space:nowrap}
+.crmPage .audienceTable th .audienceSort,#crmDialog .audienceTable th .audienceSort{display:inline-flex;align-items:center;gap:7px;padding:0;min-height:28px;border:0;background:transparent;box-shadow:none;font-size:inherit;font-weight:600;color:inherit;text-align:left;white-space:nowrap;border-radius:3px}
+.audienceSort svg{width:14px;height:14px;flex:none;opacity:.6}
+.audienceTable th[aria-sort=ascending],.audienceTable th[aria-sort=descending]{color:#164e3c}
+.audienceTable th[aria-sort=ascending] svg,.audienceTable th[aria-sort=descending] svg{opacity:1}
 .audienceTable td{padding:14px 10px;border-top:1px solid #e1e9e4;vertical-align:middle;overflow-wrap:anywhere;max-width:240px}
 .audienceTable td:first-child,.audienceTable th:first-child{width:32px;text-align:center}
 .audienceTable input[type=checkbox]{width:16px;height:16px;accent-color:#235f49;cursor:pointer}
 .audienceTable td>button{border:0;background:transparent;box-shadow:none;text-align:left;min-height:0;font-size:12px;font-weight:600;padding:0;color:#173f32;white-space:normal}
+body[data-app-page] .audienceTable td>button{border:0!important;background:transparent!important;box-shadow:none;min-height:28px;padding:0;text-align:left;justify-content:flex-start;font-weight:600}
 .audienceTable td>small{display:block;font-size:10px;color:#788d7f;margin-top:5px}
 .audienceTable td>strong{font-size:12px;font-weight:600}
 .audienceEligibility{display:flex;gap:5px;align-items:center;font-size:10px;max-width:155px;line-height:1.5}
@@ -56,6 +63,7 @@
 .crmAudience .campaignPagination{padding:12px 0;margin:0}
 #crmDialog:has(.crmAudience){width:min(1120px,calc(100vw - 32px))}
 @media(max-width:760px){
+  .crmPage .crmSearchBar.columnSorting{grid-template-columns:minmax(0,1fr) 40px}
   .crmTabs #viewActions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .crmTabs #viewActions .crmPresentation{grid-column:1/-1}.crmPresentation button{flex:1}
   .audienceTotals{gap:8px;padding:13px 0}.audienceTotals strong{font-size:23px}.audienceTotals span{font-size:10px;line-height:1.5}

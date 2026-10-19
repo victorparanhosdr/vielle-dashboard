@@ -557,10 +557,9 @@ class CrmStore:
                 OR (campaign_id IS NULL AND status='queued')) ORDER BY rowid DESC LIMIT 81""",
                 (channel, contact, before, before)).fetchall()
             messages = [dict(r) for r in reversed(rows[:80])]
-            latest_in = c.execute("SELECT max(created_at) FROM messages WHERE channel_id=? AND contact_id=? AND direction='in'", (channel, contact)).fetchone()[0]
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
-            consent = c.execute("SELECT 1 FROM leads WHERE doctor_id=? AND contact_id=? AND consent_at IS NOT NULL LIMIT 1", (doctor, contact)).fetchone()
-            allowed = not ct["opted_out"] and bool(consent or (latest_in and time.time()-latest_in < 86400))
+            # Default WhatsApp availability is not evidence of patient consent.
+            allowed = not ct["opted_out"]
             return {"contact": ct, "channel": ch, "messages": messages, "has_older": len(rows)>80,
                     "inbound_cursor": max((m["seq"] for m in messages if m["direction"] == "in"), default=0),
                     **self.conversation_status(c, channel, contact),
@@ -620,10 +619,6 @@ class CrmStore:
                 raise ValueError("Envios indisponiveis. Conecte o numero e habilite o servidor WhatsApp.")
             if ct["opted_out"]:
                 raise ValueError("Contato descadastrado. Envio bloqueado.")
-            recent = c.execute("SELECT 1 FROM messages WHERE channel_id=? AND contact_id=? AND direction='in' AND created_at>=? LIMIT 1", (source, contact, time.time()-86400)).fetchone()
-            consent = c.execute("SELECT 1 FROM leads WHERE doctor_id=? AND contact_id=? AND consent_at IS NOT NULL LIMIT 1", (doctor, contact)).fetchone()
-            if not (recent or consent):
-                raise ValueError("Registre autorizacao de contato ou aguarde uma mensagem do cliente.")
             recipient = self.conversation_peer(c, source, contact, ct["phone"])
             if p.get("phone") and phone(p["phone"]) != recipient:
                 raise Conflict("O telefone desta conversa mudou. Atualize antes de enviar.")
@@ -684,8 +679,8 @@ class CrmStore:
             for lead_id in set(ids):
                 lead = self.owned(c, "leads", lead_id, doctor)
                 contact = self.row(c, "contacts", lead["contact_id"])
-                if not lead["consent_at"] or contact["opted_out"] or contact["experts_status"] == "review":
-                    raise ValueError("Todos os destinatarios precisam de autorizacao registrada e nao podem estar descadastrados.")
+                if contact["opted_out"] or contact["experts_status"] == "review":
+                    raise ValueError("Contato descadastrado ou cadastro a conferir. Envio bloqueado.")
                 recipients[contact["id"]] = contact
             c.execute("INSERT INTO campaigns(id,doctor_id,channel_id,name,body,interval_seconds,start_at,hour_from,hour_to,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                       (key, doctor, channel, text(p.get("name")), body, interval, start_at, start, end, now, actor))
@@ -755,10 +750,10 @@ class CrmStore:
             for key in stale:
                 c.execute("UPDATE campaigns SET status='paused',last_error='Envio sem confirmacao. Revisao necessaria.' WHERE id=?", (key,))
             c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE status='queued' AND contact_id IN (SELECT id FROM contacts WHERE opted_out=1)")
-            c.execute("""UPDATE messages SET status='skipped',skip_reason='Sem autorizacao vigente'
+            c.execute("""UPDATE messages SET status='skipped',skip_reason='Oportunidade indisponivel para este doutor'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND NOT EXISTS
                 (SELECT 1 FROM leads l JOIN campaigns ca ON ca.doctor_id=l.doctor_id
-                 WHERE ca.id=messages.campaign_id AND l.contact_id=messages.contact_id AND l.consent_at IS NOT NULL)""")
+                 WHERE ca.id=messages.campaign_id AND l.contact_id=messages.contact_id)""")
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND contact_id IN
                 (SELECT id FROM contacts WHERE experts_status='review')""")

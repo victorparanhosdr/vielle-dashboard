@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import json
 import time
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from tests import test_crm as base
 from crm_campaigns import audience, candidates, create, dashboard, detail
@@ -24,16 +24,18 @@ class CampaignTests(unittest.TestCase):
 
     def payload(self, preview):
         return {"doctor_id":self.a,"preview_id":preview["preview_id"],"channel_id":self.channel,
-            "name":"Retornos","body":"Olá, {nome}. Equipe {doutor}.","weekdays":[0,1,2,3,4],"minute_from":30,"hour_from":9,"hour_to":18,"tag":"Retorno enviado"}
+            "name":"Retornos","body":"Olá, {nome}. Equipe {doutor}.","weekdays":[0,1,2,3,4],"minute_from":30,"hour_from":9,"hour_to":18,"tag":"Retorno enviado","start_at":"2026-10-19T09:00"}
 
-    def test_preview_excludes_no_consent_optout_and_ambiguous(self):
+    def test_preview_allows_default_contacts_but_excludes_optout_and_ambiguous(self):
         self.lead()
         self.lead(number="5500000000003",consent=False)
         self.lead(number="5500000000004")
+        self.lead(number="5500000000005",consent=False)
+        self.store.patient_lookup=lambda number:{"status":"review" if number.endswith("5") else "new"}
         with self.store.db() as c:c.execute("UPDATE contacts SET opted_out=1 WHERE phone='5500000000004'")
         data=self.preview()
-        self.assertEqual((data["selected"],data["recipients"],data["excluded"]),(3,1,2))
-        self.assertEqual(data["reasons"]["Sem autorizacao"],1)
+        self.assertEqual((data["selected"],data["recipients"],data["excluded"]),(4,2,2))
+        self.assertEqual(data["reasons"],{"Descadastrado":1,"Cadastro a conferir":1})
         with self.assertRaises(ValueError):self.preview(pipeline_id=self.store.listing(self.b)["pipelines"][0]["id"])
 
     def test_all_matching_rows_not_just_first_thousand_and_dedup(self):
@@ -113,12 +115,13 @@ class CampaignTests(unittest.TestCase):
     def test_candidates_show_blocked_people_and_real_funnel_counts(self):
         self.lead()
         self.lead(number="5500000000003",consent=False)
+        with self.store.db() as c:c.execute("UPDATE contacts SET opted_out=1 WHERE phone='5500000000003'")
         other=next(p for p in self.store.listing(self.a)["pipelines"] if p["id"]!=self.p["id"])
         self.lead(number="5500000000004",pipeline=other)
         data=candidates(self.store,{"doctor_id":self.a,"pipeline_id":self.p["id"]})
         self.assertEqual((data["selected"],data["recipients"]),(2,1))
         self.assertEqual(len(data["items"]),2)
-        self.assertIn("Sem autorizacao",[l["campaign_reason"] for l in data["items"]])
+        self.assertIn("Descadastrado",[l["campaign_reason"] for l in data["items"]])
         self.assertEqual(sum(p["count"] for p in data["pipelines"]),3)
         self.assertEqual(next(p for p in data["pipelines"] if p["id"]==self.p["id"])["stages"][0]["count"],2)
         self.assertNotIn("_experts_search",data["items"][0])
@@ -162,9 +165,73 @@ class CampaignTests(unittest.TestCase):
 
     def test_empty_funnel_is_different_from_a_blocked_audience(self):
         self.lead(consent=False)
+        with self.store.db() as c:c.execute("UPDATE contacts SET opted_out=1")
         other=next(p for p in self.store.listing(self.a)["pipelines"] if p["id"]!=self.p["id"])
         empty=candidates(self.store,{"doctor_id":self.a,"pipeline_id":other["id"]})
         blocked=candidates(self.store,{"doctor_id":self.a,"pipeline_id":self.p["id"]})
         self.assertEqual((empty["selected"],empty["recipients"]),(0,0))
         self.assertEqual((blocked["selected"],blocked["recipients"]),(1,0))
-        self.assertEqual(blocked["reasons"],{"Sem autorizacao":1})
+        self.assertEqual(blocked["reasons"],{"Descadastrado":1})
+
+    def test_amount_sort_is_global_exact_and_keeps_unknown_amounts_last(self):
+        ids=[self.lead(number=f"5500002{i:06d}") for i in range(55)]
+        def values(c,leads,doctor,include_search=False):
+            for l in leads:
+                i=ids.index(l["id"])
+                l["customer_history"]={"sales_state":"partial" if i==54 else "ready","quotes_state":"partial" if i==54 else "ready",
+                    "sales_cents":900001 if i==0 else i*100,"pending_quotes_cents":900002 if i==0 else i*100}
+        with patch.object(self.store,"attach_customer_values",side_effect=values):
+            payload={"doctor_id":self.a,"order_by":"quotes"}
+            desc=candidates(self.store,payload)
+            self.assertEqual(desc["items"][0]["id"],ids[0])
+            self.assertEqual(desc["items"][0]["customer_history"]["pending_quotes_cents"],900002)
+            tail=candidates(self.store,{**payload,"page":2})
+            self.assertEqual(tail["items"][-1]["id"],ids[54])
+            asc=candidates(self.store,{**payload,"order_dir":"asc"})
+            self.assertEqual(asc["items"][0]["id"],ids[1])
+            self.assertEqual(candidates(self.store,{**payload,"order_dir":"asc","page":2})["items"][-1]["id"],ids[54])
+            spent=candidates(self.store,{**payload,"order_by":"spent"})
+            self.assertEqual(spent["items"][0]["id"],ids[0])
+            self.assertEqual(self.preview(order_by="quotes",order_dir="desc")["recipients"],55)
+
+    def test_sorting_name_phase_and_send_readiness(self):
+        a=self.lead();b=self.lead(number="5500000000003",consent=False)
+        with self.store.db() as c:
+            c.execute("UPDATE contacts SET name='Ágata' WHERE id=(SELECT contact_id FROM leads WHERE id=?)",(a,))
+            c.execute("UPDATE contacts SET name='Beatriz' WHERE id=(SELECT contact_id FROM leads WHERE id=?)",(b,))
+            c.execute("UPDATE contacts SET opted_out=1 WHERE id=(SELECT contact_id FROM leads WHERE id=?)",(b,))
+            c.execute("UPDATE leads SET stage_id=? WHERE id=?",(self.p["stages"][1]["id"],a))
+        base={"doctor_id":self.a,"pipeline_id":self.p["id"]}
+        first=lambda **args:candidates(self.store,{**base,**args})["items"][0]["id"]
+        self.assertEqual(first(order_by="name"),a)
+        self.assertEqual(first(order_by="name",order_dir="desc"),b)
+        self.assertEqual(first(order_by="pipeline"),b)
+        self.assertEqual(first(order_by="pipeline",order_dir="desc"),a)
+        self.assertEqual(first(order_by="eligibility"),a)
+        self.assertEqual(first(order_by="eligibility",order_dir="desc"),b)
+        for args in ({"order_by":"unknown"},{"order_by":[]},{"order_dir":"invalid"},{"order_dir":[]}):
+            with self.assertRaises(ValueError):candidates(self.store,{**base,**args})
+
+    def test_existing_and_new_contacts_can_dispatch_without_fabricated_consent(self):
+        key=self.lead(consent=False)
+        data=self.preview()
+        self.assertEqual((data["recipients"],data["reasons"]),(1,{}))
+        campaign=create(self.store,self.payload(data),self.actor())
+        self.enable(campaign)
+        self.assertIsNotNone(self.store.claim(self.now))
+        with self.store.db() as c:
+            row=c.execute("SELECT consent_at,consent_source FROM leads WHERE id=?",(key,)).fetchone()
+            self.assertEqual(tuple(row),(None,""))
+            self.assertEqual(c.execute("SELECT count(*) FROM events WHERE kind='consent'").fetchone()[0],0)
+
+    def test_optout_stays_global_even_for_new_opportunities_and_incoming_messages(self):
+        key=self.lead(consent=False)
+        campaign=create(self.store,self.payload(self.preview()),self.actor());self.enable(campaign)
+        self.store.activity({"id":key,"doctor_id":self.a,"kind":"optout","body":"Pediu para parar"},"Equipe")
+        other=self.store.listing(self.b)["pipelines"][0]
+        foreign=self.lead(doctor=self.b,pipeline=other,consent=False)
+        with self.store.db() as c:channel=self.store.row(c,"channels",self.channel)
+        self.store.receive(channel["instance"],{"key":{"id":"after-optout","remoteJid":"5500000000002@s.whatsapp.net"},"message":{"conversation":"Olá"}},"messages.upsert")
+        self.assertTrue(self.store.detail(foreign,self.b)["lead"]["opted_out"])
+        self.assertIsNone(self.store.claim(self.now))
+        self.assertEqual(self.preview()["recipients"],0)

@@ -6,7 +6,7 @@ import json
 import time
 import uuid
 
-from crm_filters import appointment_active, appointment_ready, financial_ready, matches, ordered, parse_filters
+from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_store import Conflict, TZ, integer, text
 
 FINGERPRINT_FIELDS=("id","contact_id","revision","consent_at","phone","name","opted_out","experts_status","experts_uuid")
@@ -76,7 +76,7 @@ def selection(store, payload):
         leads=[l for l in leads if in_scope(l)]
         reasons=Counter();selected=[];contacts=set();duplicates=0
         for l in leads:
-            reason = "Removido da selecao" if l["contact_id"] in excluded else "Descadastrado" if l["opted_out"] else "Sem autorizacao" if not l["consent_at"] else "Cadastro a conferir" if l["experts_status"] == "review" else ""
+            reason = "Removido da selecao" if l["contact_id"] in excluded else "Descadastrado" if l["opted_out"] else "Cadastro a conferir" if l["experts_status"] == "review" else ""
             duplicate=not reason and l["contact_id"] in contacts
             if reason:
                 reasons[reason]+=1
@@ -93,9 +93,35 @@ def selection(store, payload):
 
 def candidates(store,payload):
     page=integer(payload.get("page",1),1,100000)
+    order=payload.get("order_by","")
+    if not isinstance(order,str) or order not in {"","name","pipeline","spent","quotes","eligibility"}:
+        raise ValueError("Ordenacao de destinatarios invalida.")
+    direction=payload.get("order_dir","desc" if order in {"spent","quotes"} else "asc")
+    if not isinstance(direction,str) or direction not in {"asc","desc"}:
+        raise ValueError("Ordenacao de destinatarios invalida.")
     rows,selected,catalog,result=selection(store,payload)
+    if order:
+        rows=sort_candidates(rows,catalog,order,direction)
     start=(page-1)*50
     return {**result,"pipelines":catalog,"items":rows[start:start+50],"page":page,"page_size":50,"has_more":len(rows)>start+50}
+
+
+def sort_candidates(rows,catalog,order,direction):
+    pipelines={p["id"]:fold(p["name"]) for p in catalog}
+    stages={s["id"]:s["position"] for p in catalog for s in p["stages"]}
+    reason_rank={"":0,"Cadastro a conferir":1,"Descadastrado":2,"Contato repetido":3,"Removido da selecao":4}
+    base=sorted(rows,key=lambda l:(fold(l["name"]),l["id"]))
+    if order in {"spent","quotes"}:
+        state,field=("sales_state","sales_cents") if order=="spent" else ("quotes_state","pending_quotes_cents")
+        known=lambda l:l.get("customer_history",{}).get(state)=="ready" and type(l["customer_history"].get(field)) is int
+        ready=[l for l in base if known(l)]
+        missing=[l for l in base if not known(l)]
+        # Unknown or partial amounts stay last, never masquerading as zero.
+        return sorted(ready,key=lambda l:l["customer_history"][field],reverse=direction=="desc")+missing
+    key={"name":lambda l:fold(l["name"]),
+         "pipeline":lambda l:(pipelines[l["pipeline_id"]],stages[l["stage_id"]]),
+         "eligibility":lambda l:reason_rank.get(l["campaign_reason"],99)}[order]
+    return sorted(base,key=key,reverse=direction=="desc")
 
 
 def audience(store, payload, actor):

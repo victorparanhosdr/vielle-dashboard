@@ -34,11 +34,17 @@ const choose=(target,id,checked)=>target.onchange({target:{dataset:{leadId:id},c
   choose(target,'lead-65',true);assert.equal(list.count(),51);
   click(target,'selectAll');assert.equal(list.count(),70);
   choose(target,'lead-65',false);assert.equal(list.count(),69);
+  target.onclick({target:{closest:()=>({dataset:{audienceSort:'quotes'}})}});await settle();
+  assert.equal(lastRequest.order_by,'quotes');assert.equal(lastRequest.order_dir,'desc');assert.equal(lastRequest.page,1);
+  assert.equal(list.count(),69);assert.deepEqual(Array.from(list.payload().exclude_lead_ids),['lead-65']);
+  assert.match(target.querySelector('[data-audience="results"]').innerHTML,/aria-sort="descending"/);
+  target.onclick({target:{closest:()=>({dataset:{audienceSort:'quotes'}})}});await settle();
+  assert.equal(lastRequest.order_dir,'asc');assert.equal(list.count(),69);
   click(target,'campaign');assert.deepEqual(Array.from(campaign.exclude_lead_ids),['lead-65']);
   assert.equal(campaign.lead_ids,undefined);
   list.destroy();
   const transfer=root();const copied=picker(transfer,{doctor:'doctor',pipelines,initial:campaign});
-  await settle();assert.equal(copied.count(),69);assert.equal(copied.payload().pipeline_ids[0],'p');
+  await settle();assert.equal(copied.count(),69);assert.equal(copied.payload().pipeline_ids[0],'p');assert.equal(copied.payload().order_by,'quotes');
   copied.destroy();
   const manual=root();const selected=picker(manual,{doctor:'doctor',pipelines,initial:{pipeline_id:'p',lead_ids:['lead-1','lead-64']}});
   await settle();assert.equal(selected.count(),2);assert.deepEqual(Array.from(selected.payload().lead_ids),['lead-1','lead-64']);

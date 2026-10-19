@@ -85,10 +85,12 @@ class CrmTests(unittest.TestCase):
         self.update(key, self.p["stages"][1]["id"])
         with self.assertRaises(Conflict): self.store.lead(old, "Equipe")
 
-    def test_missing_consent_or_optout_block_campaign(self):
+    def test_default_messaging_permission_preserves_optouts_and_consent_evidence(self):
         key = self.lead(consent=False)
-        with self.assertRaises(ValueError): self.campaign([key])
-        self.store.activity({"id":key,"doctor_id":self.a,"kind":"consent","body":"Autorizou no formulario"}, "Equipe")
+        self.assertTrue(self.campaign([key]))
+        lead=self.store.detail(key,self.a)["lead"]
+        self.assertIsNone(lead["consent_at"])
+        self.assertEqual(lead["consent_source"],"")
         self.store.activity({"id":key,"doctor_id":self.a,"kind":"optout","body":"Solicitou descadastro"}, "Equipe")
         with self.assertRaises(ValueError): self.campaign([key])
         with self.assertRaises(ValueError): self.store.activity({"id":key,"doctor_id":self.a,"kind":"consent","body":"Reativar"}, "Equipe")

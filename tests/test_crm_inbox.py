@@ -88,21 +88,22 @@ class InboxTests(unittest.TestCase):
         self.assertEqual(self.store.inbox(self.a,"user",search="nao existe")["total"],0)
         self.assertEqual(self.store.inbox(self.a,"user",kind="waiting")["total"],1)
 
-    def test_reply_requires_connection_and_consent_or_recent_inbound(self):
+    def test_reply_is_available_by_default_but_keeps_connection_and_optout_checks(self):
         lead=self.lead(consent=False)
         ct=self.store.detail(lead,self.a)["lead"]["contact_id"]
         p={"doctor_id":self.a,"channel_id":self.channel,"contact_id":ct,"body":"Ola","request_id":"one"}
         with self.assertRaises(ValueError):self.store.reply(p,"user",True)
         with self.store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))
-        with self.assertRaises(ValueError):self.store.reply(p,"user",True)
+        self.assertTrue(self.store.conversation(self.a,self.channel,ct)["reply_allowed"])
+        self.assertTrue(self.store.reply(p,"user",True))
         self.incoming()
-        with self.assertRaises(ValueError):self.store.reply(p,"user",False)
+        with self.assertRaises(ValueError):self.store.reply({**p,"request_id":"disabled"},"user",False)
         self.assertTrue(self.store.reply(p,"user",True))
         with self.store.db() as c:c.execute("UPDATE messages SET created_at=? WHERE direction='in'",(time.time()-90000,))
-        with self.assertRaises(ValueError):self.store.reply({**p,"request_id":"two"},"user",True)
-        self.store.activity({"id":lead,"doctor_id":self.a,"kind":"consent","body":"Autorizou contato"},"Equipe")
         self.assertTrue(self.store.reply({**p,"request_id":"two"},"user",True))
+        self.assertIsNone(self.store.detail(lead,self.a)["lead"]["consent_at"])
         self.store.activity({"id":lead,"doctor_id":self.a,"kind":"optout","body":"Solicitou"},"Equipe")
+        self.assertFalse(self.store.conversation(self.a,self.channel,ct)["reply_allowed"])
         with self.assertRaises(ValueError):self.store.reply({**p,"request_id":"three"},"user",True)
 
     def test_reply_idempotency_worker_and_waiting_filter(self):
