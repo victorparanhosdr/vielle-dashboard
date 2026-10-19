@@ -9,61 +9,105 @@ import uuid
 from crm_filters import appointment_active, appointment_ready, financial_ready, matches, ordered, parse_filters
 from crm_store import Conflict, TZ, integer, text
 
+FINGERPRINT_FIELDS=("id","contact_id","revision","consent_at","phone","name","opted_out","experts_status","experts_uuid")
+
+
+def rows_fingerprint(rows):
+    values=[tuple(r[k] for k in FINGERPRINT_FIELDS) for r in sorted(rows,key=lambda r:r["id"])]
+    return hashlib.sha256(json.dumps(values,ensure_ascii=False).encode()).hexdigest()
+
 
 def fingerprint(c, doctor, ids):
     wanted = set(ids)
     rows = c.execute("""SELECT l.id,l.contact_id,l.revision,l.consent_at,ct.phone,ct.name,ct.opted_out,
         ct.experts_status,ct.experts_uuid FROM leads l JOIN contacts ct ON ct.id=l.contact_id
         WHERE l.doctor_id=? ORDER BY l.id""", (doctor,)).fetchall()
-    values = [tuple(r) for r in rows if r["id"] in wanted]
-    return hashlib.sha256(json.dumps(values, ensure_ascii=False).encode()).hexdigest()
+    return rows_fingerprint([r for r in rows if r["id"] in wanted])
 
 
-def audience(store, payload, actor):
+def selection(store, payload):
     doctor = payload.get("doctor_id")
     filters = parse_filters(payload.get("filters", {}))
     excluded = payload.get("exclude_ids", [])
     stages = payload.get("stage_ids", [])
-    if any(not isinstance(x, list) or len(x)>5000 or any(not isinstance(k,str) for k in x) for x in (excluded,stages)):
+    pipelines = payload.get("pipeline_ids", [])
+    included = payload.get("lead_ids")
+    removed = payload.get("exclude_lead_ids", [])
+    if any(not isinstance(x, list) or len(x)>5000 or any(not isinstance(k,str) for k in x) for x in (excluded,stages,pipelines,removed)) or (included is not None and (not isinstance(included,list) or len(included)>5000 or any(not isinstance(k,str) for k in included))):
         raise ValueError("Selecao de destinatarios invalida.")
+    if type(payload.get("stages_explicit",False)) is not bool:
+        raise ValueError("Selecao de fases invalida.")
     store.reconcile_patients()
     with store.db() as c:
         doc = store.row(c, "doctors", doctor)
         pipeline = payload.get("pipeline_id", "")
         if pipeline:
             store.owned(c, "pipelines", pipeline, doctor)
+            pipelines = pipelines or [pipeline]
+        for key in pipelines:
+            store.owned(c, "pipelines", key, doctor)
+        if included is not None:
+            for key in included:
+                store.owned(c,"leads",key,doctor)
+            included=set(included)
+        removed=set(removed)
         for stage in stages:
             row = store.row(c,"stages",stage)
             owner = store.owned(c,"pipelines",row["pipeline_id"],doctor)
-            if pipeline and owner["id"] != pipeline:
+            if pipelines and owner["id"] not in pipelines:
                 raise ValueError("Fase de outro funil.")
         leads = [dict(r) for r in c.execute("""SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.experts_uuid,ct.experts_status,s.kind
             FROM leads l JOIN contacts ct ON ct.id=l.contact_id JOIN stages s ON s.id=l.stage_id
-            WHERE l.doctor_id=? AND (?='' OR l.pipeline_id=?) ORDER BY l.updated_at DESC,l.id""", (doctor,pipeline,pipeline))]
-        if stages:
-            leads = [l for l in leads if l["stage_id"] in stages]
+            WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id""", (doctor,))]
         store.attach_customer_values(c,leads,doc["name"],bool(filters["search"]))
         if appointment_active(filters):
             store.attach_appointment_filters(leads,doc["name"],filters)
-        coverage = len({l["contact_id"] for l in leads if not financial_ready(l,filters) or not appointment_ready(l,filters)})
+        def in_scope(l):
+            return ((not pipelines or l["pipeline_id"] in pipelines)
+                    and (l["stage_id"] in stages if payload.get("stages_explicit") else not stages or l["stage_id"] in stages)
+                    and (included is None or l["id"] in included) and l["id"] not in removed)
+        coverage = len({l["contact_id"] for l in leads if in_scope(l) and (not financial_ready(l,filters) or not appointment_ready(l,filters))})
         leads = ordered([l for l in leads if matches(l,filters)],filters)
-        if len(leads)>5000:
-            raise ValueError("A selecao ultrapassa 5000 oportunidades. Refine os filtros.")
+        catalog = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name",(doctor,))]
+        for p in catalog:
+            members=[l for l in leads if l["pipeline_id"]==p["id"]]
+            p["count"]=len(members)
+            p["stages"]=[{**dict(s),"count":sum(l["stage_id"]==s["id"] for l in members)} for s in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position",(p["id"],))]
+        leads=[l for l in leads if in_scope(l)]
         reasons=Counter();selected=[];contacts=set();duplicates=0
         for l in leads:
             reason = "Removido da selecao" if l["contact_id"] in excluded else "Descadastrado" if l["opted_out"] else "Sem autorizacao" if not l["consent_at"] else "Cadastro a conferir" if l["experts_status"] == "review" else ""
+            duplicate=not reason and l["contact_id"] in contacts
             if reason:
                 reasons[reason]+=1
-            elif l["contact_id"] in contacts:
+            elif duplicate:
                 duplicates+=1
             else:
                 contacts.add(l["contact_id"]);selected.append(l)
-        ids=[l["id"] for l in selected]
+            l["campaign_reason"]=reason or ("Contato repetido" if duplicate else "")
+            l.pop("_experts_search",None)
         result={"selected":len(leads),"recipients":len(selected),"duplicates":duplicates,"excluded":sum(reasons.values()),
                 "reasons":dict(reasons),"incomplete":coverage}
+    return leads,selected,catalog,result
+
+
+def candidates(store,payload):
+    page=integer(payload.get("page",1),1,100000)
+    rows,selected,catalog,result=selection(store,payload)
+    start=(page-1)*50
+    return {**result,"pipelines":catalog,"items":rows[start:start+50],"page":page,"page_size":50,"has_more":len(rows)>start+50}
+
+
+def audience(store, payload, actor):
+    leads,selected,_,result=selection(store,payload)
+    if len(leads)>5000:
+        raise ValueError("A selecao ultrapassa 5000 oportunidades. Refine os filtros.")
+    doctor=payload.get("doctor_id")
+    ids=[l["id"] for l in selected]
+    with store.db() as c:
         key=uuid.uuid4().hex
         c.execute("DELETE FROM campaign_audiences WHERE expires_at<? AND campaign_id=''",(time.time()-86400,))
-        c.execute("INSERT INTO campaign_audiences VALUES(?,?,?,?,?,?,?)",(key,doctor,str(actor["id"]),json.dumps({"ids":ids,"summary":result}),fingerprint(c,doctor,ids),time.time()+1800,""))
+        c.execute("INSERT INTO campaign_audiences VALUES(?,?,?,?,?,?,?)",(key,doctor,str(actor["id"]),json.dumps({"ids":ids,"summary":result}),rows_fingerprint(selected),time.time()+1800,""))
     return {"preview_id":key,**result,"sample":[{"id":l["id"],"contact_id":l["contact_id"],"name":l["name"],"phone":l["phone"]} for l in selected[:100]],"sample_limit":100}
 
 

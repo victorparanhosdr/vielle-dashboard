@@ -55,6 +55,9 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 
 - Criacao em tres etapas: mensagem/expediente, publico, revisao. A campanha e salva como rascunho; nunca e iniciada pelo salvamento.
 - A selecao e calculada no servidor para todos os resultados (ate 5000 oportunidades por campanha), nao apenas os primeiros 1000 cards. Funil, fase e filtros financeiros/agendamentos do CRM sao respeitados.
+- A visao Lista dos funis permite selecionar por oportunidade, pagina ou todos os resultados do filtro, com exclusoes preservadas entre paginas. Criar disparo transfere exatamente essa selecao para o assistente; nao inicia envios.
+- Lista e assistente usam a mesma consulta paginada de candidatos (50 por pagina). Contagens por funil/fase, busca e motivos de impedimento aparecem antes da revisao, inclusive quando nenhum contato esta apto. Esvaziar a selecao de fases significa nenhum resultado, nao todas as fases.
+- Os funis preparados pelo bootstrap sao apenas uma copia de nomes; nao ha importacao implicita de leads antigos do Kommo. Nao confundir um funil vazio com falta de autorizacao registrada. Autorizacao nao e inferida de compras, agendamentos ou cadastro de paciente.
 - O servidor remove repeticoes por contato e exclui descadastrados, sem autorizacao e cadastros ambiguos. Uma amostra de ate 100 destinatarios pode ser conferida e reduzida na revisao.
 - A selecao revisada expira em 30 minutos. Mudancas de telefone, nome, autorizacao, identidade ou oportunidade exigem nova revisao. Repetir o salvamento da mesma revisao nao cria outra campanha.
 - Intervalo entre 30 segundos e 24 horas; dias selecionados; horario entre 08:00 e 20:00 em Sao Paulo; inicio agendado; etiqueta interna aplicada somente depois de o conector aceitar o envio.

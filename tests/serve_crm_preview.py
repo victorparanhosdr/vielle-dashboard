@@ -141,6 +141,15 @@ for n, doctor in enumerate(store.listing()["doctors"]):
             store.receive(channels[cid]["instance"],{"key":{"id":f"preview-follow-{n}","remoteJid":lead["phone"]+"@s.whatsapp.net"},
                 "pushName":lead["name"],"message":{"conversation":"Tenho disponibilidade a partir das 15h."}},"messages.upsert")
 
+if "--audience-fixture" in sys.argv:
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    pipelines=store.listing(doc)["pipelines"]
+    for i in range(65):
+        p=pipelines[0] if i<60 else pipelines[-1]
+        store.lead({"doctor_id":doc,"pipeline_id":p["id"],"stage_id":p["stages"][i%len(p["stages"])]["id"],
+            "name":f"Cliente Exemplo {i+1:02d}","phone":f"5500015{i:06d}","title":"Retorno de avaliação",
+            "consent":i%4!=0,"consent_source":"Autorização sintética" if i%4 else ""},"Equipe Vielle")
+
 if "--communications-fixture" in sys.argv:
     from crm_voice import VoiceService
     voice = VoiceService(store)

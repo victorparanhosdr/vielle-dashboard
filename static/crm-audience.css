@@ -1,0 +1,68 @@
+.crmAudience{min-width:0;display:grid;gap:16px;letter-spacing:0}
+.crmAudience>div,#crmFunnelList{min-width:0}
+.journey[hidden],.crmAudience [data-audience=activeFilters][hidden]{display:none}
+.campaignAudienceOwner{display:flex;align-items:center;gap:9px;font-size:13px;color:#255c48}
+.crmPresentation{display:flex;gap:3px;background:#e9efeb;padding:3px;border:1px solid #d4dfd7;border-radius:6px}
+.crmPresentation button{border:0;box-shadow:none;background:transparent;min-height:33px;padding:6px 10px;font-size:12px}
+.crmPresentation button[aria-pressed=true]{background:white;color:#164e3c;box-shadow:0 1px 3px #173e3214}
+.audienceSearch{display:flex;gap:8px;align-items:center;min-width:0}
+.audienceSearch>label{display:flex;align-items:center;gap:9px;flex:1;min-width:0;position:relative}
+.audienceSearch>label>svg{position:absolute;left:12px;width:17px;color:#799087;pointer-events:none}
+.audienceSearch input{padding-left:39px!important;min-width:0;width:100%}
+.audienceSearch>button{flex:none}
+.audienceAdvanced{padding:16px 0;border-block:1px solid #dce6df;display:grid;gap:16px}
+.audienceAdvanced[hidden],.audienceSearch[hidden]{display:none}
+.audienceFunnelTools{display:flex;gap:12px;align-items:end;flex-wrap:wrap;min-width:0}
+.audienceFunnelTools>label{flex:1;min-width:0}
+.audienceStages{min-width:180px;flex:1}
+.audienceStages>details{border:1px solid #d4e2da;border-radius:6px;background:#fff}
+.audienceStages summary{display:flex;align-items:center;gap:10px;padding:11px 12px;font-size:12px;cursor:pointer;list-style:none;min-height:43px;box-sizing:border-box}
+.audienceStages summary>span{color:#6a8274;font-size:11px}
+.audienceStages summary>svg{margin-left:auto;width:14px}
+.audienceStageMenu{padding:0 12px 10px;max-height:300px;overflow:auto}
+.audienceStageMenu fieldset{border:0;border-top:1px solid #e1e9e4;margin:8px 0 0;padding:12px 0 0;min-width:0}
+.audienceStageMenu legend{font-size:11px;color:#718777;padding-right:8px}
+.audienceStageMenu .check{display:flex;gap:9px;align-items:center;padding:8px 0;font-size:12px}
+.audienceStageMenu .check span{flex:1;overflow-wrap:anywhere}
+.audienceStageMenu b{font-size:11px;color:#718777}
+.audienceStageCommands{display:flex;flex-wrap:wrap;gap:6px;padding-block:10px}
+.audienceStageCommands button{min-height:28px;padding:4px 7px;font-size:10px}
+.audienceTotals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-block:1px solid #dce6df;padding:17px 0}
+.audienceTotals>div{display:grid;gap:5px}
+.audienceTotals strong{font-size:27px;color:#194e3c;font-weight:650}
+.audienceTotals span{font-size:11px;color:#718579}
+.audienceReasons{display:flex;flex-wrap:wrap;gap:10px;padding:12px 0;font-size:11px;color:#916238}
+.audienceReasons b{font-weight:650;margin-left:3px}
+.audienceSelection{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 0;font-size:11px}
+.audienceSelection .check{margin-right:4px;font-size:11px}
+.audienceSelection>strong{margin-right:auto;color:#285f49}
+.audienceSelection>button{min-height:34px;font-size:11px;padding:7px 10px}
+.audienceSelection>button.icon-button{width:34px;flex:none;padding:6px}
+.audienceTableScroll{max-width:100%;max-height:560px;overflow:auto;border-block:1px solid #dce6df}
+.audienceTable thead{position:sticky;top:0;z-index:1}
+#crmDialog .audienceTableScroll{max-height:320px}
+.audienceTable{border-collapse:collapse;width:100%;min-width:820px;text-align:left;font-size:12px}
+.audienceTable th{font-size:10px;font-weight:600;color:#698171;background:#f0f5f1;padding:12px 10px;white-space:nowrap}
+.audienceTable td{padding:14px 10px;border-top:1px solid #e1e9e4;vertical-align:middle;overflow-wrap:anywhere;max-width:240px}
+.audienceTable td:first-child,.audienceTable th:first-child{width:32px;text-align:center}
+.audienceTable input[type=checkbox]{width:16px;height:16px;accent-color:#235f49;cursor:pointer}
+.audienceTable td>button{border:0;background:transparent;box-shadow:none;text-align:left;min-height:0;font-size:12px;font-weight:600;padding:0;color:#173f32;white-space:normal}
+.audienceTable td>small{display:block;font-size:10px;color:#788d7f;margin-top:5px}
+.audienceTable td>strong{font-size:12px;font-weight:600}
+.audienceEligibility{display:flex;gap:5px;align-items:center;font-size:10px;max-width:155px;line-height:1.5}
+.audienceEligibility svg{width:14px;height:14px;flex:none}
+.audienceEligibility.ready{color:#357554}.audienceEligibility.blocked{color:#a07139}
+.crmAudience [aria-busy=true]{opacity:.65;pointer-events:none}
+.crmAudience .campaignPagination{padding:12px 0;margin:0}
+#crmDialog:has(.crmAudience){width:min(1120px,calc(100vw - 32px))}
+@media(max-width:760px){
+  .crmTabs #viewActions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .crmTabs #viewActions .crmPresentation{grid-column:1/-1}.crmPresentation button{flex:1}
+  .audienceTotals{gap:8px;padding:13px 0}.audienceTotals strong{font-size:23px}.audienceTotals span{font-size:10px;line-height:1.5}
+  .audienceSearch{flex-wrap:wrap}.audienceSearch>label{flex-basis:calc(100% - 48px)}.audienceSearch>button:not(.icon-button){order:3}
+  .audienceFunnelTools{align-items:stretch}.audienceFunnelTools>label,.audienceStages{min-width:100%}
+  .audienceSelection{gap:9px}.audienceSelection>button[data-audience=selectAll]{flex:1;text-align:left}.audienceSelection>button[data-audience=campaign]{width:100%}
+  .audienceSelection .check{flex-basis:45%;margin:0}.audienceSelection>strong{margin-left:auto;margin-right:0}
+  .audienceTable{min-width:760px;font-size:11px}.audienceTable td{padding:12px 8px}
+  #crmDialog:has(.crmAudience){width:calc(100vw - 20px);max-width:calc(100vw - 20px)}
+}

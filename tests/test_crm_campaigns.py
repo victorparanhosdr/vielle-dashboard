@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock
 
 from tests import test_crm as base
-from crm_campaigns import audience, create, dashboard, detail
+from crm_campaigns import audience, candidates, create, dashboard, detail
 from crm_store import Conflict, TZ
 from crm_worker import tick
 
@@ -109,3 +109,62 @@ class CampaignTests(unittest.TestCase):
         self.store.enable_campaigns()
         self.assertTrue(self.store.campaigns_allowed())
         self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"paused")
+
+    def test_candidates_show_blocked_people_and_real_funnel_counts(self):
+        self.lead()
+        self.lead(number="5500000000003",consent=False)
+        other=next(p for p in self.store.listing(self.a)["pipelines"] if p["id"]!=self.p["id"])
+        self.lead(number="5500000000004",pipeline=other)
+        data=candidates(self.store,{"doctor_id":self.a,"pipeline_id":self.p["id"]})
+        self.assertEqual((data["selected"],data["recipients"]),(2,1))
+        self.assertEqual(len(data["items"]),2)
+        self.assertIn("Sem autorizacao",[l["campaign_reason"] for l in data["items"]])
+        self.assertEqual(sum(p["count"] for p in data["pipelines"]),3)
+        self.assertEqual(next(p for p in data["pipelines"] if p["id"]==self.p["id"])["stages"][0]["count"],2)
+        self.assertNotIn("_experts_search",data["items"][0])
+
+    def test_empty_explicit_stages_do_not_silently_select_everybody(self):
+        self.lead()
+        data=self.preview(stage_ids=[],stages_explicit=True)
+        self.assertEqual(data["recipients"],0)
+        self.assertEqual(self.preview()["recipients"],1)
+
+    def test_manual_selection_and_all_filter_exclusions_are_exact(self):
+        a=self.lead();b=self.lead(number="5500000000003")
+        self.assertEqual(self.preview(lead_ids=[])["recipients"],0)
+        data=self.preview(lead_ids=[a])
+        self.assertEqual(data["sample"][0]["id"],a)
+        self.assertEqual(data["recipients"],1)
+        data=self.preview(exclude_lead_ids=[a])
+        self.assertEqual(data["sample"][0]["id"],b)
+        self.assertEqual(data["recipients"],1)
+        self.assertEqual(self.preview(filters={"search":"(000) 000-0003"})["recipients"],1)
+
+    def test_foreign_selection_never_crosses_doctor_boundary(self):
+        foreign=self.lead(doctor=self.b,pipeline=self.store.listing(self.b)["pipelines"][0])
+        with self.assertRaises(ValueError):self.preview(lead_ids=[foreign])
+        with self.assertRaises(ValueError):self.preview(pipeline_ids=[self.store.listing(self.b)["pipelines"][0]["id"]])
+        with self.assertRaises(ValueError):self.preview(lead_ids="all")
+
+    def test_pagination_is_only_visual_select_all_still_covers_all_pages(self):
+        for i in range(55):self.lead(number=f"5500000{i:06d}")
+        payload={"doctor_id":self.a,"pipeline_id":self.p["id"]}
+        first=candidates(self.store,payload)
+        second=candidates(self.store,{**payload,"page":2})
+        self.assertEqual((len(first["items"]),len(second["items"])),(50,5))
+        self.assertEqual(first["selected"],55)
+        self.assertTrue(first["has_more"])
+        self.assertFalse(second["has_more"])
+        excluded=[first["items"][0]["id"],second["items"][0]["id"]]
+        data=self.preview(exclude_lead_ids=excluded)
+        key=create(self.store,self.payload(data),self.actor())
+        self.assertEqual(detail(self.store,self.a,key,{})["total"],53)
+
+    def test_empty_funnel_is_different_from_a_blocked_audience(self):
+        self.lead(consent=False)
+        other=next(p for p in self.store.listing(self.a)["pipelines"] if p["id"]!=self.p["id"])
+        empty=candidates(self.store,{"doctor_id":self.a,"pipeline_id":other["id"]})
+        blocked=candidates(self.store,{"doctor_id":self.a,"pipeline_id":self.p["id"]})
+        self.assertEqual((empty["selected"],empty["recipients"]),(0,0))
+        self.assertEqual((blocked["selected"],blocked["recipients"]),(1,0))
+        self.assertEqual(blocked["reasons"],{"Sem autorizacao":1})

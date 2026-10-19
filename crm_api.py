@@ -104,7 +104,8 @@ def handle_request(handler, parsed):
             return handler.auth_json({"ok": False}, 405)
         if not handler.same_origin_request():
             return handler.auth_json({"ok": False}, 403)
-        p = json.loads(read_body(handler, 128 * 1024))
+        limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create"} else 128*1024
+        p = json.loads(read_body(handler, limit))
         if not isinstance(p, dict):
             raise ValueError("Solicitacao invalida.")
         actor = handler.current_user["nome"]
@@ -158,6 +159,9 @@ def handle_request(handler, parsed):
         elif action == "campaign-preview":
             from crm_campaigns import audience
             result.update(audience(store, p, handler.current_user))
+        elif action == "campaign-candidates":
+            from crm_campaigns import candidates
+            result.update(candidates(store, p))
         elif action == "campaign-create":
             from crm_campaigns import create
             result["id"] = create(store, p, handler.current_user)

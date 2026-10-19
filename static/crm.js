@@ -7,6 +7,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:new URLSearchParams(location.search).get("mode")==="inbox"?"inbox":"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  let presentation="board",listPicker=null,listSeed=null,listScope="";
   const tierLabels={bronze:"Bronze",silver:"Prata",gold:"Ouro"};
   const patientRefreshes=new Set();
   const initials=name=>String(name).split(/\s+/).slice(0,2).map(n=>n[0]).join("").toUpperCase();
@@ -191,14 +192,21 @@
   }
   function render() {
     if(!state.data) return;
+    if(listPicker){listSeed=listPicker.payload();listPicker.destroy();listPicker=null;}
     const oldBoard=$("crmView").querySelector(".crmBoard"), oldPipeline=oldBoard?.dataset.pipeline, scrollX=oldBoard?.scrollLeft || 0;
     $("pipelineField").hidden=state.mode!=="board";$("newLead").disabled=!pipeline();
     $("crmSearchTools").hidden=!clientMode();
-    $("viewActions").innerHTML=state.mode==="board" ? `<button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="inbox" ? '<span class="connectionNote">WhatsApp · Atendimento da equipe</span>' : state.mode==="campaigns" ? `<span class="connectionNote">${state.data.campaigns_enabled?"Disparos habilitados":"Disparos de campanha desativados"}</span><button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : `<button class="primary" id="newChannel">${icon("plus")} Número</button>`;
+    document.querySelector('.journey').hidden=state.mode==="board" && presentation==="list";
+    $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="inbox" ? '<span class="connectionNote">WhatsApp · Atendimento da equipe</span>' : state.mode==="campaigns" ? `<span class="connectionNote">${state.data.campaigns_enabled?"Disparos habilitados":"Disparos de campanha desativados"}</span><button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : `<button class="primary" id="newChannel">${icon("plus")} Número</button>`;
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=(state.mode==="board" && state.data.matched_leads>state.data.leads.length?`<p class="inlineWarning">Exibindo ${state.data.leads.length} de ${state.data.matched_leads} oportunidades compatíveis com os filtros. Refine a busca.</p>`:"")+(state.mode==="board"?board():state.mode==="campaigns"?"":channels());
+    $("crmView").innerHTML=(state.mode==="board" && presentation==="board" && state.data.matched_leads>state.data.leads.length?`<p class="inlineWarning">Exibindo ${state.data.leads.length} de ${state.data.matched_leads} oportunidades compatíveis com os filtros. Refine a busca.</p>`:"")+(state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():state.mode==="campaigns"?"":channels());
+    if(state.mode==="board" && presentation==="list"){
+      const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
+      if(key!==listScope){listSeed=null;listScope=key;}
+      listPicker=audiencePicker($("crmFunnelList"),{doctor:state.doctor,pipelines:state.data.pipelines,initial:listSeed || {pipeline_id:state.pipeline,filters},manual:true,editable:false,onOpen:detail,onCampaign:payload=>campaignCenter.create(payload)});
+    }
     const newBoard=$("crmView").querySelector(".crmBoard");if(newBoard && newBoard.dataset.pipeline===oldPipeline)newBoard.scrollLeft=scrollX;
     if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
     }
@@ -425,7 +433,8 @@
     } catch(e){error(e.message);}
   }
   const voice=window.createCrmVoice({api,esc,icon,icons});
-  const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load});
+  const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
+  const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes,voice});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
@@ -466,7 +475,7 @@
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
   document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;render();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm}[b.id])?.();};
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";render();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.dataset.lead) return detail(b.dataset.lead);
