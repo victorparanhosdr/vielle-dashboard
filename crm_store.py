@@ -127,6 +127,23 @@ class CrmStore:
             for name in ("recipient_phone", "sender_name", "sender_user_id"):
                 if name not in columns:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+            if "skip_reason" not in columns:
+                c.execute("ALTER TABLE messages ADD COLUMN skip_reason TEXT NOT NULL DEFAULT ''")
+            columns = {r[1] for r in c.execute("PRAGMA table_info(campaigns)")}
+            for name, definition in (("weekdays", "TEXT NOT NULL DEFAULT '[0,1,2,3,4,5,6]'"),
+                ("minute_from", "INTEGER NOT NULL DEFAULT 0"), ("minute_to", "INTEGER NOT NULL DEFAULT 0"),
+                ("tag", "TEXT NOT NULL DEFAULT ''"), ("selected_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("duplicates_count", "INTEGER NOT NULL DEFAULT 0"), ("excluded_count", "INTEGER NOT NULL DEFAULT 0")):
+                if name not in columns:
+                    c.execute(f"ALTER TABLE campaigns ADD COLUMN {name} {definition}")
+            c.executescript("""
+                CREATE TABLE IF NOT EXISTS contact_tags(doctor_id TEXT NOT NULL REFERENCES doctors(id),
+                    contact_id TEXT NOT NULL REFERENCES contacts(id),label TEXT NOT NULL,created_at REAL NOT NULL,
+                    PRIMARY KEY(doctor_id,contact_id,label));
+                CREATE TABLE IF NOT EXISTS campaign_audiences(id TEXT PRIMARY KEY,doctor_id TEXT NOT NULL,
+                    actor_id TEXT NOT NULL,payload TEXT NOT NULL,digest TEXT NOT NULL,expires_at REAL NOT NULL,
+                    campaign_id TEXT NOT NULL DEFAULT '');
+            """)
             columns = {r[1] for r in c.execute("PRAGMA table_info(reply_requests)")}
             for name, definition in (("source_channel_id", "TEXT NOT NULL DEFAULT ''"),
                                      ("inbound_cursor", "INTEGER NOT NULL DEFAULT 0")):
@@ -624,15 +641,20 @@ class CrmStore:
         doctor, channel, now = p.get("doctor_id"), p.get("channel_id"), time.time()
         sender = sender_title(actor)
         ids = p.get("lead_ids")
-        if not isinstance(ids, list) or not 1 <= len(ids) <= 100 or any(not isinstance(i, str) for i in ids):
-            raise ValueError("Selecione de 1 a 100 oportunidades.")
+        if not isinstance(ids, list) or not 1 <= len(ids) <= 5000 or any(not isinstance(i, str) for i in ids):
+            raise ValueError("Selecione de 1 a 5000 oportunidades.")
         body = text(p.get("body"), 3000)
         if re.search(r"\{(?!nome\}|doutor\})", body):
             raise ValueError("Use somente {nome} e {doutor} na mensagem.")
-        interval = integer(p.get("interval_seconds", 60), 30, 3600)
+        interval = integer(p.get("interval_seconds", 60), 30, 86400)
         start, end = integer(p.get("hour_from", 9), 8, 19), integer(p.get("hour_to", 18), 9, 20)
-        if start >= end:
+        minute_from, minute_to = integer(p.get("minute_from", 0), 0, 59), integer(p.get("minute_to", 0), 0, 59)
+        if start*60+minute_from >= end*60+minute_to or end*60+minute_to > 20*60:
             raise ValueError("Horario final deve ser depois do inicial.")
+        weekdays = p.get("weekdays", list(range(7)))
+        if not isinstance(weekdays, list) or not weekdays or len(weekdays) != len(set(weekdays)) or any(type(d) is not int or d not in range(7) for d in weekdays):
+            raise ValueError("Selecione os dias de funcionamento.")
+        tag = text(p.get("tag", ""), 50, False)
         schedule = p.get("start_at", "")
         if schedule:
             parsed = datetime.fromisoformat(schedule)
@@ -646,19 +668,37 @@ class CrmStore:
             c.execute("BEGIN IMMEDIATE")
             doc = self.row(c, "doctors", doctor)
             self.owned(c, "channels", channel, doctor)
+            snapshot = None
+            if p.get("_audience_id"):
+                from crm_campaigns import fingerprint
+                snapshot = self.row(c, "campaign_audiences", p["_audience_id"])
+                if snapshot["doctor_id"] != doctor or snapshot["actor_id"] != str(actor_id):
+                    raise LookupError()
+                if snapshot["campaign_id"]:
+                    return snapshot["campaign_id"]
+                data = json.loads(snapshot["payload"])
+                ids = data["ids"]
+                if snapshot["expires_at"] < now or fingerprint(c, doctor, ids) != snapshot["digest"]:
+                    raise Conflict("A selecao mudou ou expirou. Revise os destinatarios novamente.")
             recipients = {}
             for lead_id in set(ids):
                 lead = self.owned(c, "leads", lead_id, doctor)
                 contact = self.row(c, "contacts", lead["contact_id"])
-                if not lead["consent_at"] or contact["opted_out"]:
+                if not lead["consent_at"] or contact["opted_out"] or contact["experts_status"] == "review":
                     raise ValueError("Todos os destinatarios precisam de autorizacao registrada e nao podem estar descadastrados.")
                 recipients[contact["id"]] = contact
             c.execute("INSERT INTO campaigns(id,doctor_id,channel_id,name,body,interval_seconds,start_at,hour_from,hour_to,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                       (key, doctor, channel, text(p.get("name")), body, interval, start_at, start, end, now, actor))
+            c.execute("UPDATE campaigns SET weekdays=?,minute_from=?,minute_to=?,tag=?,selected_count=?,duplicates_count=?,excluded_count=? WHERE id=?", (json.dumps(weekdays), minute_from, minute_to, tag,
+                len(ids), len(ids)-len(recipients), 0, key))
+            if snapshot:
+                summary = data["summary"]
+                c.execute("UPDATE campaigns SET selected_count=?,duplicates_count=?,excluded_count=? WHERE id=?", (summary["selected"], summary["duplicates"], summary["excluded"], key))
+                c.execute("UPDATE campaign_audiences SET campaign_id=? WHERE id=?", (key, snapshot["id"]))
             for cid, contact in recipients.items():
                 message = signed_message(body.replace("{nome}", contact["name"].split()[0]).replace("{doutor}", doc["name"]), sender) + FOOTER
-                c.execute("INSERT INTO messages(id,channel_id,contact_id,campaign_id,body,direction,created_at,sender_name,sender_user_id) VALUES(?,?,?,?,?,'out',?,?,?)",
-                          (uuid.uuid4().hex, channel, cid, key, message, now, sender, str(actor_id)))
+                c.execute("INSERT INTO messages(id,channel_id,contact_id,campaign_id,body,direction,created_at,sender_name,sender_user_id,recipient_phone) VALUES(?,?,?,?,?,'out',?,?,?,?)",
+                          (uuid.uuid4().hex, channel, cid, key, message, now, sender, str(actor_id), contact["phone"]))
         return key
 
     def campaign_status(self, key, doctor, action, enabled=False):
@@ -691,6 +731,18 @@ class CrmStore:
             row = c.execute("SELECT value FROM runtime WHERE key='worker'").fetchone()
             return bool(row and 0 <= time.time() - row[0] < 75)
 
+    def campaigns_allowed(self):
+        with self.db() as c:
+            row = c.execute("SELECT value FROM runtime WHERE key='campaign_dispatch_enabled'").fetchone()
+        return bool(row and row[0] == 1)
+
+    def enable_campaigns(self):
+        with self.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            # Enabling the feature cannot resume an old queue unattended.
+            c.execute("UPDATE campaigns SET status='paused' WHERE status='running'")
+            c.execute("INSERT INTO runtime VALUES('campaign_dispatch_enabled',1) ON CONFLICT(key) DO UPDATE SET value=1")
+
     def claim(self, now=None, *, allow_campaigns=True):
         now = time.time() if now is None else now
         local = datetime.fromtimestamp(now, TZ)
@@ -702,9 +754,18 @@ class CrmStore:
             c.execute("UPDATE messages SET status='unknown' WHERE status='sending' AND claimed_at<?", (now - 120,))
             for key in stale:
                 c.execute("UPDATE campaigns SET status='paused',last_error='Envio sem confirmacao. Revisao necessaria.' WHERE id=?", (key,))
-            c.execute("UPDATE messages SET status='skipped' WHERE status='queued' AND contact_id IN (SELECT id FROM contacts WHERE opted_out=1)")
+            c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE status='queued' AND contact_id IN (SELECT id FROM contacts WHERE opted_out=1)")
+            c.execute("""UPDATE messages SET status='skipped',skip_reason='Sem autorizacao vigente'
+                WHERE status='queued' AND campaign_id IS NOT NULL AND NOT EXISTS
+                (SELECT 1 FROM leads l JOIN campaigns ca ON ca.doctor_id=l.doctor_id
+                 WHERE ca.id=messages.campaign_id AND l.contact_id=messages.contact_id AND l.consent_at IS NOT NULL)""")
+            c.execute("""UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato'
+                WHERE status='queued' AND campaign_id IS NOT NULL AND contact_id IN
+                (SELECT id FROM contacts WHERE experts_status='review')""")
+            c.execute("""UPDATE messages SET status='skipped',skip_reason='Telefone alterado; confira o contato'
+                WHERE status='queued' AND campaign_id IS NOT NULL AND recipient_phone<>'' AND recipient_phone<>(SELECT phone FROM contacts WHERE id=messages.contact_id)""")
             c.execute("UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND status IN ('queued','sending','unknown'))")
-            rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to
+            rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
                 AND ch.state='open' AND (m.campaign_id IS NULL OR ch.next_send_at<=?) AND ct.opted_out=0
@@ -713,7 +774,7 @@ class CrmStore:
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
-                if r["campaign_id"] and not r["hour_from"] <= local.hour < r["hour_to"]:
+                if r["campaign_id"] and (local.weekday() not in json.loads(r["weekdays"]) or not r["hour_from"]*60+r["minute_from"] <= local.hour*60+local.minute < r["hour_to"]*60+r["minute_to"]):
                     continue
                 if r["campaign_id"]:
                     used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
@@ -738,6 +799,10 @@ class CrmStore:
                     WHERE r.message_id=? AND m.campaign_id IS NULL""", (item["id"],)).fetchone()
                 if updated.rowcount and reply and reply["source_channel_id"]:
                     self.resolve_conversation(c, reply["source_channel_id"], reply["contact_id"], reply["inbound_cursor"], "replied", reply["user_id"])
+                if updated.rowcount and item["campaign_id"]:
+                    campaign = self.row(c, "campaigns", item["campaign_id"])
+                    if campaign["tag"]:
+                        c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
 
     def receive(self, instance, data, event):
         now = time.time()
@@ -771,7 +836,7 @@ class CrmStore:
             normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().strip().upper()
             if normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"}:
                 c.execute("UPDATE contacts SET opted_out=1 WHERE id=?", (contact["id"],))
-                c.execute("UPDATE messages SET status='skipped' WHERE contact_id=? AND status='queued'", (contact["id"],))
+                c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE contact_id=? AND status='queued'", (contact["id"],))
             existing = c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchone()
             first = c.execute("SELECT s.id,s.pipeline_id FROM stages s JOIN pipelines p ON p.id=s.pipeline_id WHERE p.doctor_id=? AND s.kind='open' ORDER BY p.name,s.position LIMIT 1", (ch["doctor_id"],)).fetchone()
             if not existing and first:

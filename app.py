@@ -7351,6 +7351,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if self.handle_session_post(parsed.path):
             return
+        if parsed.path.startswith("/api/crm-voice-webhook/"):
+            from crm_voice_api import webhook as voice_webhook
+            return voice_webhook(self, parsed)
         if parsed.path == "/api/crm-webhook":
             from crm_api import webhook
             return webhook(self)
@@ -7648,6 +7651,8 @@ if __name__ == "__main__":
             apply_kommo_reset_if_needed()
     thread = threading.Thread(target=background_sync, daemon=True)
     thread.start()
+    from crm_voice import run_archive
+    threading.Thread(target=run_archive, args=(auth_store, threading.Event()), daemon=True).start()
     from crm_gateway import sends_enabled
     if sends_enabled():
         from crm_worker import run as run_crm_worker

@@ -1,6 +1,6 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes,voice}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map();
   const $=id=>root?.querySelector(`#${id}`);
@@ -29,6 +29,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.dataset.commercial){const l=leadFor();if(l)profile(l.id,b.dataset.commercial);}
       if(b.id==="olderMessages")refreshThread(true);
       if(b.id==="closeConversation")closeConversation();
+      if(b.id==="voiceCall"){const l=leadFor();if(l)voice.open(l);}
     };
     refreshList();if(selected)select(selected);icons();
   }
@@ -71,6 +72,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact");
     $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button><span class="contactAvatar">${esc(initials(l?.name || "Cliente"))}</span><div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><form id="replyForm"><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
     $("chatPane").querySelector(".chatHeader").insertAdjacentHTML("afterend",`<div class="conversationActions"><span id="conversationStatus" role="status">Carregando…</span><button id="closeConversation" title="Fechar conversa sem responder" disabled>${icon("check-check")} Fechar conversa</button></div>`);
+    if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     drawSenderOptions();
     $("replyChannel").onchange=()=>{replyChannel=$("replyChannel").value;chatError();syncSend();};
     $("replyBody").oninput=()=>{drafts.set(key(selected),{body:$("replyBody").value,requests:{}});syncSend();};
@@ -94,6 +96,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     panel.hidden=false;
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
     if(l)panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);
+    if(l){const calls=document.createElement("button");calls.dataset.commercial="calls";calls.innerHTML=`${icon("phone-call")} Ligações e gravações`;panel.append(calls);}
     if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
     if(l){panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",customerValuePanel(l.customer_value));$("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${customerValueBadge(l.customer_value)}</span>`);const booking=document.createElement("div");booking.className="contactAppointment";booking.innerHTML=appointmentBadge(l.appointment);panel.querySelector("#openProfile").before(booking);const shortcuts=document.createElement("div");shortcuts.className="commercialShortcuts";shortcuts.innerHTML=`<button data-commercial="sales">${icon("shopping-bag")} Vendas fechadas</button><button data-commercial="quotes">${icon("file-clock")} Orçamentos pendentes</button><button data-commercial="appointments">${icon("calendar-days")} Agendamentos</button>`;panel.append(shortcuts);}
     if(l){

@@ -31,6 +31,7 @@ if "--background" in sys.argv:
 data_dir = Path(tempfile.mkdtemp(prefix="doc4docs-crm-preview-"))
 os.environ["DATA_DIR"] = str(data_dir)
 os.environ["CRM_SEND_ENABLED"] = "0"
+os.environ["CRM_VOICE_ENABLED"] = "0"
 for key in ("CRM_EVOLUTION_URL", "CRM_EVOLUTION_KEY", "CRM_WEBHOOK_SECRET", "CRM_WEBHOOK_URL"):
     os.environ.pop(key, None)
 import app
@@ -139,6 +140,30 @@ for n, doctor in enumerate(store.listing()["doctors"]):
         if i==1:
             store.receive(channels[cid]["instance"],{"key":{"id":f"preview-follow-{n}","remoteJid":lead["phone"]+"@s.whatsapp.net"},
                 "pushName":lead["name"],"message":{"conversation":"Tenho disponibilidade a partir das 15h."}},"messages.upsert")
+
+if "--communications-fixture" in sys.argv:
+    from crm_voice import VoiceService
+    voice = VoiceService(store)
+    now=time.time()
+    for doc in store.listing()["doctors"]:
+        leads=store.listing(doc["id"])["leads"]
+        l=next(l for l in leads if l["name"]=="Ana Exemplo")
+        key=secrets.token_hex(16)
+        with store.db() as c:
+            c.execute("""INSERT INTO voice_calls(id,request_id,lead_id,contact_id,doctor_id,patient_uuid,customer_name,
+                destination,line_id,caller_number,line_name,actor_id,actor_name,account_sid,status,created_at,updated_at,
+                answered_at,ended_at,duration,consent_at,notice,recording_status,recording_duration,note,outcome,max_seconds)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(key,key,l["id"],l["contact_id"],doc["id"],l["experts_uuid"],l["name"],"+"+l["phone"],"synthetic-line","+5500000000000","Atendimento","preview","Equipe Vielle","", "completed",now-900,now-600,now-898,now-600,298,now-898,"Aviso sintetico", "queued",298,"Retorno combinado para a proxima semana.","return",1200))
+        for index,label in enumerate(("Retornos de outubro","Avaliações agendadas","Relacionamento")):
+            key=store.campaign({"doctor_id":doc["id"],"channel_id":store.listing(doc["id"])["channels"][0]["id"],
+                "name":label,"body":"Olá, {nome}. Podemos conversar sobre seu retorno?","lead_ids":[x["id"] for x in leads],"weekdays":[0,1,2,3,4]},"Equipe Vielle","preview")
+            with store.db() as c:
+                if index==0:
+                    c.execute("UPDATE campaigns SET status='paused' WHERE id=?",(key,))
+                    c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=? AND contact_id=?",(now-600,now-600,key,l["contact_id"]))
+                elif index==1:
+                    c.execute("UPDATE campaigns SET status='done' WHERE id=?",(key,))
+                    c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=?",(now-86400,now-86400,key))
 
 
 class Preview(app.Handler):

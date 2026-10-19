@@ -14,12 +14,15 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
         return False
     try:
         with store.db() as c:
-            current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,ch.state FROM messages m
+            current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,ct.phone,ct.experts_status,ch.state FROM messages m
                 LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN contacts ct ON ct.id=m.contact_id
                 JOIN channels ch ON ch.id=m.channel_id WHERE m.id=?""", (item["id"],)).fetchone()
             if current["status"] != "running" or current["opted_out"] or current["state"] != "open":
                 status = "skipped" if current["opted_out"] else "cancelled" if current["status"] == "cancelled" else "queued"
                 c.execute("UPDATE messages SET status=? WHERE id=?", (status, item["id"]))
+                return True
+            if item["campaign_id"] and (current["experts_status"] == "review" or current["phone"] != item["phone"]):
+                c.execute("UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato' WHERE id=?", (item["id"],))
                 return True
         store.finish(item, gateway.send(item))
     except Exception:
@@ -33,7 +36,7 @@ def run(auth, stop):
     while not stop.wait(2):
         if sends_enabled():
             store.heartbeat()
-            tick(store, gateway, allow_campaigns=campaigns_enabled())
+            tick(store, gateway, allow_campaigns=campaigns_enabled() or store.campaigns_allowed())
 
 
 if __name__ == "__main__":

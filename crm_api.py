@@ -54,15 +54,25 @@ def handle_request(handler, parsed):
     store = store_for(handler.server.auth_store)
     action = parsed.path.removeprefix("/api/crm").strip("/")
     try:
+        if action.startswith("voice/"):
+            from crm_voice_api import handle_request as handle_voice
+            return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
             filters = json.loads(query["filters"][0]) if action in {"", "inbox"} and "filters" in query else {}
             if not action:
                 return handler.auth_json({"ok": True, **store.listing(doctor, filters), "gateway_configured": EvolutionGateway().configured,
                                           "sends_enabled": sends_enabled() and store.worker_online(),
-                                          "campaigns_enabled": campaigns_enabled() and store.worker_online()})
+                                          "campaigns_enabled": sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online(),
+                                          "can_enable_campaigns": sends_enabled() and store.worker_online()})
             if action == "lead":
                 return handler.auth_json({"ok": True, **store.detail(query.get("id", [""])[0], doctor)})
+            if action == "campaign-dashboard":
+                from crm_campaigns import dashboard
+                return handler.auth_json({"ok": True, **dashboard(store, doctor, query)})
+            if action == "campaign-detail":
+                from crm_campaigns import detail
+                return handler.auth_json({"ok": True, **detail(store, doctor, query.get("id", [""])[0], query)})
             if action == "patient-refresh":
                 from crm_patient_refresh import status
                 job = status(store)
@@ -145,8 +155,18 @@ def handle_request(handler, parsed):
             result["id"] = store.reply(p, handler.current_user["id"], sends_enabled() and store.worker_online(), sender_name=actor)
         elif action == "campaign":
             result["id"] = store.campaign(p, actor, handler.current_user["id"])
+        elif action == "campaign-preview":
+            from crm_campaigns import audience
+            result.update(audience(store, p, handler.current_user))
+        elif action == "campaign-create":
+            from crm_campaigns import create
+            result["id"] = create(store, p, handler.current_user)
+        elif action == "campaign-enable":
+            if p.get("confirm") is not True or not sends_enabled() or not store.worker_online():
+                raise ValueError("Confirme a ativacao com o WhatsApp conectado e o servidor de envios disponivel.")
+            store.enable_campaigns()
         elif action == "campaign-status":
-            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), campaigns_enabled() and store.worker_online())
+            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online())
         else:
             raise LookupError()
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),
@@ -161,5 +181,7 @@ def handle_request(handler, parsed):
     except LookupError:
         return handler.auth_json({"ok": False, "error": "Registro nao encontrado."}, 404)
     except Exception:
+        if action.startswith("voice/"):
+            return handler.auth_json({"ok": False, "error": "Telefonia temporariamente indisponivel. Confira o historico antes de tentar novamente."}, 503)
         logging.exception("CRM operation failed")
         return handler.auth_json({"ok": False, "error": "Nao foi possivel concluir a operacao."}, 503)

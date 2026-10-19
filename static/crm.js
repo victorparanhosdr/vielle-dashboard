@@ -186,11 +186,8 @@
       return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${items.length}</span></div><small title="Orçamentos pendentes · Abertos e vencidos · Clínica Experts${quotes.pending?` · Parcial: ${quotes.pending} cadastro(s) a conferir`:""}">${exactMoney(quotes.cents)}${quotes.pending?"*":""}<b>${String(index+1).padStart(2,"0")}</b></small></div>${items.map(leadCard).join("") || `<div class="emptyColumn">${icon(s.kind==="won"?"flag":"circle-dashed")}<span>Nenhuma oportunidade</span></div>`}</section>`;
     }).join("")}</div><aside class="salesRadar"><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${overdue.length}</div><span>próximos passos<br>vencidos</span></div><p>${stale.length} oportunidades sem atualização há 7 dias.</p></div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(known.length,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${customers.length-known.length} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
   }
-  function campaigns() {
-    return state.data.campaigns.map(c=>`<article class="record"><div class="recordMain"><span class="recordIcon">${icon("megaphone")}</span><div><h3>${esc(c.name)} ${pill(c.status)}</h3><p>${esc(state.data.channels.find(ch=>ch.id===c.channel_id)?.name)} · Intervalo ${c.interval_seconds}s · ${c.hour_from}h–${c.hour_to}h · São Paulo</p><div class="recordMetrics"><span><strong>${c.counts.sent||0}</strong> aceitas pelo conector</span><span><strong>${c.counts.queued||0}</strong> na fila</span><span class="uncertain"><strong>${c.counts.unknown||0}</strong> sem confirmação</span><span><strong>${c.counts.skipped||0}</strong> não enviadas</span></div>${c.last_error?`<p class="inlineWarning">${esc(c.last_error)}</p>`:""}</div></div><div class="commands">${["draft","paused"].includes(c.status)?`<button data-campaign="${c.id}" data-action="start" ${state.data.campaigns_enabled?"":"disabled"} title="${state.data.campaigns_enabled?"Revisar e iniciar":"Disparos de campanha desativados"}">${icon("play")} Iniciar</button>`:""}${c.status==="running"?`<button data-campaign="${c.id}" data-action="pause">${icon("pause")} Pausar</button>`:""}${!["cancelled","done"].includes(c.status)?`<button data-campaign="${c.id}" data-action="cancel">${icon("square")} Encerrar</button>`:""}</div></article>`).join("") || '<p class="emptyState">Nenhuma campanha para este doutor.</p>';
-  }
   function channels() {
-    return `${!state.data.gateway_configured?'<p class="connectionNote">Servidor WhatsApp ainda não configurado. Os números podem ser cadastrados, mas não serão conectados nem enviarão mensagens.</p>':""}${state.data.channels.map(c=>`<article class="record"><div class="recordMain"><span class="recordIcon">${icon("smartphone")}</span><div><h3>${esc(c.name)} ${pill(c.state)}</h3><p>+${esc(c.phone)} · ${esc(doctor()?.name)}</p><div class="recordMetrics"><span>Atendimento manual <strong>sem cota diária</strong></span><span>${state.data.campaigns_enabled?`Campanhas <strong>${c.daily_limit}</strong>/dia`:"Campanhas desativadas"}</span></div></div></div><div class="commands"><button data-connect="${c.id}" ${state.data.gateway_configured?"":"disabled"}>${icon("qr-code")} Conectar</button><button data-channel-state="${c.id}" class="icon-button" title="Conferir conexão" aria-label="Conferir conexão ${esc(c.name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button></div></article>`).join("") || '<p class="emptyState">Nenhum número cadastrado para este doutor.</p>'}<p class="inlineWarning">Conexão não oficial. Intervalos e limites não garantem proteção contra bloqueio.</p>`;
+    return `<article class="record" id="voiceSettings"><p class="connectionNote">Carregando telefonia…</p></article>${!state.data.gateway_configured?'<p class="connectionNote">Servidor WhatsApp ainda não configurado. Os números podem ser cadastrados, mas não serão conectados nem enviarão mensagens.</p>':""}${state.data.channels.map(c=>`<article class="record"><div class="recordMain"><span class="recordIcon">${icon("smartphone")}</span><div><h3>${esc(c.name)} ${pill(c.state)}</h3><p>+${esc(c.phone)} · ${esc(doctor()?.name)}</p><div class="recordMetrics"><span>Atendimento manual <strong>sem cota diária</strong></span><span>${state.data.campaigns_enabled?`Campanhas <strong>${c.daily_limit}</strong>/dia`:"Campanhas desativadas"}</span></div></div></div><div class="commands"><button data-connect="${c.id}" ${state.data.gateway_configured?"":"disabled"}>${icon("qr-code")} Conectar</button><button data-channel-state="${c.id}" class="icon-button" title="Conferir conexão" aria-label="Conferir conexão ${esc(c.name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button></div></article>`).join("") || '<p class="emptyState">Nenhum número cadastrado para este doutor.</p>'}<p class="inlineWarning">Conexão não oficial. Intervalos e limites não garantem proteção contra bloqueio.</p>`;
   }
   function render() {
     if(!state.data) return;
@@ -201,9 +198,11 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=(state.data.matched_leads>state.data.leads.length?`<p class="inlineWarning">Exibindo ${state.data.leads.length} de ${state.data.matched_leads} oportunidades compatíveis com os filtros. Refine a busca.</p>`:"")+(state.mode==="board"?board():state.mode==="campaigns"?campaigns():channels());
+    $("crmView").innerHTML=(state.mode==="board" && state.data.matched_leads>state.data.leads.length?`<p class="inlineWarning">Exibindo ${state.data.leads.length} de ${state.data.matched_leads} oportunidades compatíveis com os filtros. Refine a busca.</p>`:"")+(state.mode==="board"?board():state.mode==="campaigns"?"":channels());
     const newBoard=$("crmView").querySelector(".crmBoard");if(newBoard && newBoard.dataset.pipeline===oldPipeline)newBoard.scrollLeft=scrollX;
+    if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
     }
+    if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
     document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===state.mode)));
     icons();
   }
@@ -395,13 +394,15 @@
       const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=appointmentBadge(l.appointment);$("leadEdit").before(appointment);
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
       const tabs=document.createElement("div");tabs.className="profileTabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Ficha do cliente");
-      tabs.innerHTML=[["record","notebook-pen","Ficha"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"]].map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
+      tabs.innerHTML=[["record","notebook-pen","Ficha"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"],["calls","phone-call","Ligações"]].map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
       const commerce=document.createElement("section");commerce.id="profileCommerce";commerce.hidden=true;
       const agenda=document.createElement("section");agenda.id="profileAppointments";agenda.hidden=true;
-      $("modalBody").prepend(tabs);$("modalBody").append(commerce,agenda);
+      const calls=document.createElement("section");calls.id="profileCalls";calls.hidden=true;
+      $("modalBody").prepend(tabs);$("modalBody").append(commerce,agenda,calls);
       const history=commercialView(commerce,l);
       const bookings=appointmentsView(agenda,l);
-      const showTab=tab=>{record.hidden=tab!=="record";commerce.hidden=!["sales","quotes"].includes(tab);agenda.hidden=tab!=="appointments";tabs.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.profileTab===tab)));if(!commerce.hidden)history.show(tab);else history.cancel();if(!agenda.hidden)bookings.show();else bookings.cancel();};
+      const callHistory=voice.history(calls,l);
+      const showTab=tab=>{record.hidden=tab!=="record";commerce.hidden=!["sales","quotes"].includes(tab);agenda.hidden=tab!=="appointments";calls.hidden=tab!=="calls";tabs.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.profileTab===tab)));if(!commerce.hidden)history.show(tab);else history.cancel();if(!agenda.hidden)bookings.show();else bookings.cancel();if(!calls.hidden)callHistory.show();else callHistory.cancel();};
       tabs.onclick=e=>{const b=e.target.closest("[data-profile-tab]");if(b)showTab(b.dataset.profileTab);};showTab(initialTab);icons();
       wireForm(async f=>{await moveLead(l,f.get("stage_id"),{title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action")});});
       $("activityForm").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;const f=new FormData(e.currentTarget);try{await api("activity",{id:l.id,doctor_id:state.doctor,kind:f.get("kind"),body:f.get("body")});await load();await profile(l.id);}catch(err){error(err.message);b.disabled=false;}};
@@ -413,17 +414,7 @@
     modal(kind==="consent"?"Registrar autorização":"Descadastrar contato",`<form><p class="connectionNote">${esc(l.name)} · +${esc(l.phone)}${kind==="optout"?". O descadastro impede campanhas de todos os doutores da clínica.":""}</p><label>${kind==="consent"?"Origem e data da autorização":"Motivo"}<textarea name="body" maxlength="${kind==="consent"?300:2000}" required></textarea></label>${actions(kind==="consent"?"Registrar autorização":"Confirmar descadastro")}</form>`);
     wireForm(f=>api("activity",{id:l.id,doctor_id:state.doctor,kind,body:f.get("body")}));
   }
-  function campaignForm() {
-    const eligible=state.data.leads.filter(l=>l.consent_at && !l.opted_out);
-    modal("Criar campanha",`<form><label>Nome da campanha<input name="name" required maxlength="160"></label><label>Número remetente<select name="channel_id" required>${option("","Selecione o número")}${state.data.channels.map(c=>option(c.id,`${c.name} · +${c.phone}`)).join("")}</select></label><label>Mensagem<textarea name="body" maxlength="3000" id="campaignBody" required placeholder="Olá, {nome}! Aqui é a equipe do(a) {doutor}."></textarea></label><div class="messagePreview" id="messagePreview"></div><div class="formGrid"><label>Intervalo entre envios (segundos)<input type="number" name="interval_seconds" value="60" min="30" max="3600" required></label><label>Agendar início (São Paulo)<input type="datetime-local" name="start_at"></label><label>A partir de (hora)<input type="number" name="hour_from" value="9" min="8" max="19" required></label><label>Até (hora)<input type="number" name="hour_to" value="18" min="9" max="20" required></label></div><label>Destinatários autorizados (até 100 oportunidades)</label><div class="recipients">${eligible.map(l=>`<label class="check"><input type="checkbox" name="lead_ids" value="${esc(l.id)}">${esc(l.name)} · ${esc(state.data.pipelines.find(p=>p.id===l.pipeline_id)?.name)}</label>`).join("") || '<p class="connectionNote">Nenhum cliente com autorização registrada.</p>'}</div><p class="inlineWarning">O intervalo organiza a fila, mas não impede bloqueio do WhatsApp. O descadastro será incluído na mensagem. Criar a campanha salva um rascunho e não envia mensagens.</p>${actions("Salvar rascunho")}</form>`);
-    $("campaignBody").oninput=()=>{const body=$("campaignBody").value.replaceAll("{nome}","Maria").replaceAll("{doutor}",doctor().name)+"\n\nPara não receber mais mensagens, responda SAIR.";$("messagePreview").innerHTML=`<strong>${esc(state.session?.user.nome || "")}</strong>\n\n${esc(body)}`;};$("campaignBody").oninput();
-    wireForm(f=>api("campaign",{doctor_id:state.doctor,name:f.get("name"),body:f.get("body"),channel_id:f.get("channel_id"),interval_seconds:Number(f.get("interval_seconds")),start_at:f.get("start_at"),hour_from:Number(f.get("hour_from")),hour_to:Number(f.get("hour_to")),lead_ids:f.getAll("lead_ids")}));
-  }
-  function campaignAction(id,action) {
-    const c=state.data.campaigns.find(c=>c.id===id);
-    modal(action==="start"?"Revisar campanha":action==="pause"?"Pausar campanha":"Encerrar campanha",`<form><h3>${esc(c.name)}</h3><p>${c.counts.queued||0} destinatários na fila · ${c.interval_seconds}s de intervalo · ${c.hour_from}h–${c.hour_to}h</p><div class="messagePreview">${esc(c.body)}</div><p class="inlineWarning">${action==="start"?"Mensagens serão enviadas pelo número deste doutor. A conexão não oficial pode sofrer bloqueio. Confirme o remetente, a autorização e o conteúdo antes de iniciar.":"Novos envios serão interrompidos. Uma mensagem já em envio pode terminar."}</p>${actions(action==="start"?"Confirmar início":action==="pause"?"Confirmar pausa":"Encerrar fila")}</form>`);
-    wireForm(()=>api("campaign-status",{id,doctor_id:state.doctor,action}));
-  }
+  function campaignForm() {return campaignCenter.create();}
   async function connect(id) {
     modal("Conectar WhatsApp",'<p class="connectionNote">Preparando conexão...</p>');
     try {
@@ -433,13 +424,16 @@
       $("verifyConnection").onclick=async()=>{try{const r=await api("channel-state",{id,doctor_id:state.doctor});if(r.state==="open"){$("crmDialog").close();await load();}else error("O número ainda não está conectado.");}catch(e){error(e.message);}};
     } catch(e){error(e.message);}
   }
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes});
+  const voice=window.createCrmVoice({api,esc,icon,icons});
+  const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,refreshPatient,patientRefreshMessage,patientRefreshes,voice});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
     if(state.mode!=="inbox"){state.mode="inbox";render();load();}
     $("crmView").scrollIntoView({block:"start"});
   });
   $("closeDialog").onclick=()=>$("crmDialog").close();
+  $("crmDialog").addEventListener("close",()=>$("crmDialog").querySelectorAll("audio").forEach(audio=>audio.pause()));
   $("addDoctor").onclick=doctorForm;$("newLead").onclick=leadForm;$("reload").onclick=load;
   $("bootstrap").onclick=async e=>{e.currentTarget.disabled=true;try{await api("bootstrap",{});await load();}catch(err){notice(err.message);}finally{e.target.disabled=false;}};
   $("doctor").onchange=()=>{inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
@@ -476,7 +470,6 @@
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.dataset.lead) return detail(b.dataset.lead);
-    if(b.dataset.campaign) return campaignAction(b.dataset.campaign,b.dataset.action);
     if(b.dataset.connect) return connect(b.dataset.connect);
     if(b.dataset.channelState){b.disabled=true;try{await api("channel-state",{id:b.dataset.channelState,doctor_id:state.doctor});await load();}catch(err){notice(err.message);b.disabled=false;}}
   };
