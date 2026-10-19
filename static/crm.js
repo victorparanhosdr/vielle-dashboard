@@ -237,7 +237,7 @@
     wireForm(f=>api("doctor",{name:f.get("name")}));
   }
   function channelForm() {
-    modal("Adicionar número",`<form><label>Identificação<input name="name" required maxlength="160" placeholder="Comercial / recepção"></label><div class="formGrid"><label>WhatsApp com código do país<input name="phone" inputmode="tel" required placeholder="5533999999999"></label><label>Limite diário de campanhas<input name="daily_limit" type="number" min="1" max="100" value="50" required></label></div><p class="connectionNote">${esc(doctor().name)}</p><p class="inlineWarning">O cadastro não conecta o WhatsApp e não inicia disparos. Nenhum limite garante evitar bloqueio.</p>${actions("Cadastrar número")}</form>`);
+    modal("Adicionar número",`<form><label>Identificação<input name="name" required maxlength="160" placeholder="Comercial / recepção"></label><div class="formGrid"><label>WhatsApp com código do país<input name="phone" inputmode="tel" required placeholder="5533999999999"></label><label>Limite diário de campanhas<input name="daily_limit" type="number" min="1" max="200" value="200" required></label></div><p class="connectionNote">${esc(doctor().name)}</p><p class="inlineWarning">O cadastro não conecta o WhatsApp e não inicia disparos. Nenhum limite garante evitar bloqueio.</p>${actions("Cadastrar número")}</form>`);
     wireForm(f=>api("channel",{doctor_id:state.doctor,name:f.get("name"),phone:f.get("phone"),daily_limit:Number(f.get("daily_limit"))}));
   }
   function pipelineForm(edit=false) {

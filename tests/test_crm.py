@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import os
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 from urllib.error import HTTPError
@@ -51,6 +52,42 @@ class CrmTests(unittest.TestCase):
         self.assertEqual(len(self.store.listing(self.a)["pipelines"]), 2)
         self.store.channel({"doctor_id": self.a, "name": "Recepcao", "phone": "5500000000003"})
         self.assertEqual(len(self.store.listing(self.a)["channels"]), 2)
+
+    def test_new_numbers_default_to_200_campaign_messages(self):
+        other = self.store.channel({"doctor_id": self.a, "name": "Recepcao", "phone": "5500000000003"})
+        with self.store.db() as db:
+            self.assertEqual(self.store.row(db, "channels", other)["daily_limit"], 200)
+            default = next(r[4] for r in db.execute("PRAGMA table_info(channels)") if r[1] == "daily_limit")
+            self.assertEqual(default, "200")
+        self.assertTrue(self.store.channel({"doctor_id": self.a, "name": "Novo", "phone": "5500000000004", "daily_limit": 200}))
+        with self.assertRaises(ValueError):
+            self.store.channel({"doctor_id": self.a, "name": "Acima", "phone": "5500000000005", "daily_limit": 201})
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.channel({"doctor_id": self.b, "name": "Duplicado", "phone": "+55 (00) 00000-0001"})
+
+    def test_limit_migration_runs_once_without_resetting_queue_or_suppression(self):
+        key = self.campaign()
+        self.enable(key)
+        item = self.store.claim(self.now)
+        self.store.finish(item, "before-upgrade")
+        blocked = self.lead("5500000000003")
+        self.store.activity({"id": blocked, "doctor_id": self.a, "kind": "optout", "body": "SAIR"}, "Equipe")
+        with self.store.db() as db:
+            db.execute("DELETE FROM runtime WHERE key='campaign_daily_limit_200_v1'")
+            db.execute("UPDATE channels SET daily_limit=10 WHERE id=?", (self.channel,))
+            before = [tuple(r) for r in db.execute("SELECT id,status,claimed_at,sent_at FROM messages ORDER BY id")]
+            next_send = self.store.row(db, "channels", self.channel)["next_send_at"]
+        upgraded = CrmStore(Path(self.tmp.name))
+        with upgraded.db() as db:
+            self.assertEqual(self.store.row(db, "channels", self.channel)["daily_limit"], 200)
+            self.assertEqual(self.store.row(db, "channels", self.channel)["next_send_at"], next_send)
+            self.assertEqual(self.store.row(db, "campaigns", key)["status"], "running")
+            self.assertEqual([tuple(r) for r in db.execute("SELECT id,status,claimed_at,sent_at FROM messages ORDER BY id")], before)
+            self.assertEqual(db.execute("SELECT count(*) FROM contacts WHERE opted_out=1").fetchone()[0], 1)
+            db.execute("UPDATE channels SET daily_limit=50 WHERE id=?", (self.channel,))
+        reopened = CrmStore(Path(self.tmp.name))
+        with reopened.db() as db:
+            self.assertEqual(self.store.row(db, "channels", self.channel)["daily_limit"], 50)
 
     def test_wrong_doctor_and_wrong_stage_are_rejected(self):
         b = self.store.listing(self.b)["pipelines"][0]
@@ -151,6 +188,35 @@ class CrmTests(unittest.TestCase):
         with self.store.db() as db: db.execute("UPDATE channels SET daily_limit=1")
         item=self.store.claim(self.now);self.store.finish(item,"provider1")
         self.assertIsNone(self.store.claim(self.now+65))
+
+    def test_200_limit_shared_by_campaigns_independent_per_number_and_resets_next_day(self):
+        leads = [self.lead(f"5500000{i:06d}") for i in range(100, 301)]
+        first = self.campaign(leads[:100])
+        second = self.campaign(leads[100:])
+        self.enable(first)
+        self.enable(second)
+        other_channel = self.store.channel({"doctor_id": self.a, "name": "Segundo numero", "phone": "5500000000003"})
+        third = self.campaign([self.lead("5500000000004")], channel_id=other_channel)
+        with self.store.db() as db:
+            db.execute("UPDATE channels SET state='open',daily_limit=200")
+        self.store.campaign_status(third, self.a, "start", True)
+        for i in range(200):
+            now = self.now + i * 60
+            item = self.store.claim(now)
+            self.assertIsNotNone(item)
+            self.assertEqual(item["channel_id"], self.channel)
+            with patch("crm_store.time.time", return_value=now):
+                self.store.finish(item, f"batch-{i}")
+        now = self.now + 200 * 60
+        item = self.store.claim(now)
+        self.assertIsNotNone(item)
+        self.assertEqual(item["channel_id"], other_channel)
+        with patch("crm_store.time.time", return_value=now):
+            self.store.finish(item, "other-number")
+        self.assertIsNone(self.store.claim(now + 60))
+        tomorrow = self.store.claim(self.now + 86400)
+        self.assertIsNotNone(tomorrow)
+        self.assertEqual(tomorrow["channel_id"], self.channel)
 
     def test_failures_pause_and_do_not_retry(self):
         key=self.campaign();self.enable(key)

@@ -69,6 +69,7 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - Envios desconhecidos pausam a campanha e nao sao reenviados automaticamente. Telefone alterado ou descadastro antes do envio retira o contato da fila. A pausa ou cancelamento nao pode recolher uma mensagem ja em envio.
 - O Master habilita campanhas na propria central. Essa ativacao pausa filas antigas e nao inicia campanhas; cada inicio ou retomada exige revisao e confirmacao na tela. Nao habilitar nem iniciar durante uma publicacao automatica.
 - O worker segue no servidor com navegador fechado. O limite diario de cada numero e respeitado e compartilhado entre suas campanhas. Atendimento manual nao consome essa cota.
+- Limite solicitado pelo Master em 19/10/2026: 200 mensagens de campanha por dia por numero WhatsApp, com virada do dia em America/Sao_Paulo. Numeros novos usam 200 por padrao (pode-se escolher uma cota menor). A migracao eleva uma unica vez as cotas antigas inferiores a 200, sem zerar o consumo, alterar horarios, ativar campanhas ou reabrir descadastros.
 - Nenhum intervalo ou limite garante evitar bloqueios numa integracao WhatsApp nao oficial. Nunca enviar mensagens nao solicitadas.
 
 ## Fontes

@@ -13,6 +13,7 @@ from crm_filters import appointment_active, appointment_ready, financial_ready, 
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
+CAMPAIGN_DAILY_LIMIT = 200
 
 
 def text(value, maximum=160, required=True):
@@ -74,7 +75,7 @@ class CrmStore:
                 position INTEGER NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('open','won','lost')));
             CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY,doctor_id TEXT NOT NULL REFERENCES doctors(id),name TEXT NOT NULL,
                 phone TEXT NOT NULL UNIQUE,instance TEXT NOT NULL UNIQUE,state TEXT NOT NULL DEFAULT 'disconnected',
-                next_send_at REAL NOT NULL DEFAULT 0,daily_limit INTEGER NOT NULL DEFAULT 50);
+                next_send_at REAL NOT NULL DEFAULT 0,daily_limit INTEGER NOT NULL DEFAULT 200);
             CREATE TABLE IF NOT EXISTS contacts(id TEXT PRIMARY KEY,name TEXT NOT NULL,phone TEXT NOT NULL UNIQUE,
                 opted_out INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS leads(id TEXT PRIMARY KEY,doctor_id TEXT NOT NULL REFERENCES doctors(id),
@@ -154,6 +155,11 @@ class CrmStore:
                 CREATE TABLE IF NOT EXISTS contact_phones(phone TEXT PRIMARY KEY,contact_id TEXT NOT NULL REFERENCES contacts(id));
                 INSERT OR IGNORE INTO contact_phones SELECT phone,id FROM contacts;
             """)
+            # Raise existing numbers once, without resetting usage or campaign state.
+            changed = c.execute("INSERT OR IGNORE INTO runtime(key,value) VALUES('campaign_daily_limit_200_v1',1)")
+            if changed.rowcount:
+                c.execute("UPDATE channels SET daily_limit=? WHERE daily_limit<?",
+                          (CAMPAIGN_DAILY_LIMIT, CAMPAIGN_DAILY_LIMIT))
 
     def contact(self, c, number, name):
         match = self.patient_lookup(number)
@@ -271,7 +277,7 @@ class CrmStore:
             self.row(c, "doctors", p.get("doctor_id"))
             c.execute("INSERT INTO channels(id,doctor_id,name,phone,instance,daily_limit) VALUES(?,?,?,?,?,?)",
                       (key, p["doctor_id"], text(p.get("name")), phone(p.get("phone")), "doc4docs-vielle-" + key,
-                       integer(p.get("daily_limit", 50), 1, 100)))
+                       integer(p.get("daily_limit", CAMPAIGN_DAILY_LIMIT), 1, CAMPAIGN_DAILY_LIMIT)))
         return key
 
     def lead(self, p, actor):
