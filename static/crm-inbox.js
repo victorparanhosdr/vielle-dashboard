@@ -4,6 +4,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
+  const mobileScreen=matchMedia("(max-width:760px)");
+  mobileScreen.addEventListener("change",()=>{if($("chatPane"))$("chatPane").inert=mobileScreen.matches && $("inboxWorkspace").classList.contains("showContact");});
   let opportunities=[],contextSeq=0;
   let clockOffset=0;
   let scope="",catalog={channels:[],pipelines:[]};
@@ -57,6 +59,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
     drawChannelFilter();
+    $("inboxNewContact").insertAdjacentHTML("beforebegin",`<button id="mobileInboxFilters" type="button" class="icon-button crmMobileOnly" aria-label="Filtros de atendimento" title="Filtros de atendimento" aria-expanded="false">${icon("sliders-horizontal")}<b hidden></b></button>`);
     $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
     $("inboxChannel").parentElement.insertAdjacentHTML("beforebegin",`<label class="channelFilter">Atividade<select id="inboxBusiness"><option value="all">Todas as atividades</option><option value="clinic">Clínica</option><option value="course">Cursos</option></select></label>`);
     $("inboxBusiness").value=state.business || "all";
@@ -69,8 +72,11 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const b=event.target.closest("button");if(!b)return;
       if(b.dataset.inboxFilter){filter=b.dataset.inboxFilter;root.querySelectorAll("[data-inbox-filter]").forEach(n=>n.setAttribute("aria-pressed",String(n.dataset.inboxFilter===filter)));refreshList();}
       if(b.dataset.thread!==undefined){const item=list[Number(b.dataset.thread)];if(item)select(item);}
-      if(b.id==="chatBack"){$("inboxWorkspace").classList.remove("chatActive");}
-      if(b.id==="toggleContact"){$("inboxWorkspace").classList.toggle("showContact");b.setAttribute("aria-expanded",String($("inboxWorkspace").classList.contains("showContact")));}
+      if(b.id==="mobileInboxFilters"){const open=$("inboxWorkspace").classList.toggle("mobileFiltersOpen");b.setAttribute("aria-expanded",String(open));}
+      if(b.id==="chatBack"){$("inboxWorkspace").classList.remove("chatActive","showContact");$("toggleContact")?.setAttribute("aria-expanded","false");$("mobileChatMore")?.removeAttribute("open");root.querySelector(".conversationRow.active")?.focus({preventScroll:true});}
+      if(b.id==="toggleContact"){const open=$("inboxWorkspace").classList.toggle("showContact");b.setAttribute("aria-expanded",String(open));$("chatPane").inert=mobileScreen.matches && open;if(mobileScreen.matches)(open?root.querySelector(".mobileContactClose"):b)?.focus();}
+      if(b.dataset.mobileChat){$("mobileChatMore").open=false;$(b.dataset.mobileChat)?.click();}
+      if(b.id==="mobileReplyOptions"){const open=$("chatPane").classList.toggle("replySettingsOpen");b.setAttribute("aria-expanded",String(open));}
       if(b.id==="openProfile"){const l=leadFor();if(l)profile(l.id,"record",profileContext());}
       if(b.dataset.commercial){const l=leadFor();if(l)profile(l.id,b.dataset.commercial,profileContext());}
       if(b.id==="olderMessages")refreshThread(true);
@@ -104,10 +110,13 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(!catalog.channels.some(c=>c.id===channel))channel="";
     if($("inboxChannel").innerHTML!==options)$("inboxChannel").innerHTML=options;
     $("inboxChannel").value=channel;
+    const count=Number(Boolean(channel))+Number(state.business && state.business!=="all"),badge=$("mobileInboxFilters")?.querySelector("b");
+    if(badge){badge.textContent=count;badge.hidden=!count;}
   }
   function clearChat(){
     media.destroy();chatSearch.destroy();templates.destroy();selected=null;selectedRecord=null;threadData=null;messages=[];threadSeq++;openSeq++;contextSeq++;
     $("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Selecione um cliente</h2></div>';$("contactPanel").replaceChildren();$("contactPanel").hidden=true;$("inboxWorkspace").classList.remove("chatActive","showContact");
+    $("chatPane").inert=false;
   }
   function conversationOrigin(c){
     const name=c.channel_name || "WhatsApp",doctor=c.doctor_name || "";
@@ -141,19 +150,24 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     selectedRecord=item._lead || state.data.leads.find(l=>l.id===item.lead_id) || (previous?.id===item.lead_id?previous:null);
     replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;
     const l=leadFor(), ch=channels().find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
-    $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact");
+    $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact","mobileFiltersOpen");$("mobileInboxFilters")?.setAttribute("aria-expanded","false");$("chatPane").inert=false;
     $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button>${avatars.markup(l?.name || "Cliente",selected.contact_id,owner,selected.channel_id)}<div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleChatSearch" class="icon-button" aria-label="Buscar nesta conversa" title="Buscar nesta conversa" aria-expanded="false" aria-controls="chatSearch">${icon("search")}</button><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div id="chatSearch" class="chatSearch" role="search" aria-label="Busca no histórico desta conversa" hidden></div><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><div id="mediaPreview" class="mediaPreview" hidden></div><form id="replyForm"><div id="mediaTools"></div><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
     $("chatPane").querySelector(".chatHeader").insertAdjacentHTML("afterend",`<div class="conversationActions"><span id="conversationStatus" role="status">Carregando…</span><button id="syncMessages" class="icon-button" title="Sincronizar mensagens do WhatsApp" aria-label="Sincronizar mensagens do WhatsApp" ${!state.data.gateway_configured || ch?.state!=="open"?"disabled":""}>${icon("refresh-cw")}</button><button id="closeConversation" title="Fechar conversa sem responder" disabled>${icon("check-check")} Fechar conversa</button></div>`);
+    $("toggleContact").insertAdjacentHTML("afterend",`<details id="mobileChatMore" class="crmMobileOnly mobileChatMore"><summary aria-label="Mais ações da conversa" title="Mais ações da conversa">${icon("ellipsis-vertical")}</summary><div class="mobileChatMenu"><button type="button" data-mobile-chat="toggleChatSearch">${icon("search")} Buscar na conversa</button><button type="button" data-mobile-chat="syncMessages">${icon("refresh-cw")} Sincronizar mensagens</button><button type="button" data-mobile-chat="closeConversation">${icon("check-check")} Fechar conversa</button></div></details>`);
+    $("toggleContact").insertAdjacentHTML("beforeend",`<span class="crmMobileOnly">${icon("contact-round")}</span>`);
+    $("mobileChatMore").ontoggle=()=>{if($("mobileChatMore")?.open)$("mobileChatMore").querySelectorAll("[data-mobile-chat]").forEach(button=>button.disabled=Boolean($(button.dataset.mobileChat)?.disabled));};
+    $("chatPane").querySelector(".replyOptions").insertAdjacentHTML("beforebegin",`<button type="button" id="mobileReplyOptions" class="crmMobileOnly" aria-expanded="false" aria-label="Número de resposta e modelos">${icon("smartphone")}<span></span>${icon("chevron-up")}</button>`);
     $("chatPane").querySelector(".chatIdentity").insertAdjacentHTML("beforeend",`<small class="chatDoctor">${esc(state.data.doctors.find(d=>d.id===owner)?.name || "")}</small>`);
     if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     chatSearch.mount($("chatSearch"),$("toggleChatSearch"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id});
     $("chatPane").querySelector(".replyOptions").insertAdjacentHTML("beforeend",'<div id="messageTemplateTools" class="messageTemplateTools"></div>');
     drawSenderOptions();
-    $("replyChannel").onchange=()=>{replyChannel=$("replyChannel").value;chatError();syncSend();};
+    $("replyChannel").onchange=()=>{replyChannel=$("replyChannel").value;drawSenderOptions();chatError();syncSend();};
     $("replyBody").oninput=()=>{drafts.set(key(selected),{...drafts.get(key(selected)),body:$("replyBody").value,requests:{}});syncSend();};
     templates.mount($("messageTemplateTools"),$("replyBody"));
     media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
+    if(mobileScreen.matches && draft?.body)$("replyBody").style.height=`${Math.min(112,$("replyBody").scrollHeight)}px`;
     drawInfo();drawList();loadOpportunities();refreshThread().then(()=>syncExternalMessages());icons();
     if(!selectedRecord && selected.lead_id){
       const signature=key(selected),doc=owner,id=selected.lead_id;
@@ -166,10 +180,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const senders=channels().filter(c=>!c.archived_at);
     if(!senders.some(c=>c.id===replyChannel))replyChannel=senders[0]?.id || "";
     $("replyChannel").innerHTML=senders.map(c=>`<option value="${esc(c.id)}" ${c.id===replyChannel?"selected":""}>${esc(c.name)} · +${esc(c.phone)}${c.id===selected.channel_id?" · conversa atual":""}${c.state!=="open"?" · desconectado":""}</option>`).join("") || '<option value="">Nenhum número ativo</option>';
+    $("mobileReplyOptions").querySelector("span").textContent=senders.find(c=>c.id===replyChannel)?.name || "Escolher número";
   }
   function drawInfo() {
     if(!root || !selected)return;
     const l=leadFor(), p=catalog.pipelines.find(p=>p.id===l?.pipeline_id), panel=$("contactPanel");
+    if(!$("inboxWorkspace").querySelector(".mobileContactClose"))panel.insertAdjacentHTML("beforebegin",`<h2 class="mobileContactTitle crmMobileOnly">Ficha do cliente</h2><button type="button" class="mobileContactClose crmMobileOnly icon-button" aria-label="Fechar ficha comercial" title="Fechar ficha comercial" data-mobile-chat="toggleContact">${icon("x")}</button>`);
     if(l && !$("voiceCall"))$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     $("chatPane").querySelector(".chatCustomerTier")?.remove();
     if(l?.course_key){drawCourseInfo(l,p,panel);return;}

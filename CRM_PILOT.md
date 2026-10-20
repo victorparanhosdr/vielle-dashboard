@@ -36,6 +36,22 @@ Evolution v2 service. Outbound sending is disabled by default.
 - The pilot listing is limited to 1,000 opportunities per doctor and 100 recent
   campaigns. Scale to paginated queries before expanding the pilot.
 
+## Mobile CRM Workspace
+
+At 760px and below, the desktop rail is replaced by bottom navigation for
+conversations, funnels, dashboard and a secondary-area sheet. Existing mode
+handlers, access scopes and unsaved-editor guards are reused. Opening a thread
+hides the application chrome and navigation, leaving a full-height chat. Contact
+details use a separate overlay; background chat controls become inert while it
+is open. Sender selection and templates remain available above the composer,
+while search, sync and close-conversation actions are in its contextual menu.
+
+The compact list retains unread/wait timers and connection/professional labels.
+Commercial details remain in the profile. Safe-area padding and the visual
+viewport keep navigation/composition within the usable mobile area. Pinch zoom
+does not resize the application frame. Desktop layout and sending logic are
+unchanged; no new delivery statuses or automatic sends are introduced.
+
 ## Contact Phone Editing and Removal
 
 The lead profile and attendance record have a validated country/area-code phone
