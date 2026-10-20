@@ -36,6 +36,24 @@ Evolution v2 service. Outbound sending is disabled by default.
 - The pilot listing is limited to 1,000 opportunities per doctor and 100 recent
   campaigns. Scale to paginated queries before expanding the pilot.
 
+## WhatsApp Connection Transfers
+
+In Numbers, the Master can transfer an existing channel to another professional
+and select an open destination funnel/stage for future new leads. A confirmation
+shows the channel history and pending-dispatch impact. The channel ID, provider
+instance, pairing state, phone and sending limits stay unchanged; no provider
+disconnect, reconnect or send is performed. Conversations and bound attachments
+follow the channel, while opportunities, consent, opt-outs and clinical/course
+records remain in place. Contacts are not copied.
+
+The transfer is transactional and revision-checked. In-flight or unconfirmed sends
+block it. Queued messages, including replies referencing the channel, are cancelled;
+associated campaigns and explicitly bound active bots are paused, related bot runs
+are cancelled, and pending channel bot events are consumed. Old-owner campaigns
+cannot restart on the moved channel. Unsent personal uploads stay with their owner.
+The previous/new routing, actor and impact are retained in `channel_transfers` and
+the authentication audit. Existing doctor/funnel/institute permissions still apply.
+
 ## Patient commercial history
 
 The client record includes closed sales and pending-quote tabs and shortcuts from

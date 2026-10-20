@@ -139,6 +139,15 @@
 .record .commands { flex-wrap:wrap;justify-content:end; }
 .recordMain { display:flex;gap:16px;min-width:0;flex:1; }.recordMain>div { min-width:0; }.recordIcon { display:grid;place-items:center;flex:none;width:40px;height:44px;border:1px solid #d8e4dd;background:linear-gradient(135deg,#fafdfe,#e8efeb);color:#648575;border-radius:7px; }.recordIcon svg { width:20px;height:20px;stroke-width:1.5; }.recordMetrics { display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:#708579;margin-top:16px; }.recordMetrics strong { color:#264e3a;font-weight:650;margin-right:4px; }.recordMetrics .uncertain strong { color:#9e6070; }
 .connectionNote { color:var(--ui-muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere; }
+.crmPage #crmChannelTransferForm { gap:12px; }
+#crmChannelTransferForm>p { margin:0; }
+.channelTransferImpact { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 20px;margin:0; }
+.channelTransferImpact>div { display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--ui-line);padding:8px 0; }
+.channelTransferImpact dt { color:var(--ui-muted);font-size:12px;overflow-wrap:anywhere; }
+.channelTransferImpact dd { margin:0;font-size:14px;font-weight:650; }
+.crmPage .channelTransferConfirm { display:flex;flex-direction:row;align-items:flex-start;gap:10px;font-size:12px;line-height:1.6; }
+.crmPage .channelTransferConfirm input { flex:none;width:16px;height:16px;margin:3px 0 0;padding:0; }
+@media(max-width:560px){.channelTransferImpact{grid-template-columns:1fr;gap:4px}}
 .tierDistribution { margin-bottom:12px; }.tierDistribution>div { display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#6b7f73;gap:10px;margin-bottom:7px; }.tierDistribution span { display:flex;align-items:center;gap:6px; }.tierDistribution svg { width:13px;height:13px;color:var(--crm-bronze); }.tierDistribution.gold svg { color:var(--crm-gold); }.tierDistribution.silver svg { color:var(--crm-silver); }.tierDistribution meter { width:100%;height:4px;appearance:none;border:0;display:block;background:#e6ece8; }.tierDistribution meter::-webkit-meter-bar { background:#e6ece8;border:0;height:4px;border-radius:3px; }.tierDistribution meter::-webkit-meter-optimum-value { background:#a68d79; }.tierDistribution.gold meter::-webkit-meter-optimum-value { background:#b1a06b; }.tierDistribution.silver meter::-webkit-meter-optimum-value { background:#8ea4b1; }.tierDistribution meter::-moz-meter-bar { background:#8da795; }
 .inlineWarning { font-size:12px;color:#92535e;line-height:1.65;padding:12px 0;border-top:1px solid var(--ui-line); }
 .recipients { max-height:200px;overflow:auto;padding:6px 0;border-block:1px solid var(--ui-line); }

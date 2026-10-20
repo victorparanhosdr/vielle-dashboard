@@ -13,7 +13,7 @@ from crm_access import CRM_SCOPE
 from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
-MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "channel-update", "connect", "customer-tiers", "campaign-enable",
+MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "channel-update", "channel-transfer", "connect", "customer-tiers", "campaign-enable",
                   "kommo-import", "kommo-import-preview", "kommo-import-commit"}
 
 
@@ -86,6 +86,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "channel-transfer":
+                from crm_channels import transfer_options
+                return handler.auth_json({"ok": True, **transfer_options(store, query.get("id", [""])[0], doctor)})
             if action == "lead-trash":
                 from crm_bulk import trash
                 return handler.auth_json({"ok": True, **trash(store, doctor, query.get("pipeline", [""])[0], query.get("page", [1])[0])})
@@ -212,6 +215,11 @@ def _dispatch(handler, parsed, store, query, user, action):
         elif action == "channel-update":
             from crm_channels import update
             result.update(update(store, p))
+        elif action == "channel-transfer":
+            from crm_channels import transfer
+            if p.get("doctor_id") != doctor:
+                raise ValueError("O profissional da conexao nao corresponde ao CRM aberto.")
+            result.update(transfer(store, p, user["id"], actor))
         elif action in {"connect", "channel-state"}:
             with store.db() as c:
                 ch = store.owned(c, "channels", p.get("id"), p.get("doctor_id"))
@@ -292,6 +300,7 @@ def _dispatch(handler, parsed, store, query, user, action):
         else:
             raise LookupError()
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),
+            **({"target_doctor_id": result["doctor_id"], "transfer_id": result["transfer_id"]} if action == "channel-transfer" else {}),
             **({"channel_id": p.get("channel_id", ""), "contact_id": p.get("contact_id", "")} if action in {"conversation-close", "conversation-sync"} else {})})
         return handler.auth_json({"ok": True, **result})
     except Conflict as e:

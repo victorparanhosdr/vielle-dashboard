@@ -616,6 +616,36 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(status, 200, raw)
         self.assertEqual(self.request("POST", path, payload, master, headers)[0], 409)
 
+    def test_channel_transfer_requires_master_origin_and_explicit_confirmation(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Funil origem"], "Outra doutora": ["Destino"]})
+        doctor = crm.listing()["doctor_id"]
+        target = next(d["id"] for d in crm.listing()["doctors"] if d["id"] != doctor)
+        pipeline = crm.listing(target)["pipelines"][0]
+        channel = crm.channel({"doctor_id": doctor, "name": "Atendimento", "phone": "5500000000001"})
+        self.limit_permissions(["crm.view"])
+        staff, _ = self.login()
+        master = self.master_cookie()
+        path = f"/api/crm/channel-transfer?clinic=vielle&doctor={doctor}"
+        headers = {"X-DOC4DOCS-Request": "1"}
+        payload = {"doctor_id": doctor, "id": channel, "config_revision": 1, "target_doctor_id": target,
+                   "inbound_pipeline_id": pipeline["id"], "inbound_stage_id": pipeline["stages"][0]["id"], "confirm": True}
+        self.assertEqual(self.request("GET", path + f"&id={channel}", cookie=staff)[0], 403)
+        self.assertEqual(self.request("POST", path, payload, staff, headers)[0], 403)
+        status, _, raw = self.request("GET", path + f"&id={channel}", cookie=master)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["channel"]["id"], channel)
+        self.assertEqual(self.request("POST", path, payload, master)[0], 403)
+        self.assertEqual(self.request("POST", path, {**payload, "confirm": False}, master, headers)[0], 400)
+        self.assertEqual(self.request("POST", path, {**payload, "doctor_id": target}, master, headers)[0], 400)
+        status, _, raw = self.request("POST", path, payload, master, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["doctor_id"], target)
+        self.assertEqual(len(self.store.list_audit(action="crm_channel-transfer")["events"]), 1)
+        status, _, raw = self.request("GET", f"/api/crm?clinic=vielle&doctor={doctor}", cookie=master)
+        self.assertEqual(json.loads(raw)["channels"], [])
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

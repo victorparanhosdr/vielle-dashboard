@@ -1111,7 +1111,7 @@ class CrmStore:
             if action == "start":
                 if not enabled:
                     raise ValueError("Envios desativados no piloto. Configure a conexao e habilite o worker primeiro.")
-                channel = self.row(c, "channels", campaign["channel_id"])
+                channel = self.owned(c, "channels", campaign["channel_id"], doctor)
                 if channel["state"] != "open":
                     raise ValueError("Conecte o numero antes de iniciar.")
                 if c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status IN ('sending','unknown')", (key,)).fetchone():

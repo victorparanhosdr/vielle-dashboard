@@ -1,0 +1,18 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
+const read=file=>fs.readFileSync(path.join(__dirname,'../static',file),'utf8');
+const source=read('crm-channel-settings.js');
+new vm.Script(source);
+assert.match(source,/if\(!canManage\)continue/);
+assert.match(source,/Transferir conexão para outro profissional/);
+assert.match(source,/channel-transfer",undefined,\{doctor,id:channel.id\}/);
+assert.match(source,/config_revision:source.config_revision/);
+assert.match(source,/target_doctor_id:target.value/);
+assert.match(source,/confirm:form.elements.confirm.checked/);
+assert.match(source,/impact.sending \|\| impact.unknown/);
+assert.match(source,/if\(!host.isConnected \|\| !document.getElementById\("crmDialog"\).open\)return/);
+assert.match(source,/form.elements.confirm.checked=false/);
+assert.match(source,/data.pipelines.filter\(p=>p.doctor_id===target.value && p.stages.length\)/);
+assert.match(source,/await onTransferred\(result\)/);
+assert.match(read('crm.js'),/state.doctor=result.doctor_id;state.pipeline=result.inbound_pipeline_id/);
+assert.match(read('crm.html'),/crm-channel-settings.js\?v=2/);
+console.log('WhatsApp transfer UI: Master-only, scoped destinations, confirmation, stale-modal guard and new-doctor navigation OK');

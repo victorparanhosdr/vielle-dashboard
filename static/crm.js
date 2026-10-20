@@ -529,7 +529,10 @@
     } catch(e){error(e.message);}
   }
   const voice=window.createCrmVoice({api,esc,icon,icons});
-  const channelSettings=window.createCrmChannelSettings({api,esc,icon,icons,modal,error,onDone:load});
+  const channelSettings=window.createCrmChannelSettings({api,esc,icon,icons,modal,error,onDone:load,onTransferred:async result=>{
+    inbox.unmount();state.doctor=result.doctor_id;state.pipeline=result.inbound_pipeline_id;await load();
+    notice("Conexão transferida para o novo profissional, sem alterar o pareamento. Os leads existentes foram preservados nos funis de origem.");
+  }});
   const kanban=window.createCrmKanban({api,esc,icon,icons,leadCard,onRefresh:load,onLeads:rows=>{
     const known=new Set(state.data.leads.map(l=>l.id));state.data.leads.push(...rows.filter(l=>!known.has(l.id)));
   }});
