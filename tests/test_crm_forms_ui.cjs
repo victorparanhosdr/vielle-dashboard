@@ -1,0 +1,13 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
+for(const file of ['crm-forms.js','crm-form-renderer.js','crm-form.js'])new vm.Script(fs.readFileSync(path.join(__dirname,'../static',file),'utf8'));
+const renderer=fs.readFileSync(path.join(__dirname,'../static/crm-form-renderer.js'),'utf8');
+const editor=fs.readFileSync(path.join(__dirname,'../static/crm-forms.js'),'utf8');
+const publicSource=fs.readFileSync(path.join(__dirname,'../static/crm-form.js'),'utf8');
+assert.match(renderer,/aria-label="\$\{esc\(f.label\)\}"/);
+assert.match(renderer,/preview\?\{finish:info.finish\}:await onSubmit/);
+assert.match(renderer,/if\(!preview && finish.mode==='redirect'\)/);
+assert.match(editor,/canLeave:.*dirty/);assert.match(editor,/state.doctor/);
+assert.match(editor,/data-command="googleConnect"/);assert.match(editor,/data-response-form/);
+assert.match(publicSource,/credentials:'omit'/);assert.match(publicSource,/'X-DOC4DOCS-Request':'1'/);
+assert.ok(!publicSource.includes('/api/crm/forms/responses'));
+console.log('Forms UI: syntax, escaped labels, private/public separation, preview isolation and unsaved-change guard OK');

@@ -7,7 +7,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","campaigns","channels","templates"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","campaigns","channels","templates","forms"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
   let presentation="board",listPicker=null,listSeed=null,listScope="";
   let radarCollapsed=false;
   try{radarCollapsed=sessionStorage.getItem("doc4docs.crm.radarCollapsed")==="1";}catch{}
@@ -231,7 +231,7 @@
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
     $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
-    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens"})[state.mode];
+    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários"})[state.mode];
     const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);if(state.pipeline)url.searchParams.set("pipeline",state.pipeline);history.replaceState(null,"",url);
     $("newLead").hidden=!["board","inbox"].includes(state.mode);
     $("addDoctor").hidden=!state.data.can_manage || !["board","channels"].includes(state.mode);
@@ -251,7 +251,7 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard"].includes(state.mode)?"":state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
+    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard"].includes(state.mode)?"":state.mode==="forms"?'<div id="crmFormsHost"></div>':state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
     if(!state.data.can_manage)$("crmView").querySelectorAll("[data-connect]").forEach(button=>button.hidden=true);
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
@@ -266,6 +266,7 @@
     if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
     if(state.mode==="dashboard")dashboard.mount($("crmView"),state.doctor);else dashboard.unmount();
     if(state.mode==="templates")templateLibrary.manage($("crmTemplatesLibrary"));else templateLibrary.destroy();
+    if(state.mode==="forms")formsCenter.mount($("crmFormsHost"));else formsCenter.unmount();
     document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===state.mode)));
     icons();
   }
@@ -523,6 +524,7 @@
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
+  const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
   const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});
   window.addEventListener("doc4docs-open-attendance",()=>{
@@ -534,7 +536,7 @@
   $("crmDialog").addEventListener("close",()=>$("crmDialog").querySelectorAll("audio").forEach(audio=>audio.pause()));
   $("addDoctor").onclick=doctorForm;$("newLead").onclick=leadForm;$("reload").onclick=load;
   $("bootstrap").onclick=async e=>{e.currentTarget.disabled=true;try{await api("bootstrap",{});await load();}catch(err){notice(err.message);}finally{e.target.disabled=false;}};
-  $("doctor").onchange=()=>{inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
+  $("doctor").onchange=()=>{if(state.mode==="forms" && !formsCenter.canLeave()){$("doctor").value=state.doctor;return;}inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
   $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;state.filters={};state.sort="updated";fillFilterForm();if(presentation==="board")load();else{render();paintFilters();}};
   $("customerTierRules").onclick=customerTierForm;
   let searchTimer;
@@ -563,7 +565,7 @@
     $("crmFilterError").hidden=true;clearTimeout(searchTimer);state.filters=next;paintFilters();$("crmFilterPanel").hidden=true;$("toggleCrmFilters").setAttribute("aria-expanded","false");load();
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
-  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
+  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{if(state.mode==="forms" && (b.dataset.mode==="forms" || !formsCenter.canLeave()))return;state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
   $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
@@ -586,7 +588,7 @@
   function session(data){state.session=data;if(!sessionAllowed(data)){inbox.unmount();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}$("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();}
   window.addEventListener("doc4docs-session",e=>session(e.detail));
   if(window.doc4docsSession)session(window.doc4docsSession);
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden && state.mode!=="forms" && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && state.data && state.mode==="campaigns")load();},15000);
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
   icons();

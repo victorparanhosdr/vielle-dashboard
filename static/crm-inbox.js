@@ -54,6 +54,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
     $("inboxChannel").parentElement.insertAdjacentHTML("beforebegin",`<label class="channelFilter">Atividade<select id="inboxBusiness"><option value="all">Todas as atividades</option><option value="clinic">Clínica</option><option value="course">Cursos</option></select></label>`);
     $("inboxBusiness").value=state.business || "all";
+    const inboxFilters=document.createElement("div");inboxFilters.className="inboxFilters";
+    $("inboxBusiness").parentElement.before(inboxFilters);inboxFilters.append($("inboxBusiness").parentElement,$("inboxChannel").parentElement);
+    $("inboxChannel").parentElement.firstChild.textContent="Número";
     $("inboxBusiness").onchange=()=>{state.business=$("inboxBusiness").value;onBusinessChange?.();refreshList();};
     $("inboxChannel").onchange=()=>{channel=$("inboxChannel").value;refreshList();};
     $("inboxWorkspace").onclick=event=>{

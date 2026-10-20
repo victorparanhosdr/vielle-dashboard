@@ -7078,6 +7078,11 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         return json.loads(raw) if raw else {}
 
     def do_GET(self):
+        if urllib.parse.urlsplit(self.path).path=="/api/crm/forms/google-callback":
+            self.requestline="GET /api/crm/forms/google-callback "+self.request_version
+        from crm_forms_api import public_request as public_form_request
+        if public_form_request(self):
+            return
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
@@ -7348,6 +7353,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        from crm_forms_api import public_request as public_form_request
+        if public_form_request(self):
+            return
         parsed = urllib.parse.urlparse(self.path)
         if self.handle_session_post(parsed.path):
             return

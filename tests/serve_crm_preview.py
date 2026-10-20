@@ -144,6 +144,22 @@ for n, doctor in enumerate(store.listing()["doctors"]):
                 store.receive(channels[cid]["instance"],{"key":{"id":f"preview-external-{n}","fromMe":True,"remoteJid":lead["phone"]+"@s.whatsapp.net"},
                     "messageTimestamp":int(time.time())+1,"message":{"conversation":"Confirmado! Vamos combinar seu retorno para quinta-feira."}},"messages.upsert")
 
+if "--forms-fixture" in sys.argv:
+    from crm_forms_api import store_for as forms_for
+    from io import BytesIO
+    from PIL import Image
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"]=="Victor Paranhos de Andrade")
+    pipeline=store.listing(doc)["pipelines"][0]
+    forms=forms_for(store)
+    fields=[{"id":"welcome","type":"welcome","label":"Seu próximo passo começa aqui.","description":"Conte um pouco sobre você."},
+            {"id":"name","type":"name","label":"Como podemos chamar você?","required":True},
+            {"id":"phone","type":"phone","label":"Qual é o seu WhatsApp?","required":True},
+            {"id":"interest","type":"choice","label":"O que você procura?","options":["Avaliação","RegenCode","Mais informações"]},
+            {"id":"file","type":"file","label":"Deseja anexar algum arquivo?"},
+            {"id":"thanks","type":"thanks","label":"Obrigado. Recebemos suas informações."}]
+    result=forms.save({"doctor_id":doc,"definition":{"title":"Primeiro contato · Vielle","fields":fields,"crm":{"enabled":True,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],"name_field":"name","phone_field":"phone"}}},1)
+    forms.publish(result["id"],doc,result["revision"],"published")
+
 if "--courses-fixture" in sys.argv:
     doc=next(d["id"] for d in store.listing()["doctors"] if d["name"]=="Victor Paranhos de Andrade")
     stages=["Entrada","Receber Link","Disparo Ok","Carrinho Abandonado","Negociação","ALUNOS","Reembolso"]
