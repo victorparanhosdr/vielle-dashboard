@@ -3,3 +3,4 @@ openpyxl==3.1.5
 pdfplumber==0.11.9
 twilio==9.12.0
 cryptography==50.0.2
+phonenumbers==9.0.41

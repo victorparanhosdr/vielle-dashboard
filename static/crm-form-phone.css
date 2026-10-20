@@ -1,0 +1,11 @@
+.flowPhone{display:flex;align-items:center;gap:18px;width:100%;max-width:100%;border-bottom:1px solid color-mix(in srgb,var(--flow-answer) 45%,transparent);margin-bottom:26px;color:var(--flow-answer)}
+.flowPhone:focus-within{border-color:var(--flow-accent)}
+.flowPhone .flowInput{flex:1;min-width:0;margin:0!important;border:0!important;padding:12px 0!important;outline:0!important}
+.flowCountry{position:relative;display:flex;align-items:center;gap:8px;flex:0 0 auto;min-height:52px;border-radius:4px}
+.flowCountry:focus-within{outline:2px solid var(--flow-accent);outline-offset:4px}
+.flowCountryFlag{font-size:25px;line-height:1}
+.flowDialCode{font-size:14px;opacity:.75}
+.flowCountry svg{width:14px;height:14px}
+.flowCountry select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.flowCountry option{background:var(--flow-background);color:var(--flow-answer);font-size:16px}
+@media(max-width:600px){.flowPhone{gap:12px}.flowPhone .flowInput{font-size:20px!important}.flowCountry{gap:5px}.flowCountryFlag{font-size:22px}.flowDialCode{font-size:12px}}

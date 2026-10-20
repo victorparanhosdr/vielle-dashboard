@@ -127,7 +127,7 @@ class FormTests(unittest.TestCase):
     def test_queued_notification_contains_no_answers_and_is_not_retried_after_uncertain_send(self):
         with patch('crm_form_integrations.mail_ready',return_value=True):row,_,token=self.publish({**self.info,"emails":["team@example.test","manager@example.test"]})
         self.submit(token)
-        with patch('crm_form_integrations.email_delivery',side_effect=TimeoutError):self.assertTrue(deliver_once(self.forms))
+        with patch('crm_form_integrations.mail_ready',return_value=True),patch('crm_form_integrations.email_delivery',side_effect=TimeoutError):self.assertTrue(deliver_once(self.forms))
         with self.crm.db() as c:
             jobs=[dict(r) for r in c.execute("SELECT * FROM form_deliveries")]
             self.assertEqual(jobs[0]['status'],'unknown');self.assertEqual(jobs[1]['status'],'queued')

@@ -39,7 +39,7 @@ class SharedDesignTests(unittest.TestCase):
                 page = Page(path.read_text())
                 if path.name == "crm-form.html":
                     self.assertIsNone(page.page)
-                    self.assertEqual(page.styles,["/crm-form.css"])
+                    self.assertEqual(page.styles,["/crm-form.css","/crm-form-phone.css"])
                     self.assertNotIn("/session.js",page.scripts)
                     self.assertNotIn("/app-shell.js",page.scripts)
                     continue

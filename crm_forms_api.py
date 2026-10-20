@@ -65,7 +65,8 @@ def public_request(handler):
                 raise LookupError()
             send_file(handler,forms,dict(uploaded),True)
         elif handler.command=="GET" and not operation:
-            handler.auth_json({"ok":True,"form":{k:info[k] for k in ("title","fields","theme","finish","revision")},"token":forms.token(row,info)})
+            from crm_attribution import config
+            handler.auth_json({"ok":True,"form":{k:info[k] for k in ("title","fields","theme","finish","revision")} | {"tracking":config(info.get("tracking"))},"token":forms.token(row,info)})
         elif handler.command=="POST" and operation in {None,"upload"}:
             if not handler.same_origin_request():
                 handler.auth_json({"ok":False,"error":"Origem invalida."},403);return True
@@ -99,10 +100,21 @@ def handle(handler, crm, action, query, user):
     doctor=query.get("doctor",[""])[0]
     ident=query.get("id",[""])[0]
     if handler.command=="GET":
+        if action=='forms/google-settings':
+            if not user.get('is_master'):
+                raise PermissionError('Configuracao exclusiva do Master.')
+            from crm_form_accounts import listing
+            from crm_form_integrations import capabilities
+            crm_data=crm.listing(doctor or None)
+            return handler.auth_json({'ok':True,'accounts':listing(forms,doctor or None),'doctors':crm_data['doctors'],
+                                      'pipelines':crm_data['pipelines'],'integrations':capabilities()})
         if action=="forms":
             from crm_form_integrations import capabilities,start_worker
+            from crm_form_accounts import listing
             start_worker(forms)
-            return handler.auth_json({"ok":True,"forms":forms.listing(doctor),"integrations":capabilities()})
+            accounts=listing(forms,doctor)
+            config=capabilities();config['default_emails']=next((a['default_emails'] for a in accounts if not a['institute_key']),[])
+            return handler.auth_json({"ok":True,"forms":forms.listing(doctor),"accounts":accounts,"integrations":config})
         if action=="forms/item":
             return handler.auth_json({"ok":True,"form":forms.detail(ident,doctor)})
         if action=="forms/responses":
@@ -124,14 +136,15 @@ def handle(handler, crm, action, query, user):
                     if field["type"] not in {"welcome","thanks","message"} and not any(f["id"]==field["id"] for f in columns):
                         columns.append(field)
             buffer=io.StringIO();writer=csv.writer(buffer)
-            writer.writerow(["Resposta ID","Enviado em",*[f["label"] for f in columns]])
+            from crm_attribution import EXPORT_HEADERS,export_cells
+            writer.writerow(["Resposta ID","Enviado em",*EXPORT_HEADERS,*[f["label"] for f in columns]])
             def cell(value):
                 value=json.dumps(value,ensure_ascii=False) if isinstance(value,(dict,list)) else str(value)
                 return "'"+value if value.lstrip().startswith(("=","+","-","@")) else value
             from datetime import datetime,timezone
             for row in rows:
                 answers=json.loads(row["answers"])
-                writer.writerow([row["id"],datetime.fromtimestamp(row["created_at"],timezone.utc).isoformat(),*[cell(answers.get(f["id"],"")) for f in columns]])
+                writer.writerow([row["id"],datetime.fromtimestamp(row["created_at"],timezone.utc).isoformat(),*[cell(v) for v in export_cells(row["attribution"])],*[cell(answers.get(f["id"],"")) for f in columns]])
             data=b"\xef\xbb\xbf"+buffer.getvalue().encode()
             handler.send_response(200);handler.send_header("Content-Type","text/csv; charset=utf-8")
             handler.send_header("Content-Disposition",'attachment; filename="respostas.csv"')
@@ -144,6 +157,8 @@ def handle(handler, crm, action, query, user):
                 raise ValueError("Conexao Google cancelada. Nenhuma planilha foi criada.")
             form=callback(forms,user["id"],query.get("state",[""])[0],query.get("code",[""])[0])
             destination="/crm.html?"+urlencode({"clinic":"vielle","mode":"forms","doctor":form["doctor_id"],"form":form["id"],"google":"connected"})
+            if form.get('return_settings'):
+                destination='/settings.html?clinic=vielle&google=connected#googleFormsIntegration'
             handler.send_response(303);handler.send_header("Location",destination);handler.send_header("Content-Length","0");handler.send_header("Referrer-Policy","no-referrer");handler.end_headers();return
         raise LookupError()
     if handler.command!="POST":
@@ -157,16 +172,54 @@ def handle(handler, crm, action, query, user):
         return handler.auth_json({"ok":True,"file":result})
     payload=json.loads(read_body(handler,512*1024))
     doctor=payload.get("doctor_id",doctor);ident=payload.get("id",ident)
+    if action=='forms/google-account':
+        if not user.get('is_master'):
+            raise PermissionError('Configuracao exclusiva do Master.')
+        from crm_form_accounts import prepare,metadata
+        from crm_form_integrations import authorization
+        account=prepare(forms,doctor,payload.get('pipeline_id',''),payload.get('default_emails',[]))
+        handler.server.auth_store.audit_event('crm_google_account_settings',user['id'],details={'doctor_id':doctor,'id':account['id']})
+        if payload.get('connect'):
+            return handler.auth_json({'ok':True,'url':authorization(forms,account['id'],doctor,user['id'],mail=True,account=True)})
+        return handler.auth_json({'ok':True,'account':metadata(account)})
     if action=="forms/save":
         return handler.auth_json({"ok":True,"form":forms.save(payload,user["id"])})
     with crm.db() as c:
         forms.owned(c,ident,doctor)
+    if action=='forms/google-bind':
+        from crm_form_accounts import attach
+        form=attach(forms,ident,doctor,payload.get('account_id',''))
+        handler.server.auth_store.audit_event('crm_form_google_bind',user['id'],details={'doctor_id':doctor,'id':ident,'account_id':form['google_account_id']})
+        return handler.auth_json({'ok':True,'form':form})
     if action=="forms/publish":
         forms.publish(ident,doctor,payload.get("revision"),payload.get("status","published"))
         return handler.auth_json({"ok":True,"form":forms.detail(ident,doctor)})
     if action=="forms/google-connect":
         from crm_form_integrations import authorization
-        return handler.auth_json({"ok":True,"url":authorization(forms,ident,doctor,user["id"])})
+        return handler.auth_json({"ok":True,"url":authorization(forms,ident,doctor,user["id"],mail=payload.get("mail") is True)})
+    if action=="forms/google-reuse":
+        with crm.db() as c:
+            c.execute("BEGIN IMMEDIATE")
+            target=forms.owned(c,ident,doctor);source=forms.owned(c,payload.get("source_id"),doctor)
+            if not source["google_token"] or target["institute_key"]!=source["institute_key"]:
+                raise ValueError("Conta nao disponivel nesta atividade.")
+            if target["sheet_id"] and target["google_email"]!=source["google_email"]:
+                raise ValueError("Reconecte a conta atual para preservar a planilha vinculada.")
+            c.execute("UPDATE crm_forms SET google_token=?,google_email=?,google_scopes=?,google_account_id='' WHERE id=?",(source["google_token"],source["google_email"],source["google_scopes"],ident))
+        return handler.auth_json({"ok":True,"form":forms.detail(ident,doctor)})
+    if action=="forms/test-email":
+        if not user.get("is_master"):
+            raise PermissionError("Teste de integracao exclusivo do Master.")
+        from crm_form_integrations import email_delivery,form_mail_ready
+        from institute_report import email
+        import uuid
+        with crm.db() as c:
+            row=forms.owned(c,ident,doctor)
+        address=email(payload.get("to",""))
+        if not address or not form_mail_ready(row):
+            raise ValueError("Conecte o remetente e informe um destinatario valido.")
+        email_delivery(forms,{"target":address},row,{"id":"test-"+uuid.uuid4().hex})
+        return handler.auth_json({"ok":True,"accepted":True})
     if action=="forms/google-sheet":
         from crm_form_integrations import create_sheet
         return handler.auth_json({"ok":True,"sheet_id":create_sheet(forms,ident,doctor)})

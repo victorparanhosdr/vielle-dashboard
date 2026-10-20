@@ -73,6 +73,7 @@ async function unlock() {
   fillSettings(data);
   document.getElementById("settingsArea").hidden = false;
   showSettingsStatus("");
+  await window.setupGoogleFormIntegration?.();
 }
 
 async function saveSettings() {

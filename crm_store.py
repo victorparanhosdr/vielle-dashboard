@@ -245,6 +245,9 @@ class CrmStore:
         from crm_bots import schema
         with self.db() as c:
             schema(c)
+        from crm_attribution import schema as attribution_schema
+        with self.db() as c:
+            attribution_schema(c)
 
     def contact(self, c, number, name, *, identity_name="", clinical=None):
         current = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
@@ -506,6 +509,7 @@ class CrmStore:
             c.execute("UPDATE leads SET updated_at=?,revision=revision+1 WHERE id=?", (now, lead["id"]))
 
     def detail(self, key, doctor):
+        from crm_attribution import lead_history
         with self.db() as c:
             lead = self.owned(c, "leads", key, doctor)
             binding = self.row(c, "pipelines", lead["pipeline_id"])
@@ -522,6 +526,7 @@ class CrmStore:
             preferred = c.execute("""SELECT m.channel_id FROM messages m JOIN channels ch ON ch.id=m.channel_id
                 WHERE m.contact_id=? AND ch.doctor_id=? AND m.direction='in' ORDER BY m.rowid DESC LIMIT 1""", (contact["id"], doctor)).fetchone()
             return {"lead": lead, "events": [dict(r) for r in c.execute("SELECT * FROM events WHERE lead_id=? ORDER BY id DESC LIMIT 100", (key,))],
+                    "attribution": lead_history(c, key),
                     "preferred_channel_id": preferred[0] if preferred else "",
                     "messages": [dict(r) for r in c.execute("SELECT m.*,ch.name channel_name FROM messages m JOIN channels ch ON ch.id=m.channel_id WHERE m.contact_id=? AND ch.doctor_id=? ORDER BY m.created_at DESC LIMIT 100", (contact["id"], doctor))]}
 

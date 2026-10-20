@@ -16,6 +16,7 @@ import uuid
 from crm_access import pipeline_visible
 from crm_store import Conflict, phone, text
 from institute_report import email
+from crm_attribution import config as tracking_config, capture as capture_attribution, finish_url
 
 TYPES = {"name", "email", "short", "long", "phone", "date", "url", "identity", "cpf", "cnpj", "number", "money", "address", "choice", "scale", "images", "dropdown", "file", "message", "terms", "welcome", "thanks"}
 STATIC = {"message", "welcome", "thanks"}
@@ -100,6 +101,8 @@ def definition(payload):
         raise ValueError("Destino do formulario invalido.")
     mapping = {key: short(crm.get(key, ""), 64) for key in ("pipeline_id", "stage_id", "name_field", "phone_field", "email_field")}
     mapping["enabled"] = crm.get("enabled") is True
+    if payload.get("email_provider","auto") not in {"auto","google","smtp"}:
+        raise ValueError("Provedor de e-mail invalido.")
     if mapping["enabled"]:
         indexed = {f["id"]: f for f in cleaned}
         for key, allowed in (("name_field", {"name", "short"}), ("phone_field", {"phone"})):
@@ -110,7 +113,7 @@ def definition(payload):
             raise ValueError("Vincule o e-mail a um campo do tipo e-mail.")
     return {"title": short(payload.get("title", ""), 120, True), "fields": cleaned, "theme": style, "finish": finish,
             "emails": list(dict.fromkeys(email(e) for e in emails)), "crm": mapping,
-            "google_enabled": payload.get("google_enabled") is True}
+            "google_enabled": payload.get("google_enabled") is True, "email_provider":payload.get("email_provider","auto"), "tracking": tracking_config(payload.get("tracking"))}
 
 
 def document_number(value, kind):
@@ -170,8 +173,18 @@ def answers_for(info, supplied):
                 if not value:
                     raise ValueError("E-mail invalido.")
             elif kind == "phone":
-                number = re.sub(r"\D", "", value)
-                value = phone("55" + number if len(number) in {10,11} else number)
+                import phonenumbers
+                if not isinstance(value,str) or re.search(r'[^\d\s()+.-]',value):
+                    raise ValueError('Informe um telefone valido com DDD e codigo do pais.')
+                number=re.sub(r'\D','',value)
+                candidate='+'+number if not value.lstrip().startswith('+') and number.startswith('55') and len(number) in {12,13} else value
+                try:
+                    parsed=phonenumbers.parse(candidate,'BR')
+                except phonenumbers.NumberParseException:
+                    raise ValueError('Informe um telefone valido com DDD e codigo do pais.') from None
+                if not phonenumbers.is_valid_number(parsed) or parsed.extension:
+                    raise ValueError('Confira o DDD e o telefone informado.')
+                value=phone(phonenumbers.format_number(parsed,phonenumbers.PhoneNumberFormat.E164))
             elif kind in {"cpf", "cnpj"}:
                 value = document_number(value,kind)
             elif kind == "date":
@@ -219,6 +232,17 @@ class FormStore:
                 CREATE TABLE IF NOT EXISTS form_oauth(state TEXT PRIMARY KEY,user_id TEXT NOT NULL,form_id TEXT NOT NULL,
                     expires REAL NOT NULL,verifier TEXT NOT NULL);
             """)
+            if "attribution" not in {r[1] for r in c.execute("PRAGMA table_info(form_responses)")}:
+                c.execute("ALTER TABLE form_responses ADD COLUMN attribution TEXT NOT NULL DEFAULT '{}'")
+            columns={r[1] for r in c.execute("PRAGMA table_info(crm_forms)")}
+            for key in ("google_email","google_scopes","google_account_id"):
+                if key not in columns:
+                    c.execute(f"ALTER TABLE crm_forms ADD COLUMN {key} TEXT NOT NULL DEFAULT ''")
+            from crm_form_accounts import schema
+            schema(c)
+            changed=c.execute("INSERT OR IGNORE INTO runtime(key,value) VALUES('form_sheets_utm_layout_v1',1)")
+            if changed.rowcount:
+                c.execute("UPDATE form_deliveries SET status='queued',last_error='' WHERE kind='google'")
 
     def key(self, name, generate):
         path = self.root / name
@@ -237,7 +261,8 @@ class FormStore:
         row = dict(row)
         if not pipeline_visible(row):
             raise PermissionError("Seu usuario nao possui acesso ao instituto deste formulario.")
-        return row
+        from crm_form_accounts import resolve
+        return resolve(self,c,row)
 
     def public(self, slug):
         with self.crm.db() as c:
@@ -248,13 +273,15 @@ class FormStore:
 
     @staticmethod
     def metadata(row):
-        return {k:row[k] for k in ("id","doctor_id","name","slug","status","revision","updated_at","created_at","institute_key","course_key","sheet_id")} | {"google_connected": bool(row["google_token"])}
+        from crm_form_integrations import form_mail_ready,MAIL_SCOPE
+        return {k:row[k] for k in ("id","doctor_id","name","slug","status","revision","updated_at","created_at","institute_key","course_key","sheet_id","google_email","google_account_id")} | {"google_connected": bool(row["google_token"]),"google_mail_ready":bool(row["google_token"] and row["google_email"] and MAIL_SCOPE in row["google_scopes"].split()),"mail_ready":bool(form_mail_ready(row))}
 
     def listing(self, doctor):
         with self.crm.db() as c:
             self.crm.row(c,"doctors",doctor)
             rows = [dict(r) for r in c.execute("SELECT f.*,(SELECT count(*) FROM form_responses WHERE form_id=f.id) responses FROM crm_forms f WHERE doctor_id=? ORDER BY updated_at DESC", (doctor,)) if pipeline_visible(dict(r))]
-            return [{**self.metadata(r),"responses":r["responses"]} for r in rows]
+            from crm_form_accounts import resolve
+            return [{**self.metadata(resolve(self,c,r)),"responses":r["responses"]} for r in rows]
 
     def detail(self, ident, doctor):
         with self.crm.db() as c:
@@ -280,6 +307,8 @@ class FormStore:
                     raise Conflict("O formulario mudou. Atualize antes de salvar.")
                 if row["published"] and (row["institute_key"],row["course_key"]) != (binding["institute_key"],binding["course_key"]):
                     raise ValueError("Formularios publicados nao podem mudar entre clinica e instituto. Crie outro formulario.")
+                if row['google_account_id'] and row['institute_key']!=binding['institute_key']:
+                    raise ValueError('Crie outro formulario para usar uma conta de outra atividade.')
                 revision = row["revision"] + 1
             else:
                 revision = 1
@@ -316,9 +345,9 @@ class FormStore:
                 if not any(f["type"] not in STATIC for f in info["fields"]):
                     raise ValueError("Adicione pelo menos uma pergunta.")
                 if info["emails"]:
-                    from crm_form_integrations import mail_ready
-                    if not mail_ready():
-                        raise ValueError("Configure o servidor de e-mail antes de ativar notificacoes.")
+                    from crm_form_integrations import form_mail_ready
+                    if not form_mail_ready(row,info):
+                        raise ValueError("Conecte o Gmail ou configure o servidor de e-mail antes de ativar notificacoes.")
                 if info["google_enabled"] and not row["sheet_id"]:
                     raise ValueError("Conecte o Google e crie a planilha antes de publicar.")
                 columns = json.loads(row["sheet_columns"])
@@ -364,15 +393,16 @@ class FormStore:
         if payload.get("website"):
             raise ValueError("Nao foi possivel enviar o formulario.")
         answers = answers_for(info,payload.get("answers"))
+        attribution = capture_attribution(payload.get("attribution"),info.get("tracking"),slug)
         ident, now = uuid.uuid4().hex, time.time()
         with self.crm.db() as c:
             c.execute("BEGIN IMMEDIATE")
             current=c.execute("SELECT status,published FROM crm_forms WHERE id=?",(row["id"],)).fetchone()
             if current["status"]!="published" or current["published"]!=row["published"]:
                 raise Conflict("O formulario foi atualizado. Atualize a pagina.")
-            old=c.execute("SELECT id FROM form_responses WHERE form_id=? AND nonce=?",(row["id"],nonce)).fetchone()
+            old=c.execute("SELECT id,attribution FROM form_responses WHERE form_id=? AND nonce=?",(row["id"],nonce)).fetchone()
             if old:
-                return {"id":old[0],"finish":info["finish"]}
+                return {"id":old[0],"finish":finish_url(info["finish"],info.get("tracking"),json.loads(old["attribution"]))}
             self.rate(c,row["id"],remote,"submit")
             for field in info["fields"]:
                 if field["type"]=="file":
@@ -398,13 +428,15 @@ class FormStore:
                     from crm_bots import emit
                     emit(c,lead,"created",now)
                 self.crm.event(c,lead,"Formulario","form_response",f"Nova resposta: {info['title']} · resposta {ident}",now)
+                if attribution:
+                    c.execute("INSERT INTO lead_attributions VALUES(?,?,?,?,?,?)",(ident,lead,row["id"],info["title"],now,json.dumps(attribution,ensure_ascii=False)))
             number=c.execute("SELECT coalesce(max(row_number),1)+1 FROM form_responses WHERE form_id=?",(row["id"],)).fetchone()[0]
-            c.execute("INSERT INTO form_responses VALUES(?,?,?,?,?,?,?,?,?)",(ident,row["id"],nonce,now,row["published"],json.dumps(answers,ensure_ascii=False),lead,lead_state,number))
+            c.execute("INSERT INTO form_responses(id,form_id,nonce,created_at,definition,answers,lead_id,lead_state,row_number,attribution) VALUES(?,?,?,?,?,?,?,?,?,?)",(ident,row["id"],nonce,now,row["published"],json.dumps(answers,ensure_ascii=False),lead,lead_state,number,json.dumps(attribution,ensure_ascii=False)))
             for address in info["emails"]:
                 c.execute("INSERT INTO form_deliveries(response_id,kind,target,updated_at) VALUES(?,'email',?,?)",(ident,address,now))
             if info["google_enabled"]:
                 c.execute("INSERT INTO form_deliveries(response_id,kind,target,updated_at) VALUES(?,'google',?,?)",(ident,row["sheet_id"],now))
-        return {"id":ident,"finish":info["finish"]}
+        return {"id":ident,"finish":finish_url(info["finish"],info.get("tracking"),attribution)}
 
     def responses(self, ident, doctor, page=1):
         page=int(page)
@@ -416,6 +448,7 @@ class FormStore:
             rows=[dict(r) for r in c.execute("SELECT * FROM form_responses WHERE form_id=? ORDER BY created_at DESC LIMIT 30 OFFSET ?",(ident,(page-1)*30))]
             for row in rows:
                 row["answers"]=json.loads(row["answers"]);row["definition"]=json.loads(row["definition"])
+                row["attribution"]=json.loads(row["attribution"])
                 row.pop("nonce",None)
                 row["deliveries"]=[dict(r) for r in c.execute("SELECT kind,target,status,last_error FROM form_deliveries WHERE response_id=?",(row["id"],))]
                 row["files"]=[dict(r) for r in c.execute("SELECT id,name,mime,size FROM form_uploads WHERE response_id=?",(row["id"],))]

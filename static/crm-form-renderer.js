@@ -3,7 +3,7 @@ window.createFormExperience=function(target,info,{onSubmit,onUpload,assetUrl,pre
   const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
   const fields=info.fields.filter(f=>f.type!=="thanks"),answers={},files=new Map();
-  let index=0,busy=false,finished=false;
+  let index=0,busy=false,finished=false,phoneControl=null;
   const source=id=>id?assetUrl(id):"";
   const icons=()=>window.lucide?.createIcons();
   target.innerHTML='<section class="flowForm"><div class="flowBackground"></div><header class="flowHeader"></header><div class="flowProgress"><span></span></div><div class="flowViewport"></div><footer class="flowFooter"></footer></section>';
@@ -17,6 +17,7 @@ window.createFormExperience=function(target,info,{onSubmit,onUpload,assetUrl,pre
     const value=answers[f.id],required=f.required?'required':'';
     const input=(type,attrs='')=>`<input class="flowInput" name="answer" aria-label="${esc(f.label)}" type="${type}" value="${esc(value || '')}" ${required} ${attrs}>`;
     if(['welcome','message'].includes(f.type))return '';
+    if(f.type==='phone')return window.CrmFormPhone.markup(f.label,f.required,esc);
     if(f.type==='long')return `<textarea class="flowInput" name="answer" aria-label="${esc(f.label)}" rows="4" maxlength="10000" ${required}>${esc(value || '')}</textarea>`;
     if(f.type==='terms')return `<label class="flowTerm"><input name="answer" type="checkbox" ${value?'checked':''} ${required}><span>Li e aceito</span></label>`;
     if(f.type==='file')return `<div class="flowUpload"><label class="flowUploadButton">${icon('upload')}<span>Selecionar arquivos</span><input type="file" name="files" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.mp3,.wav,.m4a,.ogg,.mp4,.mov"></label><div class="flowFiles">${(files.get(f.id)||[]).map(file=>`<div>${icon('file')}<span>${esc(file.name)}</span></div>`).join('')}</div></div>`;
@@ -31,6 +32,9 @@ window.createFormExperience=function(target,info,{onSubmit,onUpload,assetUrl,pre
     const f=fields[index],form=target.querySelector('.flowQuestion');if(!form || !f)return true;
     if(!form.reportValidity())return false;
     const data=new FormData(form);let value=data.get('answer');
+    if(f.type==='phone'){
+      try{value=phoneControl.read();}catch(e){error(e.message);return false;}
+    }
     if(f.type==='file')value=(files.get(f.id)||[]).map(file=>file.id);
     if(f.type==='address')value=Object.fromEntries(data.entries());
     if(f.type==='terms')value=data.has('answer');
@@ -47,6 +51,7 @@ window.createFormExperience=function(target,info,{onSubmit,onUpload,assetUrl,pre
     target.querySelector('.flowProgress span').style.width=`${100*index/Math.max(1,fields.length)}%`;
     viewport.innerHTML=`<form class="flowQuestion" novalidate><div class="flowQuestionContent">${!['welcome','message'].includes(f.type)?`<span class="flowQuestionNumber">${current} ${icon('arrow-right')}</span>`:''}${f.media?f.media_type==='video'?`<video class="flowMedia" src="${esc(source(f.media))}" controls preload="metadata"></video>`:`<img class="flowMedia" src="${esc(source(f.media))}" alt="">`:''}<${f.type==='welcome'?'h1':'h2'}>${esc(f.label)}${f.required && !['welcome','message'].includes(f.type)?'<sup>*</sup>':''}</${f.type==='welcome'?'h1':'h2'}>${f.description?`<p class="flowDescription">${esc(f.description)}</p>`:''}${control(f)}<p class="flowError" role="alert" hidden></p><button class="flowNext" type="submit">${esc(f.button || (f.type==='welcome'?'Começar':index===fields.length-1?'Enviar':'Continuar'))}${icon(index===fields.length-1?'check':'arrow-right')}</button></div></form>`;
     target.querySelector('.flowFooter').innerHTML=`<span>${questions.length?`${current} / ${questions.length}`:''}</span><div><button type="button" data-flow="previous" aria-label="Pergunta anterior" title="Pergunta anterior" ${!index?'disabled':''}>${icon('arrow-up')}</button><button type="button" data-flow="next" aria-label="Próxima pergunta" title="Próxima pergunta">${icon('arrow-down')}</button></div>`;
+    phoneControl=f.type==='phone'?window.CrmFormPhone.bind(target.querySelector('.flowPhone'),answers[f.id]):null;
     target.querySelector('.flowQuestion').onsubmit=event=>{event.preventDefault();next();};
     target.querySelector('[data-flow="previous"]').onclick=()=>{if(busy || !index)return;read();index--;draw();};
     target.querySelector('[data-flow="next"]').onclick=next;
@@ -75,7 +80,7 @@ window.createFormExperience=function(target,info,{onSubmit,onUpload,assetUrl,pre
     viewport.innerHTML=`<div class="flowQuestionContent flowDone">${icon('circle-check')}<h1>${esc(thanks?.label || finish.title || 'Recebemos suas respostas.')}</h1><p class="flowDescription">${esc(thanks?.description || finish.description || '')}</p>${preview && finish.mode==='redirect'?`<p class="flowDescription">${esc(finish.url)}</p>`:''}</div>`;
     target.querySelector('.flowFooter').innerHTML='';icons();
   }
-  const keydown=event=>{if(event.key==='Enter' && !event.shiftKey && event.target.tagName!=='TEXTAREA' && event.target.tagName!=='BUTTON'){event.preventDefault();next();}};
+  const keydown=event=>{if(event.key==='Enter' && !event.shiftKey && !event.isComposing && !['TEXTAREA','BUTTON','SELECT'].includes(event.target.tagName)){event.preventDefault();next();}};
   root.addEventListener('keydown',keydown);draw();
   return {go(i){if(preview && info.fields[i]?.type==='thanks'){showFinish(info.finish || {});return;}index=Math.max(0,Math.min(fields.length-1,i));finished=false;draw();},destroy(){root.removeEventListener('keydown',keydown);target.innerHTML='';}};
 };
