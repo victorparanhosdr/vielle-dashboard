@@ -10,8 +10,10 @@ from urllib.parse import urlencode
 
 from crm_patients import experts_phone, match_patient_name, search_key
 from crm_store import Conflict, phone
+from institute_report import email
 
-FUNNEL = "organico paranhos"
+FUNNELS = {"organico paranhos", "regencode"}
+DOCTOR = "victor paranhos de andrade"
 REASONS = {
     "contact": "Contato principal ausente ou ambiguo no Kommo",
     "phone": "Sem telefone completo valido",
@@ -43,8 +45,8 @@ def target(store, doctor, pipeline):
     with store.db() as c:
         row = store.owned(c, "pipelines", pipeline, doctor)
         name = store.row(c, "doctors", doctor)["name"]
-    if search_key(row["name"]) != FUNNEL or "victor paranhos" not in search_key(name):
-        raise ValueError("Esta migracao esta limitada ao funil Organico Paranhos do Dr. Victor.")
+    if search_key(row["name"].strip()) not in FUNNELS or search_key(name.strip()) != DOCTOR:
+        raise ValueError("Esta migracao esta limitada aos funis Organico Paranhos e REGENCODE do Dr. Victor Paranhos de Andrade.")
     return row
 
 
@@ -70,11 +72,13 @@ def main_contact(lead):
     return main[0]["id"] if len(main) == 1 else contacts[0]["id"] if len(contacts) == 1 else None
 
 
-def extract(request, progress=lambda message: None):
+def extract(request, progress=lambda message: None, *, funnel="Organico Paranhos"):
+    if search_key(funnel.strip()) not in FUNNELS:
+        raise ValueError("Funil nao habilitado para migracao.")
     pipelines = [p for p in collection(request("/api/v4/leads/pipelines"), "pipelines")
-                 if search_key(str(p.get("name", "")).strip()) == FUNNEL and not p.get("is_archive")]
+                 if search_key(str(p.get("name", "")).strip()) == search_key(funnel.strip()) and not p.get("is_archive")]
     if len(pipelines) != 1 or not positive(pipelines[0].get("id")):
-        raise ValueError("Nao foi possivel identificar um unico funil Organico Paranhos ativo no Kommo.")
+        raise ValueError("Nao foi possivel identificar um unico funil correspondente ativo no Kommo.")
     pipeline = pipelines[0]
     source = pipeline["id"]
     stages = {s["id"]: {"name": str(s.get("name") or "Fase sem nome")[:60],
@@ -111,11 +115,17 @@ def extract(request, progress=lambda message: None):
     for lead in sorted(leads.values(), key=lambda item: (item.get("updated_at") or 0, item["id"]), reverse=True):
         cid = main_contact(lead)
         contact = contacts.get(cid, {})
-        numbers = []
+        numbers, emails = [], []
         for field in contact.get("custom_fields_values") or []:
-            if not isinstance(field, dict) or field.get("field_code") != "PHONE":
+            if not isinstance(field, dict):
                 continue
             for item in field.get("values") or []:
+                if field.get("field_code") == "EMAIL":
+                    address = email(item.get("value")) if isinstance(item, dict) else ""
+                    if address and address not in emails:
+                        emails.append(address)
+                if field.get("field_code") != "PHONE":
+                    continue
                 try:
                     number = phone(experts_phone(item.get("value")))
                 except (ValueError, AttributeError):
@@ -132,13 +142,15 @@ def extract(request, progress=lambda message: None):
         records.append({"source_id": lead["id"], "source_contact": cid,
                         "name": str(contact.get("name") or lead.get("name") or "Contato Kommo").strip()[:160],
                         "title": str(lead.get("name") or contact.get("name") or "Oportunidade Kommo").strip()[:160],
-                        "phones": numbers, "stage": stages.get(lead.get("status_id")),
+                        "phones": numbers, "email": next(iter(emails), email(lead.get("name"))), "stage": stages.get(lead.get("status_id")),
                         "value_cents": value, "created_at": lead.get("created_at"),
                         "updated_at": lead.get("updated_at"), "reason": reason})
     return {"source_pipeline": source, "source_name": pipeline["name"], "records": records}
 
 
 def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
+    destination = store.owned(c, "pipelines", pipeline, doctor)
+    course = bool(destination["course_key"])
     contacts = {r["id"]: dict(r) for r in c.execute("SELECT * FROM contacts")}
     phones = {r["phone"]: r["contact_id"] for r in c.execute("SELECT * FROM contact_phones")}
     patients = {r["experts_uuid"]: r["id"] for r in contacts.values() if r["experts_uuid"]}
@@ -146,7 +158,7 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
     refs = {r[0] for r in c.execute("SELECT source_lead FROM kommo_import_refs WHERE source_pipeline=?", (pack["source_pipeline"],))}
     stages = {(search_key(r["name"]), r["kind"]): r["id"] for r in c.execute("SELECT * FROM stages WHERE pipeline_id=?", (pipeline,))}
     report = {"total": len(pack["records"]), "created": 0, "reused": 0, "duplicates": 0,
-              "already": 0, "linked": 0, "new": 0, "resolved": 0, "review": 0, "issues": [], "reviews": []}
+              "already": 0, "linked": 0, "new": 0, "resolved": 0, "review": 0, "issues": [], "reviews": [], "course_contacts": 0}
     touched, seen = set(), set()
     now = time.time()
     for record in pack["records"]:
@@ -155,7 +167,8 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
             continue
         reason, matches = record["reason"], []
         if not reason:
-            matches = [match_patient_name(store.patient_lookup(number), record["name"]) for number in record["phones"]]
+            matches = ([{"status": "new"} for number in record["phones"]] if course else
+                       [match_patient_name(store.patient_lookup(number), record["name"]) for number in record["phones"]])
             if any(m["status"] == "unchecked" for m in matches):
                 reason = "unavailable"
             elif any(m["status"] == "review" for m in matches):
@@ -170,7 +183,7 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
         if not reason and len(found) > 1:
             reason = "conflict"
         cid = next(iter(found), None)
-        if not reason and cid and contacts[cid]["experts_uuid"] and contacts[cid]["experts_uuid"] != patient:
+        if not course and not reason and cid and contacts[cid]["experts_uuid"] and contacts[cid]["experts_uuid"] != patient:
             reason = "conflict"
         unlinked = bool(reason == "shared" and pack.get("recover_pending") is True and not matched and len(found) <= 1
                         and (not cid or (not contacts[cid]["experts_uuid"] and
@@ -190,8 +203,10 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
             continue
         if apply:
             evidence = {"identity_name": record["name"]} if any(m.get("match_basis") == "phone_name" for m in matches) else {}
+            if course:
+                evidence["clinical"] = False
             contact = store.contact(c, number, record["name"], **evidence)
-            if contact["experts_uuid"] != patient or contact["experts_status"] not in ({"review"} if unlinked else {"matched", "new"}):
+            if not course and (contact["experts_uuid"] != patient or contact["experts_status"] not in ({"review"} if unlinked else {"matched", "new"})):
                 raise Conflict(f"A identidade do paciente mudou na oportunidade Kommo #{record['source_id']}. Gere outra previa.")
             if cid and cid != contact["id"]:
                 raise Conflict("O cadastro mudou durante a importacao. Gere outra previa.")
@@ -207,7 +222,7 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
         if patient:
             patients[patient] = cid
         if cid not in touched:
-            report["review" if unlinked else "linked" if patient else "new"] += 1
+            report["course_contacts" if course else "review" if unlinked else "linked" if patient else "new"] += 1
             if patient and any(m.get("match_basis") == "phone_name" for m in matches):
                 report["resolved"] += 1
             touched.add(cid)
@@ -230,9 +245,9 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
             existing[cid] = lid
             if apply:
                 stamp = lambda value: float(value) if isinstance(value, (int, float)) and 1262304000 <= value <= now else now
-                c.execute("""INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,value_cents,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?)""", (lid, doctor, pipeline, stages[sidkey], cid, record["title"], record["value_cents"],
-                                                  stamp(record["created_at"]), stamp(record["updated_at"])))
+                c.execute("""INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,value_cents,created_at,updated_at,email,source_name)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (lid, doctor, pipeline, stages[sidkey], cid, record["title"], record["value_cents"],
+                                                  stamp(record["created_at"]), stamp(record["updated_at"]), record.get("email", ""), record["name"] if course else ""))
                 store.event(c, lid, actor, "kommo_import", f"Importado do Kommo · {pack['source_name']} · oportunidade {record['source_id']}", now)
                 if unlinked:
                     store.event(c, lid, actor, "kommo_identity", "Telefone compartilhado. Nenhuma ficha clinica foi vinculada automaticamente.", now)
@@ -245,20 +260,20 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
 
 def status(store, doctor, pipeline, job_id="", page=1):
     schema(store)
-    target(store, doctor, pipeline)
+    destination = target(store, doctor, pipeline)
     with store.db() as c:
         row = c.execute("SELECT * FROM kommo_import_jobs WHERE doctor_id=? AND pipeline_id=? " +
                         ("AND id=? " if job_id else "") + "ORDER BY created_at DESC LIMIT 1",
                         (doctor, pipeline, job_id) if job_id else (doctor, pipeline)).fetchone()
     if row is None:
-        return {"status": "idle", "message": "", "report": {}}
+        return {"status": "idle", "message": "", "report": {}, "pipeline_name": destination["name"], "course_key": destination["course_key"]}
     report = json.loads(row["report"])
     issues = report.pop("issues", [])
     reviews = report.pop("reviews", [])
     entries = issues + reviews
     pages = max(1, (len(entries) + 24) // 25)
     page = min(max(1, int(page)), pages)
-    return {"id": row["id"], "status": row["status"], "message": row["message"],
+    return {"id": row["id"], "status": row["status"], "message": row["message"], "pipeline_name": destination["name"], "course_key": destination["course_key"],
             "created_at": row["created_at"], "report": {**report, "issue_count": len(issues),
                 "issue_summary": [{"reason": reason, "count": count} for reason, count in Counter(item["reason"] for item in issues).most_common()]},
             "issues": entries[(page - 1) * 25:page * 25], "page": page, "pages": pages}
@@ -266,8 +281,8 @@ def status(store, doctor, pipeline, job_id="", page=1):
 
 def prepare(store, doctor, pipeline, *, background=True, source=None, retry_from=""):
     schema(store)
-    target(store, doctor, pipeline)
-    if store.patient_directory is None:
+    destination = target(store, doctor, pipeline)
+    if not destination["course_key"] and store.patient_directory is None:
         raise ValueError("Base do Clinica Experts indisponivel.")
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
@@ -295,8 +310,16 @@ def prepare(store, doctor, pipeline, *, background=True, source=None, retry_from
                 pack = source(progress)
             else:
                 import app
-                from crm_patient_refresh import sync_patients
-                sync_patients(store, progress)
+                if not destination["course_key"]:
+                    from crm_patient_refresh import sync_patients
+                    sync_patients(store, progress)
+                elif store.course_source:
+                    from crm_courses import refresh
+                    progress("Atualizando pedidos Kiwify do curso...")
+                    try:
+                        refresh(store.course_source, destination["institute_key"], destination["course_key"])
+                    except Exception:
+                        pass  # A provider outage does not block migration of course contacts.
                 with app.clinic_context("vielle"):
                     access = app.get_access_context()
 
@@ -304,10 +327,19 @@ def prepare(store, doctor, pipeline, *, background=True, source=None, retry_from
                         time.sleep(.3)
                         return app.kommo_request("GET", path, token=access["access_token"], domain=access["account_domain"])
 
-                    pack = extract(request, progress)
+                    pack = extract(request, progress, funnel=destination["name"])
+            if search_key(pack["source_name"].strip()) != search_key(destination["name"].strip()):
+                raise ValueError("O funil de origem nao corresponde ao destino.")
             if retry_from:
                 pack["recover_pending"] = True
-            store.patient_directory.invalidate()
+            if destination["course_key"] and store.course_source:
+                for record in pack["records"]:
+                    if record["reason"] == "phone" and record.get("email"):
+                        numbers = store.course_source.recover_phones(destination["institute_key"], destination["course_key"], [record["email"]])
+                        if numbers:
+                            record.update(phones=numbers, reason="")
+            if store.patient_directory and not destination["course_key"]:
+                store.patient_directory.invalidate()
             with store.db() as c:
                 report = process(store, c, pack, doctor, pipeline)
                 c.execute("UPDATE kommo_import_jobs SET status='ready',message='Previa pronta. Nenhum cliente foi importado ainda.',payload=?,report=? WHERE id=?",
@@ -339,15 +371,17 @@ def commit(store, doctor, pipeline, job_id, actor):
     backup_dir.mkdir(exist_ok=True, mode=0o700)
     with sqlite3.connect(store.path) as original, sqlite3.connect(backup_dir / f"before-kommo-{row['id']}.sqlite3") as backup:
         original.backup(backup)
-    store.patient_directory.invalidate()
+    if store.patient_directory:
+        store.patient_directory.invalidate()
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
         target_row = store.owned(c, "pipelines", pipeline, doctor)
-        if search_key(target_row["name"]) != FUNNEL:
+        pack = json.loads(row["payload"])
+        if search_key(target_row["name"].strip()) not in FUNNELS or search_key(target_row["name"].strip()) != search_key(pack["source_name"].strip()):
             raise Conflict("O funil mudou. Gere outra previa.")
         current = c.execute("SELECT status FROM kommo_import_jobs WHERE id=?", (job_id,)).fetchone()[0]
         if current != "done":
-            report = process(store, c, json.loads(row["payload"]), doctor, pipeline, actor, job_id, apply=True)
+            report = process(store, c, pack, doctor, pipeline, actor, job_id, apply=True)
             message = "Migracao concluida. Cadastros existentes preservados."
             if report["review"]:
                 message += f" {report['review']} contato(s) importado(s) sem vinculo clinico; fichas ambiguas nao foram associadas."

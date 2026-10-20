@@ -9,7 +9,8 @@ OPTIONS = {
     "identity": {"", "matched", "new", "review"},
     "sales": {"", "yes", "no"},
     "quotes": {"", "active", "pending", "expired", "lost", "none"},
-    "sort": {"updated", "spent", "sales"},
+    "sort": {"updated", "spent", "sales", "course_paid", "course_value"},
+    "course_status": {"", "paid", "pending", "refunded", "none"},
     "appointment_status": {"", "any", "completed", "scheduled", "missed", "none"},
     "service_location": {"", "capelinha", "belo-horizonte", "sao-paulo", "pending"},
 }
@@ -78,6 +79,15 @@ def appointment_ready(item, filters):
 
 
 def matches(item, filters, extra_search=""):
+    course_status = filters["course_status"]
+    if course_status:
+        course = item.get("course_data", {})
+        if course.get("state") != "ready":
+            return False
+        if course_status == "none" and course.get("order_count", 0):
+            return False
+        if course_status != "none" and not course.get({"paid": "paid_count", "pending": "pending_count", "refunded": "refunded_count"}[course_status], 0):
+            return False
     location = filters["service_location"]
     if location and (item.get("service_location") or "pending") != location:
         return False
@@ -119,7 +129,7 @@ def matches(item, filters, extra_search=""):
             return False
     search = fold(filters["search"])
     if search:
-        blob = fold(" ".join(str(item.get(k) or "") for k in ("name", "phone", "title", "_experts_search")) + " " + extra_search)
+        blob = fold(" ".join(str(item.get(k) or "") for k in ("name", "phone", "email", "title", "_experts_search")) + " " + extra_search)
         digits = re.sub(r"\D", "", search)
         if search not in blob and not (len(digits) >= 3 and re.fullmatch(r"[\d\s()+.\-/]+", search) and digits in re.sub(r"\D", "", blob)):
             return False
@@ -130,6 +140,8 @@ def ordered(items, filters):
     key = filters["sort"]
     if key == "updated":
         return items
+    if key in {"course_paid", "course_value"}:
+        return sorted(items, key=lambda row: (-(row.get("course_data", {}).get("paid_cents", 0) if key == "course_paid" else row.get("value_cents", 0)), row.get("id", "")))
     field = "sales_cents" if key == "spent" else "sales_count"
     return sorted(items, key=lambda row: (row.get("customer_history", {}).get("sales_state") != "ready",
                                           -row.get("customer_history", {}).get(field, 0),

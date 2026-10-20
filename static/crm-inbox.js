@@ -1,9 +1,10 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
+  let opportunities=[],contextSeq=0;
   let clockOffset=0;
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
@@ -14,6 +15,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const chatSearch=window.createCrmChatSearch({api,esc,icon,icons,onResult:seq=>{messages=[];hasOlder=false;refreshThread(false,seq);},onClose:()=>{messages=[];hasOlder=false;refreshThread();}});
   const templates=window.createCrmMessageTemplates({api,esc,icon,icons,onError:chatError,getContext:()=>({name:threadData?.contact.name || leadFor()?.name || "",doctor:state.data.doctors.find(d=>d.id===owner)?.name || ""})});
   function conversationFacts(c) {
+    if(c.course_key)return courses.compact(c);
     const h=c.customer_history || {},ready=h.quotes_state==="ready" && Number.isSafeInteger(h.pending_quotes_cents);
     const detail=`${h.pending_quotes_count || 0} orçamento(s) pendente(s) · abertos e vencidos · Clínica Experts · ${money(h.pending_quotes_cents)} · ${c.customer_value?.doctor_name || "Doutor selecionado"}`;
     const quote=ready && h.pending_quotes_count?`<span class="conversationQuote" title="${esc(detail)}" aria-label="${esc(detail)}">${icon("file-clock")}<b>${money(h.pending_quotes_cents)}</b></span>`:!ready && h.quotes_state!=="unlinked"?`<span class="conversationQuote pending" title="Orçamentos do Clínica Experts a conferir" aria-label="Orçamentos a conferir">${icon("circle-help")}</span>`:"";
@@ -21,7 +23,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   const time=value=>new Date(value*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   const labels={received:"Recebida",queued:"Na fila",sending:"Em envio",sent:"Aceita pelo conector",unknown:"Sem confirmação · não reenviar",cancelled:"Cancelada",skipped:"Não enviada"};
-  const leadFor=()=>selected && (state.data.leads.find(l=>l.id===selected.lead_id) || state.data.leads.find(l=>l.contact_id===selected.contact_id) || selectedRecord);
+  const leadFor=()=>selected && (selectedRecord?.id===selected.lead_id?selectedRecord:state.data.leads.find(l=>l.id===selected.lead_id) || selectedRecord);
   const senderName=()=>String(state.session?.user.nome || "").replace(/[*_~`\u0000-\u001f\u007f]/g," ").trim().replace(/\s+/g," ");
   const messageText=m=>m.sender_name && m.body===`*${m.sender_name}*`?"":m.sender_name && m.body.startsWith(`*${m.sender_name}*\n\n`)?m.body.slice(m.sender_name.length+4):m.body;
   const messagePreview=m=>messageText(m) || ({audio:"Áudio",document:"Arquivo",image:"Imagem",video:"Vídeo"}[m.media_kind] || "");
@@ -50,6 +52,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
     $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
+    $("inboxChannel").parentElement.insertAdjacentHTML("beforebegin",`<label class="channelFilter">Atividade<select id="inboxBusiness"><option value="all">Todas as atividades</option><option value="clinic">Clínica</option><option value="course">Cursos</option></select></label>`);
+    $("inboxBusiness").value=state.business || "all";
+    $("inboxBusiness").onchange=()=>{state.business=$("inboxBusiness").value;onBusinessChange?.();refreshList();};
     $("inboxChannel").onchange=()=>{channel=$("inboxChannel").value;refreshList();};
     $("inboxWorkspace").onclick=event=>{
       const b=event.target.closest("button");if(!b)return;
@@ -71,7 +76,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(!root)return;
     const request=++listSeq,doc=owner;
     try {
-      const data=await api("inbox",undefined,{doctor:doc,channel,kind:filter,search:state.search});
+      const data=await api("inbox",undefined,{doctor:doc,channel,kind:filter,search:state.search,business:state.business || "all"});
       if(!root || request!==listSeq || doc!==owner)return;
       list=data.conversations;
       if(Number.isFinite(data.server_time))clockOffset=data.server_time-Date.now()/1000;
@@ -101,8 +106,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     media.destroy();chatSearch.destroy();templates.destroy();renderedSearch="";
     openSeq++;
     const previous=selected?.contact_id===item.contact_id?leadFor():null;
-    selected={contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};
-    selectedRecord=item._lead || state.data.leads.find(l=>l.id===item.lead_id) || previous;
+    selected={contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};opportunities=[];contextSeq++;
+    selectedRecord=item._lead || state.data.leads.find(l=>l.id===item.lead_id) || (previous?.id===item.lead_id?previous:null);
     replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;
     const l=leadFor(), ch=state.data.channels.find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
     $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact");
@@ -117,10 +122,10 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     templates.mount($("messageTemplateTools"),$("replyBody"));
     media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
-    drawInfo();drawList();refreshThread().then(()=>syncExternalMessages());icons();
+    drawInfo();drawList();loadOpportunities();refreshThread().then(()=>syncExternalMessages());icons();
     if(!selectedRecord && selected.lead_id){
-      const signature=key(selected),doc=owner;
-      api("lead",undefined,{doctor:doc,id:selected.lead_id}).then(data=>{if(root && selected && signature===key(selected)){selectedRecord=data.lead;drawInfo();}}).catch(e=>{if(root && selected && signature===key(selected))chatError(e.message);});
+      const signature=key(selected),doc=owner,id=selected.lead_id;
+      api("lead",undefined,{doctor:doc,id}).then(data=>{if(root && selected && signature===key(selected) && selected.lead_id===id){selectedRecord=data.lead;drawInfo();}}).catch(e=>{if(root && selected && signature===key(selected) && selected.lead_id===id)chatError(e.message);});
     }
     if(matchMedia("(max-width:760px)").matches)focus();
   }
@@ -133,6 +138,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(!root || !selected)return;
     const l=leadFor(), p=state.data.pipelines.find(p=>p.id===l?.pipeline_id), panel=$("contactPanel");
     $("chatPane").querySelector(".chatCustomerTier")?.remove();
+    if(l?.course_key){drawCourseInfo(l,p,panel);return;}
     panel.hidden=false;
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
     if(l){panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
@@ -154,7 +160,29 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
         }catch(e){if(root && owner===doc && leadFor()?.id===l.id){$("patientRefreshState").hidden=false;$("patientRefreshState").textContent=e.message;}}
       };
     }
-    icons();
+    contextPicker(panel);icons();
+  }
+  async function loadOpportunities(){
+    const signature=key(selected),doc=owner;
+    try{const data=await api("contact-opportunities",undefined,{doctor:doc,contact:selected.contact_id});if(root && selected && signature===key(selected)){opportunities=data.opportunities;drawInfo();}}
+    catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
+  }
+  function contextPicker(panel){
+    if(!opportunities.length)return;
+    panel.insertAdjacentHTML("afterbegin",`<label class="opportunityContext">Oportunidade<select id="opportunityContext">${opportunities.map(o=>`<option value="${esc(o.id)}" ${o.id===selected.lead_id?"selected":""}>${esc(o.course_key?"Curso":"Clínica")} · ${esc(o.pipeline_name)} · ${esc(o.stage_name)}</option>`).join("")}</select></label>`);
+    $("opportunityContext").onchange=async()=>{
+      const id=$("opportunityContext").value,request=++contextSeq,signature=key(selected),doc=owner;
+      try{const data=await api("lead",undefined,{doctor:doc,id});if(root && selected && signature===key(selected) && request===contextSeq){selected.lead_id=id;selectedRecord=data.lead;drawInfo();}}
+      catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
+    };
+  }
+  function drawCourseInfo(l,p,panel){
+    panel.hidden=false;
+    panel.innerHTML=`<div class="contactSummary"><span class="eyebrow">FICHA DO CURSO</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p>${l.email?`<p class="courseEmail">${esc(l.email)}</p>`:""}${courses.badge(l)}${courses.panel(l)}</div><div class="patientRefreshControls"><button id="refreshCourseContact">${icon("refresh-cw")} Atualizar Kiwify</button><p id="courseRefreshState" role="status" hidden></p></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name || "RegenCode")}</span><h3>${esc(l.title)}</h3><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${esc(s.id)}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha do curso</button><button data-commercial="orders">${icon("receipt-text")} Pedidos Kiwify</button><button data-commercial="calls">${icon("phone-call")} Ligações e gravações</button>`;
+    $("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${courses.badge(l)}</span>`);
+    $("quickStage").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,new FormData(e.currentTarget).get("stage_id"));}catch(err){chatError(err.message);}finally{if(b.isConnected)b.disabled=false;}};
+    $("refreshCourseContact").onclick=()=>{const doc=owner;courses.refresh(l,$("refreshCourseContact"),$("courseRefreshState"),updated=>{selectedRecord=updated;drawInfo();refreshList();},()=>Boolean(root && owner===doc && leadFor()?.id===l.id));};
+    contextPicker(panel);icons();
   }
   function syncSend() {
     if(!$("sendReply"))return;

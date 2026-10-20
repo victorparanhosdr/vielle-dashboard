@@ -27,7 +27,7 @@ class KommoMigrationTests(unittest.TestCase):
                 ("p4", "Compartilhado 2", "5511999994444", "{}", 1)])
         directory = PatientDirectory(self.patient_path)
         self.store = CrmStore(Path(self.tmp.name) / "crm", directory.lookup, patient_directory=directory)
-        self.store.bootstrap({"Victor Paranhos de Andrade": ["Organico Paranhos", "Outro funil"], "Outro doutor": ["Organico Paranhos"]})
+        self.store.bootstrap({"Victor Paranhos de Andrade": ["Organico Paranhos", "Outro funil", "REGENCODE"], "Outro doutor": ["Organico Paranhos", "REGENCODE"]})
         data = self.store.listing()
         self.doctor = next(d["id"] for d in data["doctors"] if "Victor" in d["name"])
         self.pipe = next(p for p in self.store.listing(self.doctor)["pipelines"] if p["name"] == "Organico Paranhos")
@@ -209,6 +209,42 @@ class KommoMigrationTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 1)
             self.assertEqual(c.execute("SELECT COUNT(*) FROM leads").fetchone()[0], 2)
 
+    def test_regencode_import_is_separate_and_reuses_patient_without_duplicating_contact(self):
+        self.apply(self.preview([self.record()]))
+        pipeline = next(p for p in self.store.listing(self.doctor)["pipelines"] if p["name"] == "REGENCODE")
+        records = [self.record(10, stage={"name": "ALUNOS", "kind": "open"}), self.record(11)]
+        def preview():
+            return prepare(self.store, self.doctor, pipeline["id"], background=False,
+                           source=lambda progress: {"source_pipeline": 13711512, "source_name": "REGENCODE", "records": records})["id"]
+        result = commit(self.store, self.doctor, pipeline["id"], preview(), "Master")
+        self.assertEqual((result["pipeline_name"], result["report"]["created"], result["report"]["duplicates"]), ("REGENCODE", 1, 1))
+        lead = self.store.listing(self.doctor)["leads"]
+        self.assertEqual(len(lead), 2)
+        regen = next(l for l in lead if l["pipeline_id"] == pipeline["id"])
+        with self.store.db() as c:
+            self.assertEqual(self.store.row(c, "stages", regen["stage_id"])["name"], "ALUNOS")
+        self.assertEqual(regen["doctor_id"], self.doctor)
+        result = commit(self.store, self.doctor, pipeline["id"], preview(), "Master")
+        self.assertEqual((result["report"]["created"], result["report"]["already"]), (0, 2))
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 0)
+
+    def test_regencode_rejects_other_doctor_wrong_source_and_renamed_destination(self):
+        other = next(d["id"] for d in self.store.listing()["doctors"] if d["id"] != self.doctor)
+        other_pipeline = next(p["id"] for p in self.store.listing(other)["pipelines"] if p["name"] == "REGENCODE")
+        with self.assertRaises(ValueError):
+            prepare(self.store, other, other_pipeline)
+        pipeline = next(p["id"] for p in self.store.listing(self.doctor)["pipelines"] if p["name"] == "REGENCODE")
+        key = prepare(self.store, self.doctor, pipeline, background=False,
+                      source=lambda progress: {"source_pipeline": 99, "source_name": "Organico Paranhos", "records": [self.record()]})["id"]
+        self.assertEqual(status(self.store, self.doctor, pipeline, key)["status"], "error")
+        with self.store.db() as c:
+            c.execute("UPDATE kommo_import_jobs SET status='ready',payload=? WHERE id=?",
+                      (json.dumps({"source_name": "Organico Paranhos", "records": []}), key))
+        with self.assertRaises(Conflict):
+            commit(self.store, self.doctor, pipeline, key, "Master")
+
     def test_live_recheck_conflict_and_rollback(self):
         key = self.preview([self.record(1), self.record(2, ["5531999993333"])])
         original = self.store.contact
@@ -252,6 +288,26 @@ class KommoMigrationTests(unittest.TestCase):
 
 
 class SourceTests(unittest.TestCase):
+    def test_extract_selects_only_regencode_and_keeps_its_actual_phases(self):
+        def request(path):
+            if path == "/api/v4/leads/pipelines":
+                return {"_embedded": {"pipelines": [
+                    {"id": 99, "name": "Organico Paranhos"},
+                    {"id": 13711512, "name": "REGENCODE", "_embedded": {"statuses": [{"id": 106233904, "name": "ALUNOS"}]}}]}}
+            if path.startswith("/api/v4/leads?"):
+                self.assertEqual(parse_qs(urlparse(path).query)["filter[pipeline_id][]"], ["13711512"])
+                return {"_embedded": {"leads": [{"id": 1, "pipeline_id": 13711512, "status_id": 106233904,
+                                                "_embedded": {"contacts": [{"id": 6}]}}]}}
+            return {"_embedded": {"contacts": [{"id": 6, "name": "Contato Exemplo", "custom_fields_values": [
+                {"field_code": "PHONE", "values": [{"value": "(33) 99999-1111"}]}]}]}}
+        pack = extract(request, funnel="RegenCode")
+        self.assertEqual(pack["source_pipeline"], 13711512)
+        self.assertEqual(pack["records"][0]["stage"], {"name": "ALUNOS", "kind": "open"})
+        request_mock = Mock()
+        with self.assertRaises(ValueError):
+            extract(request_mock, funnel="Outro funil")
+        request_mock.assert_not_called()
+
     def test_extract_only_selected_funnel_with_main_contacts_and_real_stages(self):
         calls = []
         def request(path):

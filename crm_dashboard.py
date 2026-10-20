@@ -5,6 +5,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from crm_metrics import THREADS_CTE
+from crm_access import contact_visible, pipeline_visible
 
 TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -20,25 +21,27 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
     daily = {(first + timedelta(days=i)).isoformat(): {"received": 0, "replies": 0} for i in range(days)}
     with store.db() as c:
         store.row(c, "doctors", doctor)
-        pending = c.execute(THREADS_CTE + "SELECT contact_id,waiting_since FROM threads WHERE unread>0", (doctor, "", "")).fetchall()
+        pending = [r for r in c.execute(THREADS_CTE + "SELECT contact_id,waiting_since FROM threads WHERE unread>0", (doctor, "", "")) if contact_visible(c, r["contact_id"])]
         clients = {}
         for row in pending:
             clients[row["contact_id"]] = min(clients.get(row["contact_id"], now), row["waiting_since"] or now)
         waits = [max(0, int(now - stamp)) for stamp in clients.values()]
         buckets = [sum(a <= wait < b for wait in waits) for a, b in ((0, 900), (900, 3600), (3600, 86400), (86400, float("inf")))]
-        hours = c.execute("""SELECT cast(coalesce(nullif(m.provider_timestamp,0),m.created_at)/3600 AS INTEGER) hour,count(*) total
+        hours = c.execute("""SELECT m.contact_id,cast(coalesce(nullif(m.provider_timestamp,0),m.created_at)/3600 AS INTEGER) hour,count(*) total
             FROM messages m JOIN channels ch ON ch.id=m.channel_id WHERE ch.doctor_id=? AND m.direction='in'
             AND coalesce(nullif(m.provider_timestamp,0),m.created_at)>=?
-            AND coalesce(nullif(m.provider_timestamp,0),m.created_at)<=? GROUP BY hour""", (doctor, start, now)).fetchall()
+            AND coalesce(nullif(m.provider_timestamp,0),m.created_at)<=? GROUP BY m.contact_id,hour""", (doctor, start, now)).fetchall()
         for row in hours:
+            if not contact_visible(c, row["contact_id"]):
+                continue
             key = datetime.fromtimestamp(row["hour"] * 3600, TZ).date().isoformat()
             if key in daily:
                 daily[key]["received"] += row["total"]
         # One accepted manual reply, not signature preambles, campaign volume, or external sends.
-        replies = c.execute("""SELECT DISTINCT m.id,r.user_id,m.sender_name,m.contact_id,m.sent_at
+        replies = [r for r in c.execute("""SELECT DISTINCT m.id,r.user_id,m.sender_name,m.contact_id,m.sent_at
             FROM reply_requests r JOIN messages m ON m.id=r.message_id JOIN channels ch ON ch.id=m.channel_id
             WHERE ch.doctor_id=? AND m.direction='out' AND m.status='sent' AND m.campaign_id IS NULL
-            AND m.sent_at>=? AND m.sent_at<=?""", (doctor, start, now)).fetchall()
+            AND m.sent_at>=? AND m.sent_at<=?""", (doctor, start, now)) if contact_visible(c, r["contact_id"])]
         operators = defaultdict(lambda: {"name": "Operador", "replies": 0, "contacts": set(), "last_reply_at": 0})
         for row in replies:
             key = datetime.fromtimestamp(row["sent_at"], TZ).date().isoformat()
@@ -49,13 +52,13 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
             op["replies"] += 1
             op["contacts"].add(row["contact_id"])
             op["last_reply_at"] = max(op["last_reply_at"], row["sent_at"])
-        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,count(l.id) total,
+        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,p.institute_key,count(l.id) total,
             sum(CASE WHEN s.kind='won' THEN 1 ELSE 0 END) won,
             sum(CASE WHEN s.kind='lost' THEN 1 ELSE 0 END) lost
             FROM pipelines p LEFT JOIN leads l ON l.pipeline_id=p.id LEFT JOIN stages s ON s.id=l.stage_id
-            WHERE p.doctor_id=? GROUP BY p.id ORDER BY p.name""", (doctor,))]
-        overdue = c.execute("""SELECT count(*) FROM leads l JOIN stages s ON s.id=l.stage_id
-            WHERE l.doctor_id=? AND s.kind='open' AND l.next_action<>'' AND l.next_action<?""", (doctor, today.isoformat())).fetchone()[0]
+            WHERE p.doctor_id=? GROUP BY p.id ORDER BY p.name""", (doctor,)) if pipeline_visible(dict(r))]
+        overdue = sum(r[0] in {p["id"] for p in funnels} for r in c.execute("""SELECT l.pipeline_id FROM leads l JOIN stages s ON s.id=l.stage_id
+            WHERE l.doctor_id=? AND s.kind='open' AND l.next_action<>'' AND l.next_action<?""", (doctor, today.isoformat())))
         channels = c.execute("SELECT count(*),coalesce(sum(state='open'),0) FROM channels WHERE doctor_id=?", (doctor,)).fetchone()
     return {"server_time": now, "days": days, "from": first.isoformat(), "to": today.isoformat(),
             "pending_clients": len(clients), "pending_conversations": len(pending), "waiting_buckets": buckets,

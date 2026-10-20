@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const context={window:{},Date,setTimeout};vm.createContext(context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../static/crm-courses.js'),'utf8'),context);
+const esc=s=>String(s??'').replaceAll('<','&lt;').replaceAll('"','&quot;');
+const courses=context.window.createCrmCourses({api(){throw Error('No network in markup tests');},esc,icon:()=>'',icons(){}});
+const lead={course_data:{state:'ready',paid_count:1,paid_cents:29700,pending_count:2,pending_cents:50000,refunded_count:1,refunded_cents:29700,orders:[{id:'<order>',email:'<email>',status_label:'Aprovado',date:'2026-10-02',gross_cents:29700,net_cents:26000}],order_count:1}};
+assert.match(courses.badge(lead),/pagamento aprovado/);
+assert.match(courses.orders(lead),/&lt;order>/);assert.ok(!courses.orders(lead).includes('<email>'));
+assert.match(courses.panel(lead),/Kiwify/);assert.ok(!courses.panel(lead).includes('Clínica Experts'));
+assert.match(courses.label({course_data:{state:'ambiguous'}}),/conferir/);
+const inbox=fs.readFileSync(path.join(__dirname,'../static/crm-inbox.js'),'utf8');
+assert.match(inbox,/business:state.business/);assert.match(inbox,/contact-opportunities/);
+assert.match(inbox,/selected.lead_id===id/);assert.match(inbox,/selectedRecord\?\.id===selected.lead_id/);
+console.log('Course UI: Kiwify-only data, escaped orders, context selection and stale-response guard OK');

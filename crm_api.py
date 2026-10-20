@@ -27,7 +27,10 @@ def store_for(auth):
             directory = PatientDirectory(DB_PATH)
             history = PatientCommercial(DB_PATH, DOCTOR_PROFESSIONALS)
             appointments = PatientAppointments(DB_PATH, DOCTOR_PROFESSIONALS)
-            STORES[root] = CrmStore(root, directory.lookup, history.lookup, appointments, history, patient_directory=directory)
+            from institute_api import store_for as institutes_for
+            from crm_courses import CourseCommercial
+            STORES[root] = CrmStore(root, directory.lookup, history.lookup, appointments, history, patient_directory=directory,
+                                    course_source=CourseCommercial(institutes_for(auth)))
         return STORES[root]
 
 
@@ -60,6 +63,13 @@ def handle_request(handler, parsed):
     if action in MASTER_ACTIONS and not user.get("is_master"):
         return handler.auth_json({"ok": False, "code": "master_required", "error": "Configuracao exclusiva do Master."}, 403)
     store = store_for(handler.server.auth_store)
+    from crm_access import institute_access
+    keys = store.course_source.store.allowed(user) if store.course_source is not None else []
+    with institute_access(keys):
+        return _dispatch(handler, parsed, store, query, user, action)
+
+
+def _dispatch(handler, parsed, store, query, user, action):
     try:
         if action.startswith("voice/"):
             from crm_voice_api import handle_request as handle_voice
@@ -94,6 +104,12 @@ def handle_request(handler, parsed):
                     query.get("stage", [""])[0], filters, query.get("cursor", [""])[0])})
             if action == "lead":
                 return handler.auth_json({"ok": True, **store.detail(query.get("id", [""])[0], doctor)})
+            if action == "course-data":
+                from crm_courses import refresh_status
+                lead = store.detail(query.get("id", [""])[0], doctor)["lead"]
+                if not lead.get("course_key") or not store.course_source:
+                    raise ValueError("Esta oportunidade nao pertence a um curso.")
+                return handler.auth_json({"ok": True, "lead": lead, **refresh_status(store.course_source, lead["institute_key"], lead["course_key"])})
             if action == "campaign-dashboard":
                 from crm_campaigns import dashboard
                 return handler.auth_json({"ok": True, **dashboard(store, doctor, query)})
@@ -122,7 +138,10 @@ def handle_request(handler, parsed):
                     query.get("scope", ["doctor"])[0], query.get("period", ["all"])[0], query.get("page", [1])[0])})
             if action == "inbox":
                 return handler.auth_json({"ok": True, **store.inbox(doctor, handler.current_user["id"],
-                    query.get("channel", [""])[0], query.get("kind", ["all"])[0], query.get("search", [""])[0], filters)})
+                    query.get("channel", [""])[0], query.get("kind", ["all"])[0], query.get("search", [""])[0], filters,
+                    business=query.get("business", ["all"])[0])})
+            if action == "contact-opportunities":
+                return handler.auth_json({"ok": True, **store.contact_opportunities(doctor, query.get("contact", [""])[0])})
             if action == "conversation":
                 return handler.auth_json({"ok": True, **store.conversation(doctor, query.get("channel", [""])[0],
                     query.get("contact", [""])[0], query.get("before", [0])[0], around=query.get("around", [0])[0])})
@@ -182,6 +201,12 @@ def handle_request(handler, parsed):
                 result["state"] = state
         elif action == "lead":
             result["id"] = store.lead(p, actor)
+        elif action == "course-refresh":
+            from crm_courses import start_refresh
+            lead = store.detail(p.get("id"), p.get("doctor_id"))["lead"]
+            if not lead.get("course_key") or not store.course_source:
+                raise ValueError("Esta oportunidade nao pertence a um curso.")
+            result.update(start_refresh(store.course_source, lead["institute_key"], lead["course_key"]))
         elif action == "patient-refresh":
             from crm_patient_refresh import start_refresh
             with store.db() as c:
@@ -244,6 +269,8 @@ def handle_request(handler, parsed):
         return handler.auth_json({"ok": True, **result})
     except Conflict as e:
         return handler.auth_json({"ok": False, "error": str(e)}, 409)
+    except PermissionError as e:
+        return handler.auth_json({"ok": False, "error": str(e)}, 403)
     except sqlite3.IntegrityError:
         return handler.auth_json({"ok": False, "error": "Ja existe um registro com estes dados ou ha um vinculo invalido."}, 400)
     except (ValueError, TypeError, KeyError, OverflowError, UnicodeError) as e:

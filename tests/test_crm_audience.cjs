@@ -8,7 +8,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../static/crm-audience.js')
 const pipelines=[{id:'p',name:'Orgânico',count:70,stages:[{id:'s',name:'Novo',kind:'open',count:70}]}];
 const rows=Array.from({length:70},(_,i)=>({id:`lead-${i}`,name:`Cliente ${i}`,phone:`55000000${i}`,pipeline_id:'p',stage_id:'s',customer_history:{},campaign_reason:''}));
 const controls=new Map();
-function node(){return {innerHTML:'',hidden:false,options:[],setAttribute(){},querySelector(){return null;},querySelectorAll(){return [];}};}
+function node(){return {innerHTML:'',hidden:false,options:[],setAttribute(){},insertAdjacentHTML(_position,html){this.innerHTML+=html;},querySelector(){return null;},querySelectorAll(){return [];}};}
 function root(){
   const elements=new Map();
   return {isConnected:true,innerHTML:'',querySelector(selector){if(!elements.has(selector))elements.set(selector,node());return elements.get(selector);},querySelectorAll(){return [];}};

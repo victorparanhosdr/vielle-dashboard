@@ -8,6 +8,7 @@ import uuid
 
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_store import Conflict, TZ, integer, text
+from crm_access import pipeline_visible, check_row
 
 FINGERPRINT_FIELDS=("id","contact_id","revision","consent_at","phone","name","opted_out","experts_status","experts_uuid","service_location_revision")
 
@@ -19,8 +20,10 @@ def rows_fingerprint(rows):
 
 def fingerprint(c, doctor, ids):
     wanted = set(ids)
-    rows = c.execute("""SELECT l.id,l.contact_id,l.revision,l.consent_at,ct.phone,ct.name,ct.opted_out,
+    rows = c.execute("""SELECT l.id,l.contact_id,l.revision,l.consent_at,ct.phone,
+        CASE WHEN p.course_key<>'' AND l.source_name<>'' THEN l.source_name ELSE ct.name END name,ct.opted_out,
         ct.experts_status,ct.experts_uuid,ct.service_location_revision FROM leads l JOIN contacts ct ON ct.id=l.contact_id
+        JOIN pipelines p ON p.id=l.pipeline_id
         WHERE l.doctor_id=? ORDER BY l.id""", (doctor,)).fetchall()
     return rows_fingerprint([r for r in rows if r["id"] in wanted])
 
@@ -57,9 +60,9 @@ def selection(store, payload):
             if pipelines and owner["id"] not in pipelines:
                 raise ValueError("Fase de outro funil.")
         leads = [dict(r) for r in c.execute("""SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.experts_uuid,ct.experts_status,
-            ct.service_location,ct.service_location_source,ct.service_location_revision,s.kind
+            ct.service_location,ct.service_location_source,ct.service_location_revision,s.kind,p.institute_key,p.course_key
             FROM leads l JOIN contacts ct ON ct.id=l.contact_id JOIN stages s ON s.id=l.stage_id
-            WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id""", (doctor,))]
+            JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id""", (doctor,)) if pipeline_visible(dict(r))]
         store.attach_customer_values(c,leads,doc["name"],bool(filters["search"]))
         if appointment_active(filters):
             store.attach_appointment_filters(leads,doc["name"],filters)
@@ -69,7 +72,7 @@ def selection(store, payload):
                     and (included is None or l["id"] in included) and l["id"] not in removed)
         coverage = len({l["contact_id"] for l in leads if in_scope(l) and (not financial_ready(l,filters) or not appointment_ready(l,filters))})
         leads = ordered([l for l in leads if matches(l,filters)],filters)
-        catalog = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name",(doctor,))]
+        catalog = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name",(doctor,)) if pipeline_visible(dict(r))]
         for p in catalog:
             members=[l for l in leads if l["pipeline_id"]==p["id"]]
             p["count"]=len(members)
@@ -95,9 +98,9 @@ def selection(store, payload):
 def candidates(store,payload):
     page=integer(payload.get("page",1),1,100000)
     order=payload.get("order_by","")
-    if not isinstance(order,str) or order not in {"","name","pipeline","spent","quotes","eligibility"}:
+    if not isinstance(order,str) or order not in {"","name","pipeline","spent","quotes","course_paid","course_value","eligibility"}:
         raise ValueError("Ordenacao de destinatarios invalida.")
-    direction=payload.get("order_dir","desc" if order in {"spent","quotes"} else "asc")
+    direction=payload.get("order_dir","desc" if order in {"spent","quotes","course_paid","course_value"} else "asc")
     if not isinstance(direction,str) or direction not in {"asc","desc"}:
         raise ValueError("Ordenacao de destinatarios invalida.")
     rows,selected,catalog,result=selection(store,payload)
@@ -112,6 +115,10 @@ def sort_candidates(rows,catalog,order,direction):
     stages={s["id"]:s["position"] for p in catalog for s in p["stages"]}
     reason_rank={"":0,"Cadastro a conferir":1,"Descadastrado":2,"Contato repetido":3,"Removido da selecao":4}
     base=sorted(rows,key=lambda l:(fold(l["name"]),l["id"]))
+    if order in {"course_paid","course_value"}:
+        ready=[l for l in base if order=="course_value" or l.get("course_data",{}).get("state")=="ready"]
+        missing=[l for l in base if l not in ready]
+        return sorted(ready,key=lambda l:l.get("course_data",{}).get("paid_cents",0) if order=="course_paid" else l["value_cents"],reverse=direction=="desc")+missing
     if order in {"spent","quotes"}:
         state,field=("sales_state","sales_cents") if order=="spent" else ("quotes_state","pending_quotes_cents")
         known=lambda l:l.get("customer_history",{}).get(state)=="ready" and type(l["customer_history"].get(field)) is int
@@ -164,22 +171,30 @@ def dashboard(store,doctor,query):
     page=integer(query.get("page",[1])[0],1,10000)
     with store.db() as c:
         store.row(c,"doctors",doctor)
-        counts={r[0]:r[1] for r in c.execute("SELECT status,count(*) FROM campaigns WHERE doctor_id=? AND created_at>=? AND created_at<? GROUP BY status",(doctor,ts,te))}
+        visible=[]
+        for row in c.execute("SELECT * FROM campaigns WHERE doctor_id=? AND created_at>=? AND created_at<?",(doctor,ts,te)):
+            try:
+                check_row(c,"campaigns",dict(row))
+                visible.append(dict(row))
+            except PermissionError:
+                continue
+        allowed={r["id"] for r in visible}
+        counts=dict(Counter(r["status"] for r in visible))
         rows=[dict(r) for r in c.execute("""SELECT ca.*,ch.name channel_name,ch.phone channel_phone,ch.state channel_state,
             ch.daily_limit,ch.next_send_at FROM campaigns ca JOIN channels ch ON ch.id=ca.channel_id
             WHERE ca.doctor_id=? AND ca.created_at>=? AND ca.created_at<? AND (?='' OR ca.status=?)
-            ORDER BY ca.created_at DESC,ca.id LIMIT 20 OFFSET ?""",(doctor,ts,te,status,status,(page-1)*20))]
+            ORDER BY ca.created_at DESC,ca.id""",(doctor,ts,te,status,status)) if r["id"] in allowed][(page-1)*20:page*20]
         for row in rows:
             row["counts"]={r[0]:r[1] for r in c.execute("SELECT status,count(*) FROM messages WHERE campaign_id=? GROUP BY status",(row["id"],))}
             row["weekdays"]=json.loads(row["weekdays"])
             row["total"]=sum(row["counts"].values())
             row["progress"]=round(100*(row["total"]-row["counts"].get("queued",0)-row["counts"].get("sending",0))/row["total"]) if row["total"] else 0
             row["daily_used"]=c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND (sent_at>=? OR claimed_at>=?)",(row["channel_id"],datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp(),datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp())).fetchone()[0]
-        metrics={r[0]:r[1] for r in c.execute("""SELECT m.status,count(*) FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id
-            WHERE ca.doctor_id=? AND m.claimed_at>=? AND m.claimed_at<? GROUP BY m.status""",(doctor,ts,te))}
-        sent=c.execute("SELECT m.sent_at FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id WHERE ca.doctor_id=? AND m.status='sent' AND m.sent_at>=? AND m.sent_at<?",(doctor,ts,te)).fetchall()
+        metrics=Counter(r[0] for r in c.execute("""SELECT m.status,m.campaign_id FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id
+            WHERE ca.doctor_id=? AND m.claimed_at>=? AND m.claimed_at<?""",(doctor,ts,te)) if r[1] in allowed)
+        sent=[r for r in c.execute("SELECT m.sent_at,m.campaign_id FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id WHERE ca.doctor_id=? AND m.status='sent' AND m.sent_at>=? AND m.sent_at<?",(doctor,ts,te)) if r[1] in allowed]
         days=Counter(datetime.fromtimestamp(r[0],TZ).date().isoformat() for r in sent)
-        dedup=c.execute("SELECT coalesce(sum(duplicates_count),0) FROM campaigns WHERE doctor_id=? AND created_at>=? AND created_at<?",(doctor,ts,te)).fetchone()[0]
+        dedup=sum(r["duplicates_count"] for r in visible)
         total=counts.get(status,0) if status else sum(counts.values())
     return {"campaigns":rows,"counts":counts,"total":total,"page":page,"has_more":page*20<total,"from":start.isoformat(),"to":end.isoformat(),
             "metrics":{"sent":len(sent),"unknown":metrics.get("unknown",0),"active":counts.get("running",0),"duplicates":dedup},

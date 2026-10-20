@@ -7,7 +7,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:["dashboard","board","inbox","campaigns","channels","templates"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","campaigns","channels","templates"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
   let presentation="board",listPicker=null,listSeed=null,listScope="";
   let radarCollapsed=false;
   try{radarCollapsed=sessionStorage.getItem("doc4docs.crm.radarCollapsed")==="1";}catch{}
@@ -77,10 +77,13 @@
   const doctor = () => state.data?.doctors.find(p=>p.id===state.doctor);
   const selectedLeads = () => (state.data?.leads || []).filter(l=>l.pipeline_id===state.pipeline);
   const importer=window.createCrmImporter({api,modal,error,icons,esc,load});
+  const courses=window.createCrmCourses({api,esc,icon,icons});
+  const courseScope=()=>state.mode==="board"?Boolean(pipeline()?.course_key):state.mode==="inbox" && state.business==="course";
   const avatars=window.createCrmAvatars({api,esc,enabled:doc=>doc===state.doctor && state.data?.gateway_configured && state.data.channels.some(c=>c.state==="open")});
   const clientMode=()=>["board","inbox"].includes(state.mode);
-  const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno"};
+  const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno",course_status:"Pagamento Kiwify"};
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
+  filterChoices.course_status={paid:"Pagamento aprovado",pending:"Aguardando pagamento",refunded:"Reembolso / chargeback",none:"Sem pedido localizado"};
   function appointmentRange(kind) {
     const today=state.data?.today || new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
     const anchor=new Date(`${today}T12:00:00Z`), year=anchor.getUTCFullYear(), month=anchor.getUTCMonth();
@@ -101,6 +104,8 @@
     syncAppointmentRange();
   }
   function paintFilters() {
+    document.querySelectorAll(".crmFilterGroup").forEach(group=>{group.hidden=group.hasAttribute("data-course-filters")?!courseScope():courseScope();});
+    $("crmFilterForm").querySelector(".crmFilterActions>span").textContent=courseScope()?"Kiwify · pedidos do curso":"Clínica Experts · histórico sincronizado · doutor selecionado";
     const entries=Object.entries(state.filters).filter(([,v])=>v!=="" && v!=null);
     $("filterCount").hidden=!entries.length;$("filterCount").textContent=entries.length;
     $("activeCrmFilters").hidden=!entries.length;
@@ -182,6 +187,7 @@
     });
   }
   function leadCard(l) {
+    if(l.course_key)return `<button class="leadCard courseLeadCard" draggable="true" data-lead="${esc(l.id)}" data-tier="unclassified" aria-label="${esc(l.name+" · "+courses.label(l))}"><span class="leadCardHead">${avatars.markup(l.name,l.contact_id,state.doctor,"","leadAvatar")}<span class="leadPerson"><strong>${esc(l.name)}</strong>${courses.badge(l)}</span></span><span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.email || l.title)}</span></span><span class="cardBottom"><small>${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><strong>${l.course_data?.paid_count?exactMoney(l.course_data.paid_cents):l.value_cents?exactMoney(l.value_cents):""}</strong></span></button>`;
     const agenda=l.appointment_filter?.item?l.appointment_filter:l.appointment;
     return `<button class="leadCard" draggable="true" data-tier="${esc(l.customer_value?.tier || "unclassified")}" data-lead="${esc(l.id)}" title="${esc(customerValueDescription(l.customer_value))}" aria-label="${esc(l.name+" · "+customerValueDescription(l.customer_value))}">
       <span class="leadCardHead">${avatars.markup(l.name,l.contact_id,state.doctor,"","leadAvatar")}<span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
@@ -193,6 +199,7 @@
     const pendingLocations=state.data.service_location_pending?.[state.pipeline] || 0;
     if(!p) return '<p class="emptyState">Nenhum funil cadastrado para este doutor.</p>';
     if(data?.pipeline_id!==p.id)return '<p class="emptyState" role="status">Carregando funil…</p>';
+    if(p.course_key)return courseBoard(p,data,leads);
     const summary=data.summary,{cents:quoteTotal,pending:quotePending}=summary.quotes;
     const tiers=["gold","silver","bronze"].map(tier=>({tier,count:summary.tiers[tier]})),knownCount=tiers.reduce((total,t)=>total+t.count,0);
     const leaderboard=`<section class="teamLeaderboard"><h2>${icon("trophy")} Conquistas da equipe</h2>${state.data.game.team.map((m,i)=>`<div class="rankRow"><b class="rankPosition">${String(i+1).padStart(2,"0")}</b><span>${esc(m.actor)}</span><strong>${m.points} XP</strong></div>`).join("") || '<p>As conquistas aparecerão com os primeiros avanços.</p>'}</section>`;
@@ -201,6 +208,10 @@
       const column=data.columns.find(c=>c.stage_id===s.id),quotes=column.quotes;
       return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${column.total}</span></div><small title="Orçamentos pendentes · Abertos e vencidos · Clínica Experts${quotes.pending?` · Parcial: ${quotes.pending} cadastro(s) a conferir`:""}">${exactMoney(quotes.cents)}${quotes.pending?"*":""}<b>${String(index+1).padStart(2,"0")}</b></small></div><div class="columnLeads" tabindex="0" role="region" aria-label="Oportunidades em ${esc(s.name)}"><div class="columnCards">${items.map(leadCard).join("") || `<div class="emptyColumn">${icon(s.kind==="won"?"flag":"circle-dashed")}<span>Nenhuma oportunidade</span></div>`}</div>${kanban.footer(column)}</div></section>`;
     }).join("")}</div><aside id="crmSalesRadar" class="salesRadar" ${radarCollapsed?"hidden":""}><div class="radarBlock"><h2>${icon("radar")} Radar comercial</h2><div class="radarFocus"><div class="radarNumber">${summary.overdue}</div><span>próximos passos<br>vencidos</span></div><p>${summary.stale} oportunidades sem atualização há 7 dias.</p>${pendingLocations?`<button id="pendingLocations" class="locationPendingLink">${icon("map-pin-off")} ${pendingLocations} com Local de Atendimento pendente</button>`:""}</div><div class="radarBlock customerPortfolio"><h2>${icon("gem")} Relacionamento</h2>${tiers.map(({tier,count})=>`<div class="tierDistribution ${tier}"><div><span>${icon(tier==="gold"?"crown":"medal")}${tierLabels[tier]}</span><strong>${count}</strong></div><meter min="0" max="${Math.max(knownCount,1)}" value="${count}" aria-label="${count} clientes ${tierLabels[tier]}"></meter></div>`).join("")}<p>${summary.unclassified} sem classificação · funil atual</p></div>${leaderboard}</aside></div>`;
+  }
+  function courseBoard(p,data,leads){
+    const summary=data.summary,c=summary.course;
+    return `<div class="boardSummary"><span>${icon("users-round")}<strong>${summary.total}</strong> oportunidades</span><span>${icon("graduation-cap")}<strong>${c.paid_students}</strong> com pagamento aprovado</span><span title="Pagamentos aprovados vinculados aos contatos deste filtro · Kiwify">${icon("wallet-cards")}<strong>${exactMoney(c.paid_cents)}</strong> Kiwify</span><span>${icon("clock-3")}<strong>${c.pending}</strong> pedidos pendentes</span><button id="toggleSalesRadar" class="icon-button" aria-controls="crmSalesRadar" aria-expanded="${!radarCollapsed}" aria-label="${radarAction()}" title="${radarAction()}">${icon(radarCollapsed?"panel-right-open":"panel-right-close")}</button></div><div class="crmWorkspace ${radarCollapsed?"radarCollapsed":""}"><div class="crmBoard" data-pipeline="${esc(p.id)}" aria-label="Funil ${esc(p.name)}">${p.stages.map((s,index)=>{const column=data.columns.find(c=>c.stage_id===s.id);return `<section class="crmColumn" data-stage="${esc(s.id)}" data-kind="${esc(s.kind)}" aria-label="${esc(s.name)}"><div class="columnHead"><div><i class="stageDot" aria-hidden="true"></i><strong>${esc(s.name)}</strong><span>${column.total}</span></div><small title="Valores das oportunidades no funil; não equivalem a pagamentos aprovados">${exactMoney(column.value_cents)}<b>${String(index+1).padStart(2,"0")}</b></small></div><div class="columnLeads" tabindex="0" role="region" aria-label="Oportunidades em ${esc(s.name)}"><div class="columnCards">${leads.filter(l=>l.stage_id===s.id).map(leadCard).join("") || '<div class="emptyColumn">Nenhuma oportunidade</div>'}</div>${kanban.footer(column)}</div></section>`;}).join("")}</div><aside id="crmSalesRadar" class="salesRadar" ${radarCollapsed?"hidden":""}><div class="radarBlock"><h2>${icon("graduation-cap")} Jornada do curso</h2>${p.stages.map(s=>`<div class="courseStageTotal"><span>${esc(s.name)}</span><strong>${data.columns.find(c=>c.stage_id===s.id).total}</strong></div>`).join("")}</div><div class="radarBlock"><h2>${icon("calendar-clock")} Próximos contatos</h2><div class="radarNumber">${summary.overdue}</div><p>contatos vencidos</p><p>${c.refunds} reembolso(s) / chargeback(s) · Kiwify</p><button id="refreshCourse" ${leads.length?"":"disabled"}>${icon("refresh-cw")} Atualizar Kiwify</button><p id="courseRefreshStatus" role="status" hidden></p><a class="courseInstituteLink" href="/institutes.html?institute=${encodeURIComponent(p.institute_key)}&course=${encodeURIComponent(p.course_key)}" target="_blank" rel="noopener">${icon("arrow-up-right")} Relatórios do Instituto</a></div></aside></div>`;
   }
   function radarAction(){return radarCollapsed?"Mostrar Radar comercial":"Recolher Radar comercial";}
   function toggleRadar(){
@@ -217,8 +228,11 @@
   function render() {
     if(!state.data) return;
     document.body.dataset.crmMode=state.mode;
+    const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
+    if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
+    $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
     $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens"})[state.mode];
-    const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);history.replaceState(null,"",url);
+    const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);if(state.pipeline)url.searchParams.set("pipeline",state.pipeline);history.replaceState(null,"",url);
     $("newLead").hidden=!["board","inbox"].includes(state.mode);
     $("addDoctor").hidden=!state.data.can_manage || !["board","channels"].includes(state.mode);
     kanban.destroy();
@@ -230,7 +244,7 @@
     document.querySelector('.crmSort').hidden=state.mode==="board" && presentation==="list";
     document.querySelector('.crmSearchBar').classList.toggle('columnSorting',state.mode==="board" && presentation==="list");
     $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="campaigns" ? `<button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : state.mode==="channels" ? `<button class="primary" id="newChannel">${icon("plus")} Número</button>` : "";
-    if(state.mode==="board" && pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="organico paranhos")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
+    if(state.mode==="board" && ["organico paranhos","regencode"].includes(pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase()) && doctor()?.name==="Victor Paranhos de Andrade")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
     if(!state.data.can_manage){
       ["editPipeline","newPipeline","newChannel","importKommo"].forEach(id=>{if($(id))$(id).hidden=true;});
     }
@@ -246,6 +260,7 @@
     }
     const newBoard=$("crmView").querySelector(".crmBoard");if(newBoard && newBoard.dataset.pipeline===oldPipeline)newBoard.scrollLeft=scrollX;
     if(newBoard && state.data.kanban?.pipeline_id===state.pipeline)kanban.mount(newBoard,{doctor:state.doctor,pipeline:state.pipeline,filters:{...state.filters,search:state.search,sort:state.sort},columns:state.data.kanban.columns});
+    if($("refreshCourse"))$("refreshCourse").onclick=()=>{const l=selectedLeads()[0];if(l)courses.refresh(l,$("refreshCourse"),$("courseRefreshStatus"),()=>load());};
     if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
     }
     if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
@@ -290,6 +305,10 @@
   }
   function leadForm() {
     const p=pipeline();if(!p)return;
+    if(p.course_key){
+      modal("Nova oportunidade do curso",`<form><p class="connectionNote">${esc(p.name)} · ${esc(doctor().name)}</p><div class="formGrid"><label>Nome do contato<input name="name" required maxlength="160"></label><label>WhatsApp com código do país<input name="phone" required inputmode="tel" placeholder="5511999999999"></label></div><label>E-mail<input name="email" type="email" maxlength="200"></label><label>Oportunidade<input name="title" required maxlength="160" value="${esc(p.name)}"></label><div class="formGrid"><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name)).join("")}</select></label><label>Valor da oportunidade (R$)<input name="value" type="number" step="0.01" min="0" max="1000000" value="0" required></label></div><label>Próximo contato<input name="next_action" type="date"></label>${actions("Criar oportunidade")}</form>`);
+      wireForm(f=>api("lead",{doctor_id:state.doctor,pipeline_id:p.id,stage_id:f.get("stage_id"),name:f.get("name"),phone:f.get("phone"),email:f.get("email"),title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action")}));return;
+    }
     const doc=state.doctor;
     modal("Nova oportunidade",`<form><p class="connectionNote">${esc(doctor().name)} · ${esc(p.name)}</p><fieldset class="patientSource"><legend class="visuallyHidden">Origem do cliente</legend><label><input type="radio" name="patient_source" value="new" checked>${icon("user-round-plus")} Novo contato</label><label><input type="radio" name="patient_source" value="experts">${icon("database")} Clínica Experts</label></fieldset><section id="patientPicker" hidden><div class="patientSearchBar"><label>Buscar paciente<input id="patientSearch" type="search" placeholder="Nome ou telefone" autocomplete="off"></label><button type="button" id="refreshPatientDirectory" class="icon-button" title="Atualizar pacientes do Clínica Experts" aria-label="Atualizar pacientes do Clínica Experts">${icon("refresh-cw")}</button></div><p id="patientSearchStatus" role="status" class="connectionNote"></p><div id="patientResults" class="patientResults" aria-label="Pacientes do Clínica Experts"></div><div class="patientPagination"><button type="button" id="patientPrev" class="icon-button" title="Página anterior" aria-label="Página anterior de pacientes">${icon("chevron-left")}</button><span id="patientPage"></span><button type="button" id="patientNext" class="icon-button" title="Próxima página" aria-label="Próxima página de pacientes">${icon("chevron-right")}</button></div><label id="patientPhoneChoice" hidden>Telefone cadastrado<select id="patientPhone"></select></label></section><div class="formGrid"><label>Nome do cliente<input name="name" required maxlength="160" autocomplete="name"></label><label>Telefone com código do país<input name="phone" inputmode="tel" required placeholder="5533999999999"></label></div><label>Oportunidade<input name="title" required maxlength="160" placeholder="Interesse / próximo objetivo"></label><div class="formGrid"><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name)).join("")}</select></label><label>Valor estimado (R$)<input name="value" type="number" min="0" max="1000000" step="0.01" value="0" required></label></div><label>Próximo contato<input name="next_action" type="date"></label><details class="consentEvidence"><summary>Registro de consentimento (opcional)</summary><label class="check"><input name="consent" type="checkbox">Cliente informou consentimento para mensagens</label><label>Origem e data do registro<input name="consent_source" maxlength="300" placeholder="Ex.: formulário ou conversa"></label></details>${actions("Criar oportunidade")}</form>`);
     const form=$("crmDialog").querySelector("form"),name=form.elements.name,phone=form.elements.phone;
@@ -426,8 +445,10 @@
       const res=await fetch(`/api/crm/lead?${new URLSearchParams({clinic:"vielle",doctor:state.doctor,id})}`), data=await res.json();
       if(!res.ok)throw new Error(data.error);
       const l=data.lead,p=state.data.pipelines.find(p=>p.id===l.pipeline_id);
+      const isCourse=Boolean(l.course_key);
       modal(l.name,`<div class="leadDetail"><div><p class="connectionNote">+${esc(l.phone)} · ${esc(p.name)}</p><form id="leadEdit"><label>Oportunidade<input name="title" value="${esc(l.title)}" maxlength="160" required></label><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name,l.stage_id===s.id)).join("")}</select></label><div class="formGrid"><label>Valor estimado (R$)<input name="value" type="number" step="0.01" min="0" max="1000000" value="${l.value_cents/100}" required></label><label>Próximo contato<input name="next_action" type="date" value="${esc(l.next_action)}"></label></div>${actions("Salvar oportunidade")}</form><h3>Mensagens</h3><p class="connectionNote">${l.opted_out?"Descadastrado · envios bloqueados":"Disponível para envio · padrão da clínica"}</p>${l.consent_at?`<p class="connectionNote">Consentimento informado: ${esc(l.consent_source)}</p>`:""}<div class="commands">${!l.opted_out?`<button id="recordConsent">${icon("file-check")} Registrar consentimento</button><button id="optout">Descadastrar</button>`:`<button id="reactivateContact">${icon("user-round-check")} Reativar contato</button>`}</div><h3>Registrar atividade</h3><form id="activityForm"><label>Tipo<select name="kind"><option value="followup">Follow-up realizado</option><option value="note">Nota interna</option></select></label><label>Resumo<textarea name="body" required maxlength="2000"></textarea></label>${actions("Registrar")}</form></div><div><h3>Histórico</h3>${data.events.map(e=>`<div class="eventRow"><small>${date(e.created_at)} · ${esc(e.actor)} · ${esc(e.kind==="reactivate"?"Contato reativado":e.kind)}</small>${esc(e.body)}</div>`).join("")}<h3>Conversas</h3><div class="conversation">${data.messages.map(m=>`<div class="eventRow ${esc(m.direction)}"><small>${date(m.created_at)} · ${esc(m.channel_name)} · ${esc(statusLabels[m.status] || m.status)}</small>${esc(m.body)}</div>`).join("") || '<p class="connectionNote">Nenhuma mensagem neste doutor.</p>'}</div></div></div>`);
       const identity=document.createElement("p");identity.className="connectionNote";identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");$("leadEdit").before(identity);
+      if(isCourse)identity.textContent=courses.label(l);
       const refresh=document.createElement("div");refresh.className="patientRefreshControls";
       refresh.innerHTML=`<button type="button" title="Buscar novamente no Clínica Experts" ${patientRefreshes.has(l.id)?"disabled":""}>${icon("refresh-cw")} Atualizar contato</button><p role="status" hidden></p>`;identity.after(refresh);
       refresh.querySelector("button").onclick=async()=>{
@@ -441,11 +462,14 @@
           status.textContent=patientRefreshMessage(l);icons();
         } catch(e){if(status.isConnected){status.hidden=false;status.textContent=e.message;}}
       };
-      const value=document.createElement("div");value.className="profileCustomerValue";value.innerHTML=customerValuePanel(l.customer_value);$("leadEdit").before(value);
-      const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=appointmentBadge(l.appointment);$("leadEdit").before(appointment);
+      if(isCourse){refresh.querySelector("button").innerHTML=`${icon("refresh-cw")} Atualizar Kiwify`;refresh.querySelector("button").title="Atualizar pedidos do curso";refresh.querySelector("button").onclick=()=>courses.refresh(l,refresh.querySelector("button"),refresh.querySelector("p"),updated=>{Object.assign(l,updated);value.innerHTML=courses.panel(l);identity.textContent=courses.label(l);commerce.innerHTML=courses.orders(l);},()=>$("crmDialog").open && refresh.isConnected && state.doctor===l.doctor_id);}
+      const value=document.createElement("div");value.className="profileCustomerValue";value.innerHTML=isCourse?courses.panel(l):customerValuePanel(l.customer_value);$("leadEdit").before(value);
+      const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=isCourse?"":appointmentBadge(l.appointment);$("leadEdit").before(appointment);
       const locationForm=document.createElement("form");locationForm.className="serviceLocationForm";
       locationForm.innerHTML=`<label>Local de Atendimento<select name="service_location">${option("","Não definido · pendente",!l.service_location)}${Object.entries(locationLabels).map(([key,label])=>option(key,label,l.service_location===key)).join("")}</select></label><p class="connectionNote">${!l.service_location?"Pendência: Local de Atendimento não definido.":l.service_location_source==="ddd"?`Pré-definido pelo DDD ${esc(l.phone.slice(2,4))}.`:"Definido manualmente."}</p><div class="commands"><button type="submit">${icon("check")} Salvar local</button><button type="submit" id="useDddLocation" class="icon-button" title="Reaplicar regra do DDD" aria-label="Reaplicar regra do DDD">${icon("rotate-ccw")}</button></div>`;
       $("leadEdit").after(locationForm);
+      locationForm.hidden=isCourse;
+      if(isCourse){const emailLabel=document.createElement("label");emailLabel.textContent="E-mail do aluno / interessado";const emailInput=document.createElement("input");emailInput.name="email";emailInput.type="email";emailInput.value=l.email || "";emailInput.maxLength=200;emailLabel.append(emailInput);$("leadEdit").prepend(emailLabel);}
       locationForm.onsubmit=async e=>{
         e.preventDefault();const buttons=locationForm.querySelectorAll("button");buttons.forEach(b=>b.disabled=true);$("formError").hidden=true;
         try {await api("service-location",{id:l.id,doctor_id:l.doctor_id,service_location_revision:l.service_location_revision,service_location:new FormData(locationForm).get("service_location"),use_ddd:e.submitter?.id==="useDddLocation"});await load();await profile(l.id);}
@@ -453,7 +477,7 @@
       };
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
       const tabs=document.createElement("div");tabs.className="profileTabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Ficha do cliente");
-      tabs.innerHTML=[["record","notebook-pen","Ficha"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"],["calls","phone-call","Ligações"]].map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
+      tabs.innerHTML=(isCourse?[["record","notebook-pen","Ficha do curso"],["orders","shopping-bag","Pedidos Kiwify"],["calls","phone-call","Ligações"]]:[["record","notebook-pen","Ficha"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"],["calls","phone-call","Ligações"]]).map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
       const commerce=document.createElement("section");commerce.id="profileCommerce";commerce.hidden=true;
       const agenda=document.createElement("section");agenda.id="profileAppointments";agenda.hidden=true;
       const calls=document.createElement("section");calls.id="profileCalls";calls.hidden=true;
@@ -461,9 +485,9 @@
       const history=commercialView(commerce,l);
       const bookings=appointmentsView(agenda,l);
       const callHistory=voice.history(calls,l);
-      const showTab=tab=>{record.hidden=tab!=="record";commerce.hidden=!["sales","quotes"].includes(tab);agenda.hidden=tab!=="appointments";calls.hidden=tab!=="calls";tabs.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.profileTab===tab)));if(!commerce.hidden)history.show(tab);else history.cancel();if(!agenda.hidden)bookings.show();else bookings.cancel();if(!calls.hidden)callHistory.show();else callHistory.cancel();};
+      const showTab=tab=>{record.hidden=tab!=="record";commerce.hidden=!(isCourse?tab==="orders":["sales","quotes"].includes(tab));agenda.hidden=isCourse || tab!=="appointments";calls.hidden=tab!=="calls";tabs.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.profileTab===tab)));if(!commerce.hidden){if(isCourse)commerce.innerHTML=courses.orders(l);else history.show(tab);}else history.cancel();if(!agenda.hidden)bookings.show();else bookings.cancel();if(!calls.hidden)callHistory.show();else callHistory.cancel();};
       tabs.onclick=e=>{const b=e.target.closest("[data-profile-tab]");if(b)showTab(b.dataset.profileTab);};showTab(initialTab);icons();
-      wireForm(async f=>{await moveLead(l,f.get("stage_id"),{title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action")});});
+      wireForm(async f=>{await moveLead(l,f.get("stage_id"),{title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action"),...(isCourse?{email:f.get("email")}:{})});});
       $("activityForm").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;const f=new FormData(e.currentTarget);try{await api("activity",{id:l.id,doctor_id:state.doctor,kind:f.get("kind"),body:f.get("body")});await load();await profile(l.id);}catch(err){error(err.message);b.disabled=false;}};
       if($("optout")) $("optout").onclick=()=>activityModal(l,"optout");
       if($("recordConsent")) $("recordConsent").onclick=()=>activityModal(l,"consent");
@@ -498,7 +522,7 @@
   }});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
   const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});
   window.addEventListener("doc4docs-open-attendance",()=>{
@@ -511,7 +535,7 @@
   $("addDoctor").onclick=doctorForm;$("newLead").onclick=leadForm;$("reload").onclick=load;
   $("bootstrap").onclick=async e=>{e.currentTarget.disabled=true;try{await api("bootstrap",{});await load();}catch(err){notice(err.message);}finally{e.target.disabled=false;}};
   $("doctor").onchange=()=>{inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
-  $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;if(presentation==="board")load();else render();};
+  $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;state.filters={};state.sort="updated";fillFilterForm();if(presentation==="board")load();else{render();paintFilters();}};
   $("customerTierRules").onclick=customerTierForm;
   let searchTimer;
   $("search").oninput=()=>{state.search=$("search").value.trim();clearTimeout(searchTimer);searchTimer=setTimeout(load,300);};
@@ -539,8 +563,8 @@
     $("crmFilterError").hidden=true;clearTimeout(searchTimer);state.filters=next;paintFilters();$("crmFilterPanel").hidden=true;$("toggleCrmFilters").setAttribute("aria-expanded","false");load();
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
-  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;render();if(state.mode==="inbox")inbox.focus();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline)}[b.id])?.();};
+  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="toggleSalesRadar")return toggleRadar();

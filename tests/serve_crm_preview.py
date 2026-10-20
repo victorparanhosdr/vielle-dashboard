@@ -144,6 +144,24 @@ for n, doctor in enumerate(store.listing()["doctors"]):
                 store.receive(channels[cid]["instance"],{"key":{"id":f"preview-external-{n}","fromMe":True,"remoteJid":lead["phone"]+"@s.whatsapp.net"},
                     "messageTimestamp":int(time.time())+1,"message":{"conversation":"Confirmado! Vamos combinar seu retorno para quinta-feira."}},"messages.upsert")
 
+if "--courses-fixture" in sys.argv:
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"]=="Victor Paranhos de Andrade")
+    stages=["Entrada","Receber Link","Disparo Ok","Carrinho Abandonado","Negociação","ALUNOS","Reembolso"]
+    pid=store.pipeline({"doctor_id":doc,"name":"REGENCODE","stages":[{"name":name,"kind":"open"} for name in stages]})
+    p=next(p for p in store.listing(doc)["pipelines"] if p["id"]==pid)
+    institutes=store.course_source.store
+    with institutes.connection() as c:
+        c.execute("UPDATE courses SET product_ids='[\"online-preview\"]' WHERE key='regen-code'")
+    orders=[]
+    for i,(name,status,stage) in enumerate((("Ana Exemplo","paid",5),("João Aluno","waiting_payment",3),("Carla Curso","refunded",6))):
+        number=next(l["phone"] for l in store.listing(doc)["leads"] if l["name"]==name) if i==0 else f"551190000000{i}"
+        store.lead({"doctor_id":doc,"pipeline_id":pid,"stage_id":p["stages"][stage]["id"],"name":name,"phone":number,"email":f"aluno-{i}@example.test","title":"RegenCode online","value_cents":29700},"Equipe Vielle")
+        orders.append({"id":f"exemplo-{i}","status":status,"product_id":"online-preview","created_day":"2026-10-01","approved_day":"2026-10-02","refunded_day":"2026-10-05","gross":29700,"net":26000,"currency":"BRL","net_currency":"BRL","email":f"aluno-{i}@example.test","phone":number,"payment_method":"pix"})
+        ch=store.listing(doc)["channels"][0]
+        store.receive(ch["instance"],{"key":{"id":f"course-{i}","remoteJid":number+"@s.whatsapp.net"},"pushName":name,"message":{"conversation":"Gostaria de informações sobre o RegenCode."}},"messages.upsert")
+    institutes.save_records("victor-paranhos","regen-code","kiwify",orders)
+    institutes.set_sync_state("victor-paranhos","regen-code","kiwify",{"ok":True,"at":int(time.time())})
+
 if "--audience-fixture" in sys.argv:
     doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
     pipelines=store.listing(doc)["pipelines"]
@@ -172,13 +190,16 @@ if "--kommo-import-fixture" in sys.argv:
     store.patient_directory.invalidate()
 
     def synthetic_prepare(target, doctor, pipeline, *, retry_from=""):
+        with target.db() as c:
+            pipeline_name = target.owned(c, "pipelines", pipeline, doctor)["name"]
         records = [{"source_id": i, "source_contact": i, "name": f"Contato Exemplo {i}",
                     "title": "Avaliação", "phones": [f"553399990{i:04d}"],
                     "stage": {"name": "Negociação", "kind": "open"}, "value_cents": 250000,
                     "created_at": 1700000000, "updated_at": 1700000001,
                     "reason": "phone" if i > 4 else ""} for i in range(1, 32)]
         return original_prepare(target, doctor, pipeline, background=False,
-            source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records},
+            source=lambda progress: {"source_pipeline": 13711512 if pipeline_name == "REGENCODE" else 99,
+                                     "source_name": pipeline_name, "records": records},
             retry_from=retry_from)
 
     crm_kommo_import.prepare = synthetic_prepare

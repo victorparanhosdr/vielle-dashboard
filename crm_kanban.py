@@ -54,9 +54,14 @@ def overview(leads, pipeline, doctor, filters, today):
         members = [l for l in items if l["stage_id"] == stage["id"]]
         batch = page(members, [doctor, pipeline["id"], stage["id"], filters])
         visible.extend(batch.pop("leads"))
-        columns.append({"stage_id": stage["id"], **batch, "quotes": quotes(members)})
+        columns.append({"stage_id": stage["id"], **batch, "quotes": quotes(members), "value_cents": sum(l.get("value_cents",0) for l in members)})
     return visible, {"pipeline_id": pipeline["id"] if pipeline else "", "columns": columns,
         "summary": {"total": len(items), "won": sum(l["kind"] == "won" for l in items), "quotes": quotes(customers),
                     "overdue": sum(bool(l["next_action"] and l["next_action"] < today) for l in active),
                     "stale": sum(time.time() - l["updated_at"] > 7 * 86400 for l in active),
-                    "tiers": tiers, "unclassified": len(customers) - sum(tiers.values())}}
+                    "tiers": tiers, "unclassified": len(customers) - sum(tiers.values()),
+                    "value_cents": sum(l.get("value_cents",0) for l in items),
+                    "course": {"paid_students": sum(l.get("course_data", {}).get("paid_count", 0) > 0 for l in customers),
+                               "paid_cents": sum(l.get("course_data", {}).get("paid_cents", 0) for l in customers),
+                               "pending": sum(l.get("course_data", {}).get("pending_count", 0) for l in customers),
+                               "refunds": sum(l.get("course_data", {}).get("refunded_count", 0) for l in customers)}}}

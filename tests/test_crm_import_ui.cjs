@@ -31,7 +31,9 @@ const importer = context.window.createCrmImporter({
   esc:value=>String(value).replaceAll("<","&lt;"),load:async()=>{loaded++;}
 });
 (async()=>{
-  await importer.open("doctor","pipeline");
+  await importer.open("doctor","pipeline","REGENCODE");
+  assert.ok(html.includes("REGENCODE · Dr. Victor Paranhos de Andrade"));
+  assert.ok(!html.includes("Orgânico Paranhos"));
   assert.ok(html.includes("&lt;Nome>"));
   assert.ok(html.includes("Resolver pendências em lote"));
   await elements.get("retryKommo").onclick();
