@@ -3,7 +3,6 @@
   const doctor=document.getElementById("doctor"),search=document.querySelector(".crmSearchInput"),bar=document.querySelector(".appTopbar");
   if(!bar || !doctor || !search)return;
   const doctorField=doctor.closest("label");doctorField.classList.add("crmHeaderDoctor");
-  const brand=bar.querySelector(".appBrand");brand.textContent="DOC4DOCS";
   const actions=bar.querySelector(".appHeaderActions");
   bar.insertBefore(doctorField,actions);bar.insertBefore(search,actions);search.classList.add("crmHeaderSearch");
   search.querySelector("input").placeholder="Buscar clientes...";

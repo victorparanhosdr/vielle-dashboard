@@ -2,7 +2,7 @@
 body.crmDesktop{--ui-bg:#f6f8f8;--ui-surface:#fcfdfd;--ui-ink:#293a32;--ui-green:#1e624b;--ui-muted:#718078;--ui-line:#e0e7e3;--crm-rail:64px;--crm-header-height:64px;display:grid;grid-template-columns:var(--crm-rail) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden;padding:0!important;background:var(--ui-bg);}
 .crmDesktop>.appChrome{grid-column:2;grid-row:1;position:relative;top:auto;min-width:0;z-index:60;background:#fcfdfdf5;box-shadow:none;border:0;}
 .crmDesktop .appTopbar{min-height:64px;padding:9px 22px;gap:20px;flex-wrap:nowrap;}
-.crmDesktop .appBrand{flex:0 0 auto;font-size:13px;font-weight:700;color:#164f3c;letter-spacing:0;}
+.crmDesktop .appBrand{flex:0 0 auto;}
 .crmDesktop .appContext{padding:0 0 0 18px;max-width:210px;flex:none;}
 .crmDesktop .appContext a{border:0!important;background:none!important;padding:5px 0;min-height:34px;font-size:13px;}
 body.crmPage.crmDesktop .appAreas,body.crmPage.crmDesktop .appNav,body.crmPage.crmDesktop .appMobileNavToggle,body.crmPage.crmDesktop .crmTabs{display:none!important;}
@@ -21,7 +21,8 @@ body.crmPage.crmDesktop .appAreas,body.crmPage.crmDesktop .appNav,body.crmPage.c
 .crmDesktop:not([data-crm-mode=board]):not([data-crm-mode=inbox]) .crmHeaderSearch{display:none;}
 .crmDesktop:not([data-crm-mode=board]):not([data-crm-mode=inbox]) .appHeaderActions{margin-left:auto;}
 .crmDesktop .crmRail{grid-column:1;grid-row:1/-1;z-index:65;display:flex;flex-direction:column;align-items:center;gap:26px;padding:16px 10px 14px;background:#103d32;min-height:0;}
-.crmDesktop .crmRailBrand{height:32px;display:flex;align-items:center;justify-content:center;color:#f0f5f2;text-decoration:none;font-size:17px;font-weight:650;}
+.crmDesktop .crmRailBrand{height:32px;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+.crmDesktop .crmRailBrand img{display:block;width:32px;height:32px;object-fit:contain;}
 .crmDesktop .crmRailModules,.crmDesktop .crmRailBottom{display:flex;flex-direction:column;align-items:center;gap:8px;}
 .crmDesktop .crmRailBottom{margin-top:auto;gap:10px;}
 .crmDesktop .crmRail :is(button,.crmRailBottom a){position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:42px;min-height:42px;padding:0;border:0!important;border-radius:6px;background:transparent!important;color:#a5c0b5!important;text-decoration:none;cursor:pointer;}
@@ -118,6 +119,10 @@ body.crmPage.crmDesktop .appAreas,body.crmPage.crmDesktop .appNav,body.crmPage.c
 .crmDesktop .opportunityQuotes{margin:16px 0;}.crmDesktop .opportunityQuotes strong{font-size:20px;}
 .crmDesktop .contactPanel button{font-size:12px;min-height:36px;}
 .crmDesktop .crmWorkspace{gap:18px;grid-template-columns:minmax(0,1fr) 225px;}
+.crmDesktop .crmWorkspace.radarCollapsed{grid-template-columns:minmax(0,1fr);}
+.crmDesktop #crmSalesRadar[hidden]{display:none!important;}
+.crmDesktop .boardSummary{align-items:center;}
+.crmDesktop #toggleSalesRadar{margin-left:auto;width:32px;height:32px;min-height:32px;padding:6px;flex:none;}
 .crmDesktop .crmBoard{grid-auto-columns:290px;min-width:0;}
 .crmDesktop .crmColumn{background:#eef2f0;border-top-width:2px;}
 .crmDesktop .leadCard:not([data-tier=gold]):not([data-tier=silver]):not([data-tier=bronze]){background:#fcfdfd!important;}
