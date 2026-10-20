@@ -249,6 +249,12 @@ class CrmStore:
         from crm_attribution import schema as attribution_schema
         with self.db() as c:
             attribution_schema(c)
+        from crm_bulk import schema as bulk_schema
+        with self.db() as c:
+            bulk_schema(c)
+        from crm_channels import schema as channel_schema
+        with self.db() as c:
+            channel_schema(c)
 
     def contact(self, c, number, name, *, identity_name="", clinical=None):
         current = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
@@ -323,6 +329,8 @@ class CrmStore:
             raise LookupError("Registro nao encontrado.")
         result = dict(r)
         check_row(c, table, result)
+        if table == "leads" and result.get("deleted_at"):
+            raise LookupError("Oportunidade na lixeira.")
         return result
 
     @staticmethod
@@ -369,6 +377,8 @@ class CrmStore:
                     raise Conflict("O funil mudou. Atualize antes de salvar.")
                 old = {r[0] for r in c.execute("SELECT id FROM stages WHERE pipeline_id=?", (key,))}
                 for stage in old - {s[0] for s in cleaned}:
+                    if c.execute("SELECT 1 FROM channels WHERE inbound_stage_id=?", (stage,)).fetchone():
+                        raise ValueError("Esta etapa recebe novos leads de um numero WhatsApp. Altere o destino do numero antes de remover a etapa.")
                     if c.execute("SELECT 1 FROM leads WHERE stage_id=?", (stage,)).fetchone():
                         raise ValueError("Mova os clientes antes de remover uma fase em uso.")
                     c.execute("DELETE FROM stages WHERE id=?", (stage,))
@@ -384,6 +394,8 @@ class CrmStore:
                     raise ValueError("Fase de outro funil.")
                 if existing and existing[1] != kind and c.execute("SELECT 1 FROM leads WHERE stage_id=?", (sid,)).fetchone():
                     raise ValueError("Nao altere o resultado de uma fase em uso. Crie outra fase.")
+                if kind != "open" and c.execute("SELECT 1 FROM channels WHERE inbound_stage_id=?", (sid,)).fetchone():
+                    raise ValueError("A etapa de entrada de um numero WhatsApp deve permanecer aberta.")
                 c.execute("INSERT INTO stages VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,position=excluded.position,kind=excluded.kind",
                           (sid, key, name, position, kind))
         return key
@@ -392,9 +404,12 @@ class CrmStore:
         key = uuid.uuid4().hex
         with self.db() as c:
             self.row(c, "doctors", p.get("doctor_id"))
+            from crm_channels import validate_target
+            incoming = validate_target(self, c, p["doctor_id"], p.get("inbound_pipeline_id", ""), p.get("inbound_stage_id", ""))
             c.execute("INSERT INTO channels(id,doctor_id,name,phone,instance,daily_limit) VALUES(?,?,?,?,?,?)",
                       (key, p["doctor_id"], text(p.get("name")), phone(p.get("phone")), "doc4docs-vielle-" + key,
                        integer(p.get("daily_limit", CAMPAIGN_DAILY_LIMIT), 1, CAMPAIGN_DAILY_LIMIT)))
+            c.execute("UPDATE channels SET inbound_pipeline_id=?,inbound_stage_id=? WHERE id=?", (*incoming, key))
         return key
 
     def lead(self, p, actor):
@@ -426,14 +441,7 @@ class CrmStore:
                           (text(p.get("title")), stage, value, due, now, key))
                 if destination["course_key"] and "email" in p:
                     c.execute("UPDATE leads SET email=? WHERE id=?", (address, key))
-                if old["stage_id"] != stage:
-                    previous = self.row(c, "stages", old["stage_id"])
-                    self.event(c, key, actor, "stage", target["name"], now)
-                    from crm_bots import emit
-                    emit(c, key, "stage", now)
-                    if target["kind"] == "won" or (target["kind"] == "open" and previous["kind"] == "open" and target["position"] > previous["position"]):
-                        self.award(c, key, doctor, actor, "Fechamento" if target["kind"] == "won" else "Avanco no funil",
-                                   25 if target["kind"] == "won" else 5, key + (":won" if target["kind"] == "won" else ":stage:" + stage), now)
+                self.stage_event(c, old, target, actor, now)
             else:
                 number, name = phone(p.get("phone")), text(p.get("name"))
                 selected_patient = p.get("experts_uuid", "")
@@ -447,8 +455,10 @@ class CrmStore:
                 contact = self.contact(c, number, name, clinical=not destination["institute_key"])
                 if selected_patient and (contact["experts_status"] != "matched" or contact["experts_uuid"] != selected_patient):
                     raise Conflict("Este telefone possui um vinculo diferente no CRM. Confira o cadastro antes de adicionar.")
-                existing = c.execute("SELECT id FROM leads WHERE pipeline_id=? AND contact_id=?", (pipeline, contact["id"])).fetchone()
+                existing = c.execute("SELECT id,deleted_at FROM leads WHERE pipeline_id=? AND contact_id=?", (pipeline, contact["id"])).fetchone()
                 if existing:
+                    if existing["deleted_at"]:
+                        raise ValueError("Este lead esta na lixeira deste funil. Restaure-o para evitar duplicidade.")
                     return existing["id"]
                 consent = p.get("consent") is True
                 source = text(p.get("consent_source", ""), 300, required=consent)
@@ -464,6 +474,17 @@ class CrmStore:
     @staticmethod
     def event(c, lead, actor, kind, body, now):
         c.execute("INSERT INTO events(lead_id,actor,kind,body,created_at) VALUES(?,?,?,?,?)", (lead, actor, kind, body, now))
+
+    def stage_event(self, c, old, target, actor, now):
+        if old["stage_id"] == target["id"]:
+            return
+        previous = self.row(c, "stages", old["stage_id"])
+        self.event(c, old["id"], actor, "stage", target["name"], now)
+        from crm_bots import emit
+        emit(c, old["id"], "stage", now)
+        if target["kind"] == "won" or (target["kind"] == "open" and previous["kind"] == "open" and target["position"] > previous["position"]):
+            self.award(c, old["id"], old["doctor_id"], actor, "Fechamento" if target["kind"] == "won" else "Avanco no funil",
+                       25 if target["kind"] == "won" else 5, old["id"] + (":won" if target["kind"] == "won" else ":stage:" + target["id"]), now)
 
     @staticmethod
     def award(c, lead, doctor, actor, label, points, unique, now):
@@ -672,7 +693,7 @@ class CrmStore:
 
     def filtered_leads(self, c, doctor, doctor_name, filters):
         catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
-        leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])]
+        leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])]
         location_pending = {}
         for lead in leads:
             if not catalog[lead["pipeline_id"]]["course_key"] and not lead["service_location"]:
@@ -741,7 +762,7 @@ class CrmStore:
             today = datetime.now(TZ).date().isoformat()
             daily = datetime.combine(datetime.now(TZ).date(), datetime.min.time(), TZ).timestamp()
             visible_pipelines = {p["id"] for p in pipelines}
-            visible_leads = {r["id"] for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=?", (doctor,)) if r["pipeline_id"] in visible_pipelines}
+            visible_leads = {r["id"] for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=? AND deleted_at=0", (doctor,)) if r["pipeline_id"] in visible_pipelines}
             points = [dict(r) for r in c.execute("SELECT * FROM xp WHERE doctor_id=?", (doctor,)) if r["lead_id"] in visible_leads]
             xp = sum(r["points"] for r in points)
             totals = {}
@@ -753,7 +774,7 @@ class CrmStore:
                     "customer_tier_rules": self.customer_tier_rules(c),
                     "service_locations": SERVICE_LOCATIONS, "service_location_pending": location_pending,
                     "matched_leads": matched_count, "filter_incomplete": incomplete,
-                    "total_leads": sum(c.execute("SELECT count(*) FROM leads WHERE pipeline_id=?", (p["id"],)).fetchone()[0] for p in pipelines),
+                    "total_leads": sum(c.execute("SELECT count(*) FROM leads WHERE pipeline_id=? AND deleted_at=0", (p["id"],)).fetchone()[0] for p in pipelines),
                     "channels": [dict(r) for r in c.execute("SELECT * FROM channels WHERE doctor_id=? ORDER BY name", (doctor,))],
                     "campaigns": campaigns, "game": {"xp": xp, "level": xp // 100 + 1, "progress": xp % 100, "team": team,
                     "followups": sum(r["label"] == "Follow-up registrado" and r["created_at"] >= daily for r in points),
@@ -789,13 +810,13 @@ class CrmStore:
             rows = c.execute(THREADS_CTE + """SELECT m.*,t.unread,t.waiting_since,(SELECT kind FROM message_media WHERE id=m.media_id) media_kind,
                 ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
                 ct.service_location,ct.service_location_source,ct.service_location_revision,ch.name channel_name,
-                (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
+                (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id AND deleted_at=0 ORDER BY updated_at DESC LIMIT 1) lead_id
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
                 JOIN channels ch ON ch.id=t.channel_id ORDER BY m.created_at DESC,m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
             items = [dict(r) for r in rows if contact_visible(c, r["contact_id"], doctor)]
             catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
             for item in items:
-                opportunities = [dict(r) for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=? AND contact_id=? ORDER BY updated_at DESC,id", (doctor, item["contact_id"]))
+                opportunities = [dict(r) for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=? AND contact_id=? AND deleted_at=0 ORDER BY updated_at DESC,id", (doctor, item["contact_id"]))
                                  if pipeline_visible(catalog[r["pipeline_id"]])]
                 item["businesses"] = list(dict.fromkeys("course" if catalog[r["pipeline_id"]]["course_key"] else "clinic" for r in opportunities))
                 selected = next((r for r in opportunities if business == "all" or ("course" if catalog[r["pipeline_id"]]["course_key"] else "clinic") == business), None)
@@ -804,7 +825,7 @@ class CrmStore:
             self.attach_customer_values(c, items, doc["name"], bool(filters["search"]))
             if appointment_active(filters):
                 self.attach_appointment_filters(items, doc["name"], filters)
-            titles = {r["contact_id"]: r["title"] for r in c.execute("SELECT contact_id,title,pipeline_id FROM leads WHERE doctor_id=? ORDER BY updated_at,id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])}
+            titles = {r["contact_id"]: r["title"] for r in c.execute("SELECT contact_id,title,pipeline_id FROM leads WHERE doctor_id=? AND deleted_at=0 ORDER BY updated_at,id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])}
             for item in items:
                 item["title"] = titles.get(item["contact_id"], "")
             incomplete = len({r["contact_id"] for r in items if not financial_ready(r, filters) or not appointment_ready(r, filters)})
@@ -822,7 +843,7 @@ class CrmStore:
         with self.db() as c:
             self.row(c, "doctors", doctor)
             self.row(c, "contacts", contact)
-            rows = c.execute("SELECT l.id,l.title,l.stage_id,p.id pipeline_id,p.doctor_id,p.name pipeline_name,p.institute_key,p.course_key,s.name stage_name FROM leads l JOIN pipelines p ON p.id=l.pipeline_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.contact_id=? ORDER BY l.updated_at DESC,l.id", (doctor, contact)).fetchall()
+            rows = c.execute("SELECT l.id,l.title,l.stage_id,p.id pipeline_id,p.doctor_id,p.name pipeline_name,p.institute_key,p.course_key,s.name stage_name FROM leads l JOIN pipelines p ON p.id=l.pipeline_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.contact_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id", (doctor, contact)).fetchall()
             return {"opportunities": [dict(r) for r in rows if pipeline_visible(dict(r))]}
 
     @staticmethod
@@ -1105,7 +1126,7 @@ class CrmStore:
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Oportunidade indisponivel para este doutor'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND NOT EXISTS
                 (SELECT 1 FROM leads l JOIN campaigns ca ON ca.doctor_id=l.doctor_id
-                 WHERE ca.id=messages.campaign_id AND l.contact_id=messages.contact_id)""")
+                 WHERE ca.id=messages.campaign_id AND l.contact_id=messages.contact_id AND l.deleted_at=0)""")
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND contact_id IN
                 (SELECT id FROM contacts WHERE experts_status='review')""")
@@ -1220,7 +1241,12 @@ class CrmStore:
                     c.execute("UPDATE messages SET provider_id=?,provider_timestamp=? WHERE id=?", (provider_id, stamp, pending[0]["id"]))
                     return False
             name = (known["name"] if known else number) if from_me else str(data.get("pushName") or number)[:160]
-            contact = self.contact(c, number, name)
+            from crm_channels import inbound_target
+            first = inbound_target(c, ch)
+            existing_kinds = c.execute("SELECT p.course_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? AND l.contact_id=?",
+                                      (ch["doctor_id"], known["id"] if known else "")).fetchall()
+            clinical = any(not r[0] for r in existing_kinds) if existing_kinds else not bool(first and first["course_key"])
+            contact = self.contact(c, number, name, clinical=clinical)
             message_id = uuid.uuid4().hex
             c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,status,provider_id,created_at,
                 recipient_phone,sent_at,sender_name,origin,provider_timestamp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -1246,11 +1272,10 @@ class CrmStore:
                     if incoming[0] and incoming[1] <= stamp:
                         self.resolve_conversation(c, ch["id"], contact["id"], incoming[0], "replied", "external")
             existing = c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchone()
-            first = c.execute("SELECT s.id,s.pipeline_id FROM stages s JOIN pipelines p ON p.id=s.pipeline_id WHERE p.doctor_id=? AND s.kind='open' ORDER BY p.name,s.position LIMIT 1", (ch["doctor_id"],)).fetchone()
             if not existing and first:
                 lead_id = uuid.uuid4().hex
-                c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                          (lead_id, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now))
+                c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at,source_name) VALUES(?,?,?,?,?,?,?,?,?)",
+                          (lead_id, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now, name if first["course_key"] else ""))
                 if not from_me and not history:
                     from crm_bots import emit
                     emit(c, lead_id, "created", now, channel=ch["id"])

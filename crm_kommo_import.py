@@ -12,7 +12,7 @@ from crm_patients import experts_phone, match_patient_name, search_key
 from crm_store import Conflict, phone
 from institute_report import email
 
-FUNNELS = {"organico paranhos", "regencode"}
+FUNNELS = {"organico paranhos", "regencode", "trafego paranhos"}
 DOCTOR = "victor paranhos de andrade"
 REASONS = {
     "contact": "Contato principal ausente ou ambiguo no Kommo",
@@ -46,7 +46,7 @@ def target(store, doctor, pipeline):
         row = store.owned(c, "pipelines", pipeline, doctor)
         name = store.row(c, "doctors", doctor)["name"]
     if search_key(row["name"].strip()) not in FUNNELS or search_key(name.strip()) != DOCTOR:
-        raise ValueError("Esta migracao esta limitada aos funis Organico Paranhos e REGENCODE do Dr. Victor Paranhos de Andrade.")
+        raise ValueError("Esta migracao esta limitada aos funis Organico Paranhos, Trafego Paranhos e REGENCODE do Dr. Victor Paranhos de Andrade.")
     return row
 
 
@@ -159,9 +159,14 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
     stages = {(search_key(r["name"]), r["kind"]): r["id"] for r in c.execute("SELECT * FROM stages WHERE pipeline_id=?", (pipeline,))}
     report = {"total": len(pack["records"]), "created": 0, "reused": 0, "duplicates": 0,
               "already": 0, "linked": 0, "new": 0, "resolved": 0, "review": 0, "issues": [], "reviews": [], "course_contacts": 0}
+    whatsapp_only = search_key(pack["source_name"].strip()) == "trafego paranhos"
+    report["ignored_no_phone"] = 0
     touched, seen = set(), set()
     now = time.time()
     for record in pack["records"]:
+        if whatsapp_only and not record["phones"]:
+            report["ignored_no_phone"] += 1
+            continue
         if record["source_id"] in refs:
             report["already"] += 1
             continue
@@ -331,6 +336,8 @@ def prepare(store, doctor, pipeline, *, background=True, source=None, retry_from
             if search_key(pack["source_name"].strip()) != search_key(destination["name"].strip()):
                 raise ValueError("O funil de origem nao corresponde ao destino.")
             if retry_from:
+                pack["recover_pending"] = True
+            if search_key(destination["name"].strip()) == "trafego paranhos":
                 pack["recover_pending"] = True
             if destination["course_key"] and store.course_source:
                 for record in pack["records"]:

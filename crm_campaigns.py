@@ -24,7 +24,7 @@ def fingerprint(c, doctor, ids):
         CASE WHEN p.course_key<>'' AND l.source_name<>'' THEN l.source_name ELSE ct.name END name,ct.opted_out,
         ct.experts_status,ct.experts_uuid,ct.service_location_revision FROM leads l JOIN contacts ct ON ct.id=l.contact_id
         JOIN pipelines p ON p.id=l.pipeline_id
-        WHERE l.doctor_id=? ORDER BY l.id""", (doctor,)).fetchall()
+        WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.id""", (doctor,)).fetchall()
     return rows_fingerprint([r for r in rows if r["id"] in wanted])
 
 
@@ -62,7 +62,7 @@ def selection(store, payload):
         leads = [dict(r) for r in c.execute("""SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.experts_uuid,ct.experts_status,
             ct.service_location,ct.service_location_source,ct.service_location_revision,s.kind,p.institute_key,p.course_key
             FROM leads l JOIN contacts ct ON ct.id=l.contact_id JOIN stages s ON s.id=l.stage_id
-            JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? ORDER BY l.updated_at DESC,l.id""", (doctor,)) if pipeline_visible(dict(r))]
+            JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id""", (doctor,)) if pipeline_visible(dict(r))]
         store.attach_customer_values(c,leads,doc["name"],bool(filters["search"]))
         if appointment_active(filters):
             store.attach_appointment_filters(leads,doc["name"],filters)

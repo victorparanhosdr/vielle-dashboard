@@ -69,7 +69,7 @@ def contact_visible(c, contact, doctor=""):
     if allowed is None and scope is None:
         return True
     doctor = doctor or CURRENT_DOCTOR.get()
-    rows = [dict(r) for r in c.execute("SELECT p.* FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.contact_id=? AND (?='' OR l.doctor_id=?)", (contact, doctor, doctor))]
+    rows = [dict(r) for r in c.execute("SELECT p.* FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.contact_id=? AND l.deleted_at=0 AND (?='' OR l.doctor_id=?)", (contact, doctor, doctor))]
     if rows:
         return any(pipeline_visible(row) for row in rows)
     if scope is None:
@@ -95,7 +95,7 @@ def check_row(c, table, row):
         permitted = contact_visible(c, row["id"])
     elif table == "campaign_audiences":
         ids = set(json.loads(row["payload"]).get("ids", []))
-        visible = {r["id"] for r in c.execute("SELECT l.id,p.id pipeline_id,p.doctor_id,p.institute_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=?", (row["doctor_id"],)) if pipeline_visible(dict(r))}
+        visible = {r["id"] for r in c.execute("SELECT l.id,p.id pipeline_id,p.doctor_id,p.institute_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? AND l.deleted_at=0", (row["doctor_id"],)) if pipeline_visible(dict(r))}
         permitted = permitted and ids.issubset(visible)
     elif table == "campaigns":
         institutes = INSTITUTES.get()

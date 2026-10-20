@@ -570,6 +570,52 @@ class HttpAuthTests(unittest.TestCase):
         status, _, raw = self.request("POST", f"/api/crm/lead?{base}", payload, cookie, {"X-DOC4DOCS-Request": "1"})
         self.assertEqual(status, 200, raw)
 
+    def test_bulk_leads_require_permission_origin_scope_and_explicit_confirmation(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Funil"]})
+        doctor = crm.listing()["doctor_id"]
+        pipeline = crm.listing(doctor)["pipelines"][0]
+        lead = crm.lead({"doctor_id": doctor, "pipeline_id": pipeline["id"], "stage_id": pipeline["stages"][0]["id"],
+            "name": "Sintetico", "phone": "5500000000002", "title": "Teste"}, "Equipe")
+        cookie, _ = self.login()
+        query = f"clinic=vielle&doctor={doctor}"
+        payload = {"doctor_id": doctor, "pipeline_id": pipeline["id"], "action": "delete", "selection": {"lead_ids": [lead]}}
+        headers = {"X-DOC4DOCS-Request": "1"}
+        self.assertEqual(self.request("POST", f"/api/crm/lead-bulk-preview?{query}", payload, cookie, headers)[0], 403)
+        self.limit_permissions(["crm.view"])
+        self.assertEqual(self.request("POST", f"/api/crm/lead-bulk-preview?{query}", payload, cookie)[0], 403)
+        status, _, raw = self.request("POST", f"/api/crm/lead-bulk-preview?{query}", payload, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        job = json.loads(raw)["id"]
+        action = {"doctor_id": doctor, "id": job}
+        self.assertEqual(self.request("POST", f"/api/crm/lead-bulk-apply?{query}", action, cookie, headers)[0], 400)
+        status, _, raw = self.request("POST", f"/api/crm/lead-bulk-apply?{query}", {**action, "confirm": True}, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(self.request("GET", f"/api/crm/lead?{query}&id={lead}", cookie=cookie)[0], 404)
+        status, _, raw = self.request("GET", f"/api/crm/lead-trash?{query}&pipeline={pipeline['id']}", cookie=cookie)
+        self.assertEqual(json.loads(raw)["total"], 1)
+
+    def test_channel_name_and_new_lead_destination_are_master_only(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Funil"]})
+        doctor = crm.listing()["doctor_id"]
+        pipeline = crm.listing(doctor)["pipelines"][0]
+        channel = crm.channel({"doctor_id": doctor, "name": "Antigo", "phone": "5500000000001"})
+        self.limit_permissions(["crm.view"])
+        staff, _ = self.login()
+        master = self.master_cookie()
+        path = f"/api/crm/channel-update?clinic=vielle&doctor={doctor}"
+        payload = {"doctor_id": doctor, "id": channel, "config_revision": 1, "name": "Comercial",
+                   "inbound_pipeline_id": pipeline["id"], "inbound_stage_id": pipeline["stages"][0]["id"]}
+        headers = {"X-DOC4DOCS-Request": "1"}
+        self.assertEqual(self.request("POST", path, payload, staff, headers)[0], 403)
+        self.assertEqual(self.request("POST", path, payload, master)[0], 403)
+        status, _, raw = self.request("POST", path, payload, master, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(self.request("POST", path, payload, master, headers)[0], 409)
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

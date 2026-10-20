@@ -48,6 +48,22 @@ class KommoMigrationTests(unittest.TestCase):
     def apply(self, key):
         return commit(self.store, self.doctor, self.pipe["id"], key, "Master")
 
+    def test_traffic_paranhos_import_ignores_instagram_without_phone_and_reuses_contacts(self):
+        self.store.bootstrap({"Victor Paranhos de Andrade": ["Trafego Paranhos"]})
+        target = next(p for p in self.store.listing(self.doctor)["pipelines"] if p["name"] == "Trafego Paranhos")
+        self.apply(self.preview([self.record()]))
+        records = [self.record(), self.record(2, phones=[], reason="phone", name="Somente Instagram")]
+        pack = {"source_pipeline": 100, "source_name": "Tráfego Paranhos", "records": records}
+        key = prepare(self.store, self.doctor, target["id"], background=False, source=lambda progress: pack)["id"]
+        report = status(self.store, self.doctor, target["id"], key)["report"]
+        self.assertEqual(report["ignored_no_phone"], 1)
+        self.assertEqual(report["issue_count"], 0)
+        commit(self.store, self.doctor, target["id"], key, "Master")
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM contacts").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM leads WHERE pipeline_id=?", (target["id"],)).fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0], 0)
+
     def test_preview_is_non_mutating_and_import_links_canonical_patient(self):
         key = self.preview([self.record()])
         self.assertEqual(self.store.listing(self.doctor)["leads"], [])

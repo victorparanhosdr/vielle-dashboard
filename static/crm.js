@@ -134,6 +134,7 @@
   async function load() {
     const seq=++state.seq;
     kanban.destroy();
+    bulk.unmount();
     $("crmView").setAttribute("aria-busy","true");
     try {
       const data=await api();
@@ -227,6 +228,7 @@
   }
   function render() {
     if(!state.data) return;
+    if(state.mode!=="board")bulk.reset();
     document.body.dataset.crmMode=state.mode;
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
@@ -244,7 +246,7 @@
     document.querySelector('.crmSort').hidden=state.mode==="board" && presentation==="list";
     document.querySelector('.crmSearchBar').classList.toggle('columnSorting',state.mode==="board" && presentation==="list");
     $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="campaigns" ? `<button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : state.mode==="channels" ? `<button class="primary" id="newChannel">${icon("plus")} Número</button>` : "";
-    if(state.mode==="board" && ["organico paranhos","regencode"].includes(pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase()) && doctor()?.name==="Victor Paranhos de Andrade")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
+    if(state.mode==="board" && ["organico paranhos","regencode","trafego paranhos"].includes(pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase()) && doctor()?.name==="Victor Paranhos de Andrade")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
     if(!state.data.can_manage){
       ["editPipeline","newPipeline","newChannel","importKommo"].forEach(id=>{if($(id))$(id).hidden=true;});
     }
@@ -256,12 +258,14 @@
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
       if(key!==listScope){listSeed=null;listScope=key;}
-      listPicker=audiencePicker($("crmFunnelList"),{doctor:state.doctor,pipelines:state.data.pipelines,initial:listSeed || {pipeline_id:state.pipeline,filters},manual:true,editable:false,onOpen:detail,onCampaign:payload=>campaignCenter.create(payload)});
+      listPicker=audiencePicker($("crmFunnelList"),{doctor:state.doctor,pipelines:state.data.pipelines,initial:listSeed || {pipeline_id:state.pipeline,filters},manual:true,editable:false,onOpen:detail,onCampaign:payload=>campaignCenter.create(payload),onBulk:(action,selection)=>bulk.open(action,selection)});
     }
     const newBoard=$("crmView").querySelector(".crmBoard");if(newBoard && newBoard.dataset.pipeline===oldPipeline)newBoard.scrollLeft=scrollX;
+    if(newBoard)bulk.mountBoard(newBoard);else bulk.reset();
+    if(state.mode==="board" && pipeline())$("viewActions").insertAdjacentHTML("beforeend",`<button id="openLeadTrash" class="icon-button" title="Lixeira do funil" aria-label="Lixeira do funil">${icon("trash-2")}</button>`);
     if(newBoard && state.data.kanban?.pipeline_id===state.pipeline)kanban.mount(newBoard,{doctor:state.doctor,pipeline:state.pipeline,filters:{...state.filters,search:state.search,sort:state.sort},columns:state.data.kanban.columns});
     if($("refreshCourse"))$("refreshCourse").onclick=()=>{const l=selectedLeads()[0];if(l)courses.refresh(l,$("refreshCourse"),$("courseRefreshStatus"),()=>load());};
-    if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
+    if(state.mode==="channels"){voice.settings($("voiceSettings"),state.doctor);channelSettings.mount($("crmView"),state.data.channels,state.data.pipelines,state.doctor,state.data.can_manage);}
     }
     if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
     if(state.mode==="dashboard")dashboard.mount($("crmView"),state.doctor);else dashboard.unmount();
@@ -454,6 +458,7 @@
       modal(l.name,`<div class="leadDetail"><div><p class="connectionNote">+${esc(l.phone)} · ${esc(p.name)}</p><form id="leadEdit"><label>Oportunidade<input name="title" value="${esc(l.title)}" maxlength="160" required></label><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name,l.stage_id===s.id)).join("")}</select></label><div class="formGrid"><label>Valor estimado (R$)<input name="value" type="number" step="0.01" min="0" max="1000000" value="${l.value_cents/100}" required></label><label>Próximo contato<input name="next_action" type="date" value="${esc(l.next_action)}"></label></div>${actions("Salvar oportunidade")}</form><h3>Mensagens</h3><p class="connectionNote">${l.opted_out?"Descadastrado · envios bloqueados":"Disponível para envio · padrão da clínica"}</p>${l.consent_at?`<p class="connectionNote">Consentimento informado: ${esc(l.consent_source)}</p>`:""}<div class="commands">${!l.opted_out?`<button id="recordConsent">${icon("file-check")} Registrar consentimento</button><button id="optout">Descadastrar</button>`:`<button id="reactivateContact">${icon("user-round-check")} Reativar contato</button>`}</div><h3>Registrar atividade</h3><form id="activityForm"><label>Tipo<select name="kind"><option value="followup">Follow-up realizado</option><option value="note">Nota interna</option></select></label><label>Resumo<textarea name="body" required maxlength="2000"></textarea></label>${actions("Registrar")}</form></div><div><h3>Histórico</h3>${data.events.map(e=>`<div class="eventRow"><small>${date(e.created_at)} · ${esc(e.actor)} · ${esc(e.kind==="reactivate"?"Contato reativado":e.kind)}</small>${esc(e.body)}</div>`).join("")}<h3>Conversas</h3><div class="conversation">${data.messages.map(m=>`<div class="eventRow ${esc(m.direction)}"><small>${date(m.created_at)} · ${esc(m.channel_name)} · ${esc(statusLabels[m.status] || m.status)}</small>${esc(m.body)}</div>`).join("") || '<p class="connectionNote">Nenhuma mensagem neste doutor.</p>'}</div></div></div>`);
       const identity=document.createElement("p");identity.className="connectionNote";identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");$("leadEdit").before(identity);
       const runBot=document.createElement("button");runBot.type="button";runBot.innerHTML=`${icon("workflow")} Iniciar robô`;$("leadEdit").after(runBot);runBot.onclick=()=>botsCenter.startForLead(l).catch(e=>error(e.message));
+      const removeLead=document.createElement("button");removeLead.type="button";removeLead.className="icon-button";removeLead.title="Excluir lead";removeLead.setAttribute("aria-label","Excluir lead");removeLead.innerHTML=icon("trash-2");runBot.after(removeLead);removeLead.onclick=()=>bulk.open("delete",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id});
       const origin=document.createElement("div");origin.innerHTML=window.CrmAttribution.lead(data.attribution,esc);$("leadEdit").before(origin);
       if(isCourse)identity.textContent=courses.label(l);
       const refresh=document.createElement("div");refresh.className="patientRefreshControls";
@@ -524,9 +529,11 @@
     } catch(e){error(e.message);}
   }
   const voice=window.createCrmVoice({api,esc,icon,icons});
+  const channelSettings=window.createCrmChannelSettings({api,esc,icon,icons,modal,error,onDone:load});
   const kanban=window.createCrmKanban({api,esc,icon,icons,leadCard,onRefresh:load,onLeads:rows=>{
     const known=new Set(state.data.leads.map(l=>l.id));state.data.leads.push(...rows.filter(l=>!known.has(l.id)));
   }});
+  const bulk=window.createCrmBulk({api,esc,icon,icons,modal,error,notice,getScope:()=>({doctor:state.doctor,pipeline:state.pipeline,pipelines:state.data?.pipelines || [],filters:{...state.filters,search:state.search,sort:state.sort}}),onDone:async()=>{listPicker?.destroy();listPicker=null;listSeed=null;listScope="";await load();}});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
@@ -573,17 +580,17 @@
   };
   $("gameHelp").onclick=()=>modal("Regras da jornada",'<h3>Avanços, não volume de mensagens</h3><p class="connectionNote">Follow-up registrado: 3 XP, uma vez por oportunidade por dia. Avanço para uma nova fase aberta: 5 XP, uma única vez por fase. Ganho: 25 XP, uma única vez por oportunidade. Voltar e avançar na mesma fase não gera novos pontos. Criar clientes, anotar ou disparar mensagens não gera XP.</p><p class="connectionNote">As missões reiniciam a cada dia, no horário de São Paulo. O XP e os níveis ficam separados por doutor. Ganhos são os negócios marcados como ganhos no CRM, não pagamentos confirmados.</p>');
   document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{if(state.mode==="forms" && (b.dataset.mode==="forms" || !formsCenter.canLeave()) || state.mode==="bots" && (b.dataset.mode==="bots" || !botsCenter.canLeave()))return;state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},openLeadTrash:()=>bulk.trash(),newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="toggleSalesRadar")return toggleRadar();
     if(b.id==="pendingLocations"){state.filters={service_location:"pending"};state.search="";$("search").value="";fillFilterForm();paintFilters();return load();}
-    if(b.dataset.lead) return detail(b.dataset.lead);
+    if(b.dataset.lead) return bulk.toggle(b.dataset.lead) || detail(b.dataset.lead);
     if(b.dataset.connect) return connect(b.dataset.connect);
     if(b.dataset.channelState){b.disabled=true;try{await api("channel-state",{id:b.dataset.channelState,doctor_id:state.doctor});await load();}catch(err){notice(err.message);b.disabled=false;}}
   };
   let dragging=false;
-  $("crmView").ondragstart=e=>{const card=e.target.closest("[data-lead]");if(card){dragging=true;e.dataTransfer.setData("text/plain",card.dataset.lead);}};
+  $("crmView").ondragstart=e=>{if(bulk.isSelecting()){e.preventDefault();return;}const card=e.target.closest("[data-lead]");if(card){dragging=true;e.dataTransfer.setData("text/plain",card.dataset.lead);}};
   $("crmView").ondragend=()=>{dragging=false;};
   $("crmView").ondragover=e=>{if(e.target.closest("[data-stage]"))e.preventDefault();};
   $("crmView").ondrop=async e=>{
@@ -603,6 +610,6 @@
   if(window.doc4docsSession)session(window.doc4docsSession);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden && !["forms","bots"].includes(state.mode) && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && state.data && state.mode==="campaigns")load();},15000);
-  setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
+  setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !bulk.isSelecting() && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
   icons();
 })();

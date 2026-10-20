@@ -423,9 +423,9 @@ class FormStore:
                     raise ValueError("O funil do formulario precisa ser revisado.")
                 name=answers[config["name_field"]];number=answers[config["phone_field"]]
                 contact=self.crm.contact(c,number,name,clinical=not pipeline["course_key"])
-                existing=c.execute("SELECT id FROM leads WHERE pipeline_id=? AND contact_id=?",(pipeline["id"],contact["id"])).fetchone()
+                existing=c.execute("SELECT id,deleted_at FROM leads WHERE pipeline_id=? AND contact_id=?",(pipeline["id"],contact["id"])).fetchone()
                 lead=existing[0] if existing else uuid.uuid4().hex
-                lead_state="reused" if existing else "created"
+                lead_state=("archived" if existing["deleted_at"] else "reused") if existing else "created"
                 if not existing:
                     c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at,email,source_name) VALUES(?,?,?,?,?,?,?,?,?,?)",(lead,row["doctor_id"],pipeline["id"],stage["id"],contact["id"],info["title"],now,now,answers.get(config["email_field"],""),name if pipeline["course_key"] else ""))
                     from crm_bots import emit
@@ -450,6 +450,8 @@ class FormStore:
             total=c.execute("SELECT count(*) FROM form_responses WHERE form_id=?",(ident,)).fetchone()[0]
             rows=[dict(r) for r in c.execute("SELECT * FROM form_responses WHERE form_id=? ORDER BY created_at DESC LIMIT 30 OFFSET ?",(ident,(page-1)*30))]
             for row in rows:
+                linked=c.execute("SELECT deleted_at FROM leads WHERE id=?",(row["lead_id"],)).fetchone()
+                row["lead_in_trash"]=bool(linked and linked["deleted_at"])
                 row["answers"]=json.loads(row["answers"]);row["definition"]=json.loads(row["definition"])
                 row["attribution"]=json.loads(row["attribution"])
                 row.pop("nonce",None)

@@ -1,0 +1,20 @@
+.crmBulkToolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-height:44px; margin:0 0 12px; }
+.crmBulkToolbar strong { font-size:13px; margin-right:8px; }
+.crmBulkToolbar button { min-height:34px; padding:7px 11px; font-size:12px; }
+.leadSelectable { position:relative; min-width:0; }
+.leadSelectable>.leadCard { width:100%; }
+.crmPage .crmLeadSelect { display:none; position:absolute; left:12px; top:14px; z-index:1; margin:0; }
+.crmLeadSelect input { width:17px; height:17px; min-height:0; margin:0; padding:0; accent-color:#285b49; }
+.crmPage .crmBulkSelecting .crmLeadSelect { display:flex; }
+.crmPage .crmBoard.crmBulkSelecting .leadSelectable>.leadCard { padding-left:44px!important; }
+.leadSelectable.selected>.leadCard { outline:2px solid #39826a; outline-offset:-2px; }
+.crmBulkSample { max-height:240px; overflow-y:auto; margin:14px 0; padding:0; list-style:none; border-block:1px solid var(--line,#dfe7e2); }
+.crmBulkSample li { padding:9px 2px; font-size:13px; border-bottom:1px solid var(--line,#dfe7e2); overflow-wrap:anywhere; }
+.crmBulkSample small,.crmTrashRow small { display:block; color:var(--muted,#687d73); font-size:12px; margin-top:3px; }
+.crmDestructive { background:#923e46!important; border-color:#923e46!important; }
+.crmTrashRows { max-height:400px; overflow-y:auto; }
+.crmTrashRow { display:flex!important; flex-direction:row!important; align-items:flex-start; gap:12px; padding:12px 0; border-bottom:1px solid var(--line,#dfe7e2); }
+.crmTrashRow input { flex:0 0 17px; width:17px; height:17px; min-height:0; margin-top:3px; accent-color:#285b49; }
+.crmTrashRow span { min-width:0; overflow-wrap:anywhere; }
+.crmTrashRow strong { font-size:14px; }
+.crmBulkTrashActions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }

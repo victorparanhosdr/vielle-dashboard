@@ -13,7 +13,7 @@ from crm_access import CRM_SCOPE
 from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
-MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "connect", "customer-tiers", "campaign-enable",
+MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "channel-update", "connect", "customer-tiers", "campaign-enable",
                   "kommo-import", "kommo-import-preview", "kommo-import-commit"}
 
 
@@ -86,6 +86,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "lead-trash":
+                from crm_bulk import trash
+                return handler.auth_json({"ok": True, **trash(store, doctor, query.get("pipeline", [""])[0], query.get("page", [1])[0])})
             if action == "dashboard":
                 from crm_dashboard import dashboard
                 return handler.auth_json({"ok": True, **dashboard(store, doctor, query.get("days", [7])[0], include_operators=bool(user.get("is_master")))})
@@ -171,7 +174,7 @@ def _dispatch(handler, parsed, store, query, user, action):
         if action == "media-upload":
             from crm_media import receive_upload
             return receive_upload(handler, store, doctor, query)
-        limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create"} else 128*1024
+        limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create","lead-bulk-preview"} else 128*1024
         p = json.loads(read_body(handler, limit))
         if not isinstance(p, dict):
             raise ValueError("Solicitacao invalida.")
@@ -179,7 +182,10 @@ def _dispatch(handler, parsed, store, query, user, action):
             raise PermissionError("O profissional da solicitacao nao corresponde ao CRM aberto.")
         actor = handler.current_user["nome"]
         result = {}
-        if action == "bootstrap":
+        if action in {"lead-bulk-preview", "lead-bulk-apply"}:
+            from crm_bulk import preview, apply
+            result.update(preview(store, p, user) if action.endswith("preview") else apply(store, p, user))
+        elif action == "bootstrap":
             from app import PIPELINE_DOCTOR_MAP
             structure = {}
             for name, doc in PIPELINE_DOCTOR_MAP.items():
@@ -203,6 +209,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             result["id"] = store.pipeline(p)
         elif action == "channel":
             result["id"] = store.channel(p)
+        elif action == "channel-update":
+            from crm_channels import update
+            result.update(update(store, p))
         elif action in {"connect", "channel-state"}:
             with store.db() as c:
                 ch = store.owned(c, "channels", p.get("id"), p.get("doctor_id"))

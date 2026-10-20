@@ -41,7 +41,7 @@ def schema(c):
 
 def emit(c, lead, kind, now, *, channel="", message="", root="", hop=0):
     """Explicit live events only; historical imports never enqueue automations."""
-    row = c.execute("SELECT stage_id FROM leads WHERE id=?", (lead,)).fetchone()
+    row = c.execute("SELECT stage_id FROM leads WHERE id=? AND deleted_at=0", (lead,)).fetchone()
     if not row or hop > 5:
         return
     unique = message + ":" + lead if message else uuid.uuid4().hex
@@ -227,7 +227,7 @@ class BotStore:
                     row["trigger"] = info["trigger"]; items.append(row)
             tasks = [dict(r) for r in c.execute("""SELECT t.*,l.doctor_id,l.pipeline_id,ct.name,p.institute_key FROM bot_tasks t
                 JOIN leads l ON l.id=t.lead_id JOIN contacts ct ON ct.id=l.contact_id JOIN pipelines p ON p.id=l.pipeline_id
-                WHERE l.doctor_id=? AND t.status='open' ORDER BY t.due_at LIMIT 200""", (doctor,)) if pipeline_visible(dict(r))]
+                WHERE l.doctor_id=? AND l.deleted_at=0 AND t.status='open' ORDER BY t.due_at LIMIT 200""", (doctor,)) if pipeline_visible(dict(r))]
         return {"bots": items, "tasks": tasks}
 
     def save(self, p, user):
@@ -288,6 +288,8 @@ class BotStore:
             return self.enqueue(c, bot, target, key, time.time(), "", uuid.uuid4().hex, 0)
 
     def enqueue(self, c, bot, lead, event_key, now, channel, root, hop):
+        if lead.get("deleted_at"):
+            return ""
         if c.execute("SELECT 1 FROM contacts WHERE id=? AND opted_out=1", (lead["contact_id"],)).fetchone():
             return ""
         if c.execute("SELECT 1 FROM bot_runs WHERE bot_id=? AND lead_id=? AND status NOT IN ('done','cancelled','failed')", (bot["id"], lead["id"])).fetchone():
@@ -321,6 +323,9 @@ class BotStore:
             c.execute("BEGIN IMMEDIATE")
             for event in c.execute("SELECT * FROM bot_events WHERE processed=0 ORDER BY id LIMIT 100").fetchall():
                 lead = dict(c.execute("SELECT * FROM leads WHERE id=?", (event["lead_id"],)).fetchone())
+                if lead["deleted_at"]:
+                    c.execute("UPDATE bot_events SET processed=1 WHERE id=?", (event["id"],))
+                    continue
                 for row in c.execute("SELECT * FROM crm_bots WHERE status='active' AND pipeline_id=? AND activated_at<=?", (lead["pipeline_id"], event["created_at"])).fetchall():
                     bot = dict(row); trigger = json.loads(bot["published"])["trigger"]
                     match = trigger["kind"] == event["kind"] or trigger["kind"] == "stage" and event["kind"] == "created"
@@ -334,7 +339,9 @@ class BotStore:
                 info = json.loads(run["definition"])
                 inbound = c.execute("SELECT coalesce(max(rowid),0) FROM messages WHERE contact_id=? AND direction='in'", (lead["contact_id"],)).fetchone()[0]
                 reason = ""
-                if bot["status"] != "active" or not permitted(bot):
+                if lead["deleted_at"]:
+                    reason = "Oportunidade excluida para a lixeira"
+                elif bot["status"] != "active" or not permitted(bot):
                     reason = "Robo pausado ou permissao removida"
                 elif lead["opted_out"]:
                     reason = "Contato descadastrado"
