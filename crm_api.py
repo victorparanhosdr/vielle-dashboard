@@ -156,7 +156,10 @@ def handle_request(handler, parsed):
         elif action in {"kommo-import-preview", "kommo-import-commit"}:
             from crm_kommo_import import prepare, commit
             if action.endswith("preview"):
-                result.update(prepare(store, p.get("doctor_id"), p.get("pipeline_id")))
+                retry = p.get("retry_from", "")
+                if not isinstance(retry, str) or len(retry) > 64:
+                    raise ValueError("Migracao invalida.")
+                result.update(prepare(store, p.get("doctor_id"), p.get("pipeline_id"), **({"retry_from": retry} if retry else {})))
             else:
                 result.update(commit(store, p.get("doctor_id"), p.get("pipeline_id"), p.get("id"), actor))
         elif action == "doctor":

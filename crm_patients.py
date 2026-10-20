@@ -24,6 +24,19 @@ def experts_phone(value):
     return number
 
 
+def match_patient_name(match, name):
+    """Disambiguate a shared full phone only with an exact, complete source name."""
+    key = " ".join(search_key(str(name)).split())
+    if match["status"] != "review" or sum(any(ch.isalpha() for ch in part) for part in key.split()) < 2:
+        return match
+    candidates = [p for p in match.get("candidates", [])
+                  if " ".join(search_key(p["name"]).split()) == key]
+    if len(candidates) != 1:
+        return match
+    return {"status": "matched", **candidates[0], "synced_at": match.get("synced_at", 0),
+            "match_basis": "phone_name"}
+
+
 class PatientDirectory:
     def __init__(self, path):
         self.path = Path(path)

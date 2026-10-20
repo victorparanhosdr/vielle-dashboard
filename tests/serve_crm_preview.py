@@ -163,15 +163,23 @@ if "--locations-fixture" in sys.argv:
 if "--kommo-import-fixture" in sys.argv:
     import crm_kommo_import
     original_prepare = crm_kommo_import.prepare
+    with sqlite3.connect(app.DB_PATH) as c:
+        for number, names in (("5533999900003", ("Contato Exemplo 3", "Familiar Exemplo")),
+                              ("5533999900004", ("Primeiro Familiar", "Segundo Familiar"))):
+            for i, name in enumerate(names):
+                c.execute("INSERT INTO clinica_patients VALUES(?,?,?,?,?)",
+                          (f"shared-{number}-{i}", name, number, "{}", int(time.time())))
+    store.patient_directory.invalidate()
 
-    def synthetic_prepare(target, doctor, pipeline):
+    def synthetic_prepare(target, doctor, pipeline, *, retry_from=""):
         records = [{"source_id": i, "source_contact": i, "name": f"Contato Exemplo {i}",
                     "title": "Avaliação", "phones": [f"553399990{i:04d}"],
                     "stage": {"name": "Negociação", "kind": "open"}, "value_cents": 250000,
                     "created_at": 1700000000, "updated_at": 1700000001,
                     "reason": "phone" if i > 4 else ""} for i in range(1, 32)]
         return original_prepare(target, doctor, pipeline, background=False,
-            source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records})
+            source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records},
+            retry_from=retry_from)
 
     crm_kommo_import.prepare = synthetic_prepare
 

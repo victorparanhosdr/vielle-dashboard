@@ -57,6 +57,13 @@ class PatientLinkTests(unittest.TestCase):
         self.assertEqual(lead["experts_uuid"],"")
         self.assertEqual(lead["experts_status"],"review")
 
+    def test_whatsapp_display_name_cannot_disambiguate_a_shared_phone(self):
+        self.patient(name="Maria da Silva")
+        self.patient("p2", "Outra Pessoa", "+55 (33) 99839-8227")
+        key = self.lead(name="Maria da Silva")
+        lead = self.store.detail(key, self.doctor)["lead"]
+        self.assertEqual((lead["experts_uuid"], lead["experts_status"]), ("", "review"))
+
     def test_missing_or_empty_cache_is_not_evidence_of_new_patient(self):
         self.assertEqual(self.directory.lookup("5533998398227")["status"],"unchecked")
         missing=PatientDirectory(self.path.parent/"missing.sqlite3")

@@ -41,6 +41,10 @@ class KommoMigrationTests(unittest.TestCase):
         return prepare(self.store, self.doctor, self.pipe["id"], background=False,
                        source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records})["id"]
 
+    def retry(self, previous, records):
+        return prepare(self.store, self.doctor, self.pipe["id"], background=False, retry_from=previous,
+                       source=lambda progress: {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records})["id"]
+
     def apply(self, key):
         return commit(self.store, self.doctor, self.pipe["id"], key, "Master")
 
@@ -89,6 +93,83 @@ class KommoMigrationTests(unittest.TestCase):
         self.assertEqual(result["report"]["issue_count"], 4)
         self.assertEqual(result["report"]["created"], 0)
         self.assertEqual(self.store.listing(self.doctor)["leads"], [])
+
+    def test_exact_full_name_resolves_shared_phone_and_survives_reconciliation(self):
+        with sqlite3.connect(self.patient_path) as c:
+            c.execute("UPDATE clinica_patients SET name='Maria Conceicao Silva' WHERE uuid='p3'")
+        record = self.record(numbers=["5511999994444"], name="  MARIA  Conceição Silva ")
+        result = self.apply(self.preview([record]))["report"]
+        self.assertEqual((result["created"], result["linked"], result["resolved"]), (1, 1, 1))
+        lead = self.store.listing(self.doctor)["leads"][0]
+        self.assertEqual((lead["experts_uuid"], lead["experts_status"]), ("p3", "matched"))
+        with self.store.db() as c:
+            contact = self.store.contact(c, "5511999994444", "Compartilhado 2")
+            self.assertEqual((contact["experts_uuid"], contact["experts_status"]), ("p3", "matched"))
+            c.execute("UPDATE contacts SET opted_out=1")
+        self.store.patient_directory.invalidate()
+        with sqlite3.connect(self.patient_path) as c:
+            c.execute("UPDATE clinica_patients SET name='Maria Conceicao Silva' WHERE uuid='p4'")
+        lead = self.store.listing(self.doctor)["leads"][0]
+        self.assertEqual((lead["experts_uuid"], lead["experts_status"], lead["opted_out"]), ("p3", "review", 1))
+
+    def test_shared_names_never_use_partial_name_nickname_or_choose_between_identical_names(self):
+        with sqlite3.connect(self.patient_path) as c:
+            c.execute("UPDATE clinica_patients SET name='Maria da Silva'")
+        for name in ("Maria", "Maria Silva", "Maria da Silva", "Mãe do Victor"):
+            result = self.apply(self.preview([self.record(numbers=["5511999994444"], name=name)]))["report"]
+            self.assertEqual((result["created"], result["issue_count"]), (0, 1))
+
+    def test_bulk_retry_imports_ambiguous_phone_without_clinical_link_and_is_idempotent(self):
+        records = [self.record(numbers=["5511999994444"]), self.record(2, reason="phone")]
+        previous = self.preview(records)
+        self.apply(previous)
+        fresh = {"source_pipeline": 99, "source_name": "Orgânico Paranhos", "records": records}
+        with patch("crm_patient_refresh.sync_patients") as sync, patch("crm_kommo_import.extract", return_value=fresh) as extract_mock, \
+                patch("app.get_access_context", return_value={"access_token": "test", "account_domain": "example"}):
+            key = prepare(self.store, self.doctor, self.pipe["id"], background=False, retry_from=previous)["id"]
+        sync.assert_called_once()
+        extract_mock.assert_called_once()
+        self.assertEqual(self.store.listing(self.doctor)["leads"], [])
+        result = self.apply(key)
+        self.assertEqual((result["report"]["created"], result["report"]["review"], result["report"]["issue_count"]), (1, 1, 1))
+        self.assertTrue(any(item.get("imported") for item in result["issues"]))
+        lead = self.store.listing(self.doctor)["leads"][0]
+        self.assertEqual((lead["experts_uuid"], lead["experts_status"]), ("", "review"))
+        self.assertEqual(self.apply(key)["report"], result["report"])
+        repeat = self.retry(key, records)
+        result = self.apply(repeat)["report"]
+        self.assertEqual((result["created"], result["already"], result["issue_count"]), (0, 1, 1))
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 1)
+            for table in ("messages", "campaigns", "xp"):
+                self.assertEqual(c.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
+
+    def test_bulk_retry_does_not_merge_different_people_or_overwrite_existing_patient(self):
+        records = [self.record(1, ["5511999994444"], name="Maria Silva"),
+                   self.record(2, ["5511999994444"], name="Outra Pessoa")]
+        previous = self.preview(records)
+        self.apply(previous)
+        key = self.retry(previous, records)
+        result = self.apply(key)["report"]
+        self.assertEqual((result["created"], result["review"], result["issue_count"]), (1, 1, 1))
+        with self.store.db() as c:
+            c.execute("UPDATE contacts SET experts_uuid='p2',opted_out=1")
+        key = self.retry(previous, records)
+        result = self.apply(key)["report"]
+        self.assertEqual((result["created"], result["issue_count"]), (0, 1))
+        with self.store.db() as c:
+            self.assertEqual(tuple(c.execute("SELECT experts_uuid,opted_out FROM contacts").fetchone()), ("p2", 1))
+
+    def test_retry_source_requires_a_completed_migration_owned_by_the_target(self):
+        previous = self.preview([self.record()])
+        with self.assertRaises(ValueError):
+            prepare(self.store, self.doctor, self.pipe["id"], retry_from=previous)
+        self.apply(previous)
+        with self.store.db() as c:
+            other = c.execute("SELECT id FROM doctors WHERE id<>?", (self.doctor,)).fetchone()[0]
+            c.execute("UPDATE kommo_import_jobs SET doctor_id=? WHERE id=?", (other, previous))
+        with self.assertRaises(ValueError):
+            prepare(self.store, self.doctor, self.pipe["id"], retry_from=previous)
 
     def test_unmatched_new_contact_and_secondary_existing_phone(self):
         numbers = ["5538999991111", "5538999992222"]

@@ -12,6 +12,7 @@ import uuid
 from zoneinfo import ZoneInfo
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_metrics import THREADS_CTE
+from crm_patients import match_patient_name
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
@@ -173,6 +174,7 @@ class CrmStore:
             """)
             columns = {r[1] for r in c.execute("PRAGMA table_info(contacts)")}
             for name, definition in (("experts_uuid", "TEXT NOT NULL DEFAULT ''"),
+                                     ("experts_match_name", "TEXT NOT NULL DEFAULT ''"),
                                      ("experts_status", "TEXT NOT NULL DEFAULT 'unchecked'"),
                                      ("experts_checked_at", "REAL NOT NULL DEFAULT 0"),
                                      ("service_location", "TEXT NOT NULL DEFAULT ''"),
@@ -233,9 +235,14 @@ class CrmStore:
                     c.execute("UPDATE contacts SET service_location=?,service_location_source=? WHERE id=?",
                               (location, "ddd" if location else "pending", contact["id"]))
 
-    def contact(self, c, number, name):
+    def contact(self, c, number, name, *, identity_name=""):
         match = self.patient_lookup(number)
         current = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
+        # Only the migration's trusted source name or its stored evidence may
+        # resolve a shared phone. WhatsApp push names are never identity evidence.
+        evidence = identity_name or (current["experts_match_name"] if current and current["experts_uuid"] else "")
+        if evidence:
+            match = match_patient_name(match, evidence)
         linked = c.execute("SELECT * FROM contacts WHERE experts_uuid=?", (match.get("uuid", ""),)).fetchone() if match["status"] == "matched" else None
         if not current:
             if linked:
@@ -251,6 +258,9 @@ class CrmStore:
             status = "review"
         elif status == "matched":
             c.execute("UPDATE contacts SET name=?,experts_uuid=? WHERE id=?", (match["name"], match["uuid"], cid))
+            if match.get("match_basis") == "phone_name" or (identity_name and
+                    " ".join(fold(identity_name).split()) == " ".join(fold(match["name"]).split())):
+                c.execute("UPDATE contacts SET experts_match_name=? WHERE id=?", (match["name"], cid))
         elif current["experts_uuid"]:
             # A stale/unavailable snapshot must not silently turn a linked
             # patient into a new person or overwrite an established name.
