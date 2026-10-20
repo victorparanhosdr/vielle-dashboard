@@ -7,7 +7,27 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","campaigns","channels","templates","forms","bots"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","campaigns","channels","templates","forms","bots"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const inboxPreference=()=>`doc4docs.crm.inboxDoctors.${state.session?.user.id}`;
+  const inboxScope=window.createCrmInboxScope({esc,icon,icons,onChange:ids=>{
+    state.inboxDoctors=ids;
+    try{localStorage.setItem(inboxPreference(),JSON.stringify(ids));}catch{}
+    if(!ids.includes(state.doctor)){state.doctor=ids[0];state.pipeline="";}
+    inbox.unmount();$("crmView").replaceChildren();renderInboxScope();load();
+  }});
+  function renderInboxScope(){
+    const field=$("doctor").closest("label");field.hidden=state.mode==="inbox";
+    if(state.mode!=="inbox"){inboxScope.hide();return;}
+    inboxScope.mount(field,state.data.doctors,state.inboxDoctors || [state.doctor]);
+  }
+  function normalizeInboxDoctors(){
+    if(!state.inboxDoctors){
+      try{state.inboxDoctors=JSON.parse(localStorage.getItem(inboxPreference()) || "null");}catch{}
+    }
+    const allowed=new Set(state.data.doctors.map(d=>d.id));
+    state.inboxDoctors=Array.isArray(state.inboxDoctors)?[...new Set(state.inboxDoctors.filter(id=>allowed.has(id)))]:[];
+    if(!state.inboxDoctors.length && state.doctor)state.inboxDoctors=[state.doctor];
+  }
   let presentation="board",listPicker=null,listSeed=null,listScope="";
   let radarCollapsed=false;
   try{radarCollapsed=sessionStorage.getItem("doc4docs.crm.radarCollapsed")==="1";}catch{}
@@ -79,7 +99,7 @@
   const importer=window.createCrmImporter({api,modal,error,icons,esc,load});
   const courses=window.createCrmCourses({api,esc,icon,icons});
   const courseScope=()=>state.mode==="board"?Boolean(pipeline()?.course_key):state.mode==="inbox" && state.business==="course";
-  const avatars=window.createCrmAvatars({api,esc,enabled:doc=>doc===state.doctor && state.data?.gateway_configured && state.data.channels.some(c=>c.state==="open")});
+  const avatars=window.createCrmAvatars({api,esc,enabled:doc=>state.data?.gateway_configured && (doc===state.doctor || state.mode==="inbox" && state.inboxDoctors?.includes(doc))});
   const clientMode=()=>["board","inbox"].includes(state.mode);
   const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno",course_status:"Pagamento Kiwify"};
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
@@ -124,9 +144,9 @@
   }
   function notice(message="") { $("notice").textContent=message;$("notice").hidden=!message; }
   async function api(action="", payload, query={}) {
-    const filters=payload===undefined && ["","inbox"].includes(action) && clientMode()?{filters:JSON.stringify({...state.filters,search:state.search,sort:state.sort})}:{};
+    const filters=payload===undefined && ["","inbox","inbox-multi"].includes(action) && clientMode()?{filters:JSON.stringify({...state.filters,search:state.search,sort:state.sort})}:{};
     const view=!action && payload===undefined && state.mode==="board" && presentation==="board"?{view:"kanban",pipeline:state.pipeline}:{};
-    const res=await fetch(`/api/crm${action?"/"+action:""}?${new URLSearchParams({clinic:"vielle",doctor:state.doctor,...filters,...view,...query})}`, payload===undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const res=await fetch(`/api/crm${action?"/"+action:""}?${new URLSearchParams({clinic:"vielle",doctor:payload?.doctor_id || state.doctor,...filters,...view,...query})}`, payload===undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const data=await res.json().catch(()=>({}));
     if(!res.ok || !data.ok){const error=new Error(data.error || "Não foi possível concluir a operação.");error.status=res.status;throw error;}
     return data;
@@ -140,6 +160,8 @@
       const data=await api();
       if(seq!==state.seq) return;
       state.data=data;state.doctor=data.doctor_id;
+      normalizeInboxDoctors();
+      if(state.mode==="inbox" && state.inboxDoctors.length && !state.inboxDoctors.includes(state.doctor)){state.doctor=state.inboxDoctors[0];state.pipeline="";return await load();}
       $("setup").hidden=Boolean(data.doctors.length);$("crmApp").hidden=!data.doctors.length;
       $("addDoctor").hidden=!data.can_manage;$("customerTierRules").hidden=!data.can_manage;
       if(!data.doctors.length && !data.can_manage)$("setup").hidden=true;
@@ -232,6 +254,7 @@
     if(!state.data) return;
     if(state.mode!=="board")bulk.reset();
     document.body.dataset.crmMode=state.mode;
+    renderInboxScope();
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
     $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
@@ -377,7 +400,7 @@
     let lead=state.data.leads.find(l=>l.id===id);
     if(!lead){try{lead=(await api("lead",undefined,{id,doctor:owner})).lead;}catch(e){notice(e.message);return;}}
     if(state.doctor!==owner)return;
-    state.mode="inbox";state.search="";$("search").value="";render();inbox.openLead(lead);
+    state.mode="inbox";state.inboxDoctors=[...new Set([...(state.inboxDoctors || []),owner])];state.search="";$("search").value="";render();inbox.openLead(lead);
   }
   let feedbackTimer, transitionTimer;
   function stageFeedback(lead, stage, xp=0) {
@@ -398,7 +421,7 @@
     }
   }
   async function moveLead(lead, stageId, changes={}) {
-    const before=state.data.game.xp, doc=state.doctor;
+    const before=state.data.game.xp, doc=lead.doctor_id || state.doctor;
     await api("lead",{...lead,...changes,doctor_id:doc,stage_id:stageId});
     await load();
     if(doc!==state.doctor)return;
@@ -406,7 +429,7 @@
   }
   function commercialView(host, lead) {
     let kind="sales", scope="doctor", page=1, request=0;
-    const owner=state.doctor;
+    const owner=lead.doctor_id;
     const currency=n=>n===null || n===undefined?"Valor não informado":(n/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2});
     const fullDate=d=>d?new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR"):"Sem data";
     async function draw() {
@@ -432,7 +455,7 @@
     return {show(value){kind=value;page=1;draw();},cancel(){request++;}};
   }
   function appointmentsView(host, lead) {
-    let scope="doctor", period="all", page=1, request=0;const owner=state.doctor;
+    let scope="doctor", period="all", page=1, request=0;const owner=lead.doctor_id;
     async function draw() {
       const seq=++request;host.setAttribute("aria-busy","true");host.innerHTML='<p class="connectionNote">Consultando os agendamentos…</p>';
       try {
@@ -451,17 +474,22 @@
     }
     return {show(){page=1;draw();},cancel(){request++;}};
   }
-  async function profile(id, initialTab="record") {
+  async function profile(id, initialTab="record", context=null) {
+    const owner=context?.doctor || state.doctor,pipelines=context?.pipelines || state.data.pipelines;
+    const active=()=>state.data?.doctors.some(d=>d.id===owner) && (context?state.mode==="inbox" && state.inboxDoctors.includes(owner) && (!context.active || context.active()):state.doctor===owner);
+    const reopen=(tab="record")=>profile(id,tab,context);
     try {
-      const res=await fetch(`/api/crm/lead?${new URLSearchParams({clinic:"vielle",doctor:state.doctor,id})}`), data=await res.json();
+      const res=await fetch(`/api/crm/lead?${new URLSearchParams({clinic:"vielle",doctor:owner,id})}`), data=await res.json();
       if(!res.ok)throw new Error(data.error);
-      const l=data.lead,p=state.data.pipelines.find(p=>p.id===l.pipeline_id);
+      if(!active())return;
+      const l=data.lead,p=pipelines.find(p=>p.id===l.pipeline_id);if(!p)throw new Error("Funil indisponível neste atendimento.");
       const isCourse=Boolean(l.course_key);
       modal(l.name,`<div class="leadDetail"><div><p class="connectionNote">+${esc(l.phone)} · ${esc(p.name)}</p><form id="leadEdit"><label>Oportunidade<input name="title" value="${esc(l.title)}" maxlength="160" required></label><label>Fase<select name="stage_id">${p.stages.map(s=>option(s.id,s.name,l.stage_id===s.id)).join("")}</select></label><div class="formGrid"><label>Valor estimado (R$)<input name="value" type="number" step="0.01" min="0" max="1000000" value="${l.value_cents/100}" required></label><label>Próximo contato<input name="next_action" type="date" value="${esc(l.next_action)}"></label></div>${actions("Salvar oportunidade")}</form><h3>Mensagens</h3><p class="connectionNote">${l.opted_out?"Descadastrado · envios bloqueados":"Disponível para envio · padrão da clínica"}</p>${l.consent_at?`<p class="connectionNote">Consentimento informado: ${esc(l.consent_source)}</p>`:""}<div class="commands">${!l.opted_out?`<button id="recordConsent">${icon("file-check")} Registrar consentimento</button><button id="optout">Descadastrar</button>`:`<button id="reactivateContact">${icon("user-round-check")} Reativar contato</button>`}</div><h3>Registrar atividade</h3><form id="activityForm"><label>Tipo<select name="kind"><option value="followup">Follow-up realizado</option><option value="note">Nota interna</option></select></label><label>Resumo<textarea name="body" required maxlength="2000"></textarea></label>${actions("Registrar")}</form></div><div><h3>Histórico</h3>${data.events.map(e=>`<div class="eventRow"><small>${date(e.created_at)} · ${esc(e.actor)} · ${esc(e.kind==="reactivate"?"Contato reativado":e.kind)}</small>${esc(e.body)}</div>`).join("")}<h3>Conversas</h3><div class="conversation">${data.messages.map(m=>`<div class="eventRow ${esc(m.direction)}"><small>${date(m.created_at)} · ${esc(m.channel_name)} · ${esc(statusLabels[m.status] || m.status)}</small>${esc(m.body)}</div>`).join("") || '<p class="connectionNote">Nenhuma mensagem neste doutor.</p>'}</div></div></div>`);
       const identity=document.createElement("p");identity.className="connectionNote";identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");$("leadEdit").before(identity);
       const runBot=document.createElement("button");runBot.type="button";runBot.innerHTML=`${icon("workflow")} Iniciar robô`;$("leadEdit").after(runBot);runBot.onclick=()=>botsCenter.startForLead(l).catch(e=>error(e.message));
-      const removeLead=document.createElement("button");removeLead.type="button";removeLead.className="icon-button";removeLead.title="Excluir lead";removeLead.setAttribute("aria-label","Excluir lead");removeLead.innerHTML=icon("trash-2");runBot.after(removeLead);removeLead.onclick=()=>bulk.open("delete",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id});
-      const transferLead=document.createElement("button");transferLead.type="button";transferLead.innerHTML=`${icon("arrow-right-left")} Transferir lead`;removeLead.after(transferLead);transferLead.onclick=()=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id});
+      const bulkContext={doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines,active};
+      const removeLead=document.createElement("button");removeLead.type="button";removeLead.className="icon-button";removeLead.title="Excluir lead";removeLead.setAttribute("aria-label","Excluir lead");removeLead.innerHTML=icon("trash-2");runBot.after(removeLead);removeLead.onclick=()=>bulk.open("delete",{lead_ids:[l.id]},bulkContext);
+      const transferLead=document.createElement("button");transferLead.type="button";transferLead.innerHTML=`${icon("arrow-right-left")} Transferir lead`;removeLead.after(transferLead);transferLead.onclick=()=>bulk.open("transfer",{lead_ids:[l.id]},bulkContext);
       const origin=document.createElement("div");origin.innerHTML=window.CrmAttribution.lead(data.attribution,esc);$("leadEdit").before(origin);
       if(isCourse)identity.textContent=courses.label(l);
       const refresh=document.createElement("div");refresh.className="patientRefreshControls";
@@ -470,14 +498,14 @@
         const button=refresh.querySelector("button"),status=refresh.querySelector("p");
         try {
           const updated=await refreshPatient(l,button,status);
-          if(!updated || !refresh.isConnected || state.doctor!==l.doctor_id)return;
+          if(!updated || !refresh.isConnected || !active())return;
           Object.assign(l,updated);$("modalTitle").textContent=l.name;
           identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");
           value.innerHTML=customerValuePanel(l.customer_value);appointment.innerHTML=appointmentBadge(l.appointment);
           status.textContent=patientRefreshMessage(l);icons();
         } catch(e){if(status.isConnected){status.hidden=false;status.textContent=e.message;}}
       };
-      if(isCourse){refresh.querySelector("button").innerHTML=`${icon("refresh-cw")} Atualizar Kiwify`;refresh.querySelector("button").title="Atualizar pedidos do curso";refresh.querySelector("button").onclick=()=>courses.refresh(l,refresh.querySelector("button"),refresh.querySelector("p"),updated=>{Object.assign(l,updated);value.innerHTML=courses.panel(l);identity.textContent=courses.label(l);commerce.innerHTML=courses.orders(l);},()=>$("crmDialog").open && refresh.isConnected && state.doctor===l.doctor_id);}
+      if(isCourse){refresh.querySelector("button").innerHTML=`${icon("refresh-cw")} Atualizar Kiwify`;refresh.querySelector("button").title="Atualizar pedidos do curso";refresh.querySelector("button").onclick=()=>courses.refresh(l,refresh.querySelector("button"),refresh.querySelector("p"),updated=>{Object.assign(l,updated);value.innerHTML=courses.panel(l);identity.textContent=courses.label(l);commerce.innerHTML=courses.orders(l);},()=>$("crmDialog").open && refresh.isConnected && active());}
       const value=document.createElement("div");value.className="profileCustomerValue";value.innerHTML=isCourse?courses.panel(l):customerValuePanel(l.customer_value);$("leadEdit").before(value);
       const appointment=document.createElement("div");appointment.className="profileAppointment";appointment.innerHTML=isCourse?"":appointmentBadge(l.appointment);$("leadEdit").before(appointment);
       const locationForm=document.createElement("form");locationForm.className="serviceLocationForm";
@@ -487,7 +515,7 @@
       if(isCourse){const emailLabel=document.createElement("label");emailLabel.textContent="E-mail do aluno / interessado";const emailInput=document.createElement("input");emailInput.name="email";emailInput.type="email";emailInput.value=l.email || "";emailInput.maxLength=200;emailLabel.append(emailInput);$("leadEdit").prepend(emailLabel);}
       locationForm.onsubmit=async e=>{
         e.preventDefault();const buttons=locationForm.querySelectorAll("button");buttons.forEach(b=>b.disabled=true);$("formError").hidden=true;
-        try {await api("service-location",{id:l.id,doctor_id:l.doctor_id,service_location_revision:l.service_location_revision,service_location:new FormData(locationForm).get("service_location"),use_ddd:e.submitter?.id==="useDddLocation"});await load();await profile(l.id);}
+        try {await api("service-location",{id:l.id,doctor_id:l.doctor_id,service_location_revision:l.service_location_revision,service_location:new FormData(locationForm).get("service_location"),use_ddd:e.submitter?.id==="useDddLocation"});await load();await reopen();}
         catch(err){error(err.message);buttons.forEach(b=>b.disabled=false);}
       };
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
@@ -503,22 +531,22 @@
       const showTab=tab=>{record.hidden=tab!=="record";commerce.hidden=!(isCourse?tab==="orders":["sales","quotes"].includes(tab));agenda.hidden=isCourse || tab!=="appointments";calls.hidden=tab!=="calls";tabs.querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.profileTab===tab)));if(!commerce.hidden){if(isCourse)commerce.innerHTML=courses.orders(l);else history.show(tab);}else history.cancel();if(!agenda.hidden)bookings.show();else bookings.cancel();if(!calls.hidden)callHistory.show();else callHistory.cancel();};
       tabs.onclick=e=>{const b=e.target.closest("[data-profile-tab]");if(b)showTab(b.dataset.profileTab);};showTab(initialTab);icons();
       wireForm(async f=>{await moveLead(l,f.get("stage_id"),{title:f.get("title"),value_cents:Math.round(Number(f.get("value"))*100),next_action:f.get("next_action"),...(isCourse?{email:f.get("email")}:{})});});
-      $("activityForm").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;const f=new FormData(e.currentTarget);try{await api("activity",{id:l.id,doctor_id:state.doctor,kind:f.get("kind"),body:f.get("body")});await load();await profile(l.id);}catch(err){error(err.message);b.disabled=false;}};
+      $("activityForm").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector('[type="submit"]');b.disabled=true;const f=new FormData(e.currentTarget);try{await api("activity",{id:l.id,doctor_id:l.doctor_id,kind:f.get("kind"),body:f.get("body")});await load();await reopen();}catch(err){error(err.message);b.disabled=false;}};
       if($("optout")) $("optout").onclick=()=>activityModal(l,"optout");
       if($("recordConsent")) $("recordConsent").onclick=()=>activityModal(l,"consent");
-      if($("reactivateContact")) $("reactivateContact").onclick=()=>reactivationModal(l);
+      if($("reactivateContact")) $("reactivateContact").onclick=()=>reactivationModal(l,context);
     } catch(e){notice(e.message);}
   }
   function activityModal(l,kind) {
     modal(kind==="consent"?"Registrar autorização":"Descadastrar contato",`<form><p class="connectionNote">${esc(l.name)} · +${esc(l.phone)}${kind==="optout"?". O descadastro impede campanhas de todos os doutores da clínica.":""}</p><label>${kind==="consent"?"Origem e data da autorização":"Motivo"}<textarea name="body" maxlength="${kind==="consent"?300:2000}" required></textarea></label>${actions(kind==="consent"?"Registrar autorização":"Confirmar descadastro")}</form>`);
-    wireForm(f=>api("activity",{id:l.id,doctor_id:state.doctor,kind,body:f.get("body")}));
+    wireForm(f=>api("activity",{id:l.id,doctor_id:l.doctor_id,kind,body:f.get("body")}));
   }
-  function reactivationModal(l) {
+  function reactivationModal(l,context=null) {
     modal("Reativar contato",`<form><p class="connectionNote">${esc(l.name)} · +${esc(l.phone)}</p><p class="connectionNote">A reativação vale para todos os doutores da clínica. Mensagens antigas não serão reenviadas e campanhas não serão reiniciadas.</p><label>Motivo da reativação<textarea name="body" maxlength="2000" required></textarea></label><label class="check"><input name="confirm_reactivation" type="checkbox" required>Confirmei com o cliente que ele deseja voltar a receber contato.</label><div class="formActions"><button type="button" id="cancelReactivation">Cancelar</button><button type="submit" class="primary">${icon("user-round-check")} Reativar contato</button></div></form>`);
-    $("cancelReactivation").onclick=()=>profile(l.id);
+    $("cancelReactivation").onclick=()=>profile(l.id,"record",context);
     wireForm(async f=>{
       await api("activity",{id:l.id,doctor_id:l.doctor_id,kind:"reactivate",revision:l.revision,body:f.get("body"),confirm_reactivation:f.has("confirm_reactivation")});
-      await profile(l.id);
+      await profile(l.id,"record",context);
     },false);
   }
   function campaignForm() {return campaignCenter.create();}
@@ -542,7 +570,7 @@
   const bulk=window.createCrmBulk({api,esc,icon,icons,modal,error,notice,getScope:()=>({doctor:state.doctor,pipeline:state.pipeline,pipelines:state.data?.pipelines || [],filters:{...state.filters,search:state.search,sort:state.sort}}),onDone:async result=>{listPicker?.destroy();listPicker=null;listSeed=null;listScope="";if(result?.action==="transfer"){inbox.unmount();state.mode="board";state.doctor=result.doctor_id;state.pipeline=result.pipeline_id;state.filters={};state.search="";$("search").value="";fillFilterForm();}await load();}});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,transferLead:l=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,transferLead:(l,context)=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines:context.pipelines,active:context.active}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
@@ -606,10 +634,10 @@
   };
   function sessionAllowed(data){return Boolean(data?.clinics?.some(c=>c.key==="vielle") && data.permissions?.vielle?.includes("crm.view"));}
   function session(data){
-    const changed=state.session && JSON.stringify(state.session.user.crm_scope)!==JSON.stringify(data.user.crm_scope);
+    const changed=state.session && (state.session.user.id!==data.user.id || JSON.stringify(state.session.user.crm_scope)!==JSON.stringify(data.user.crm_scope));
     state.session=data;
-    if(changed){inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
-    if(!sessionAllowed(data)){inbox.unmount();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
+    if(changed){inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.inboxDoctors=null;state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
+    if(!sessionAllowed(data)){inbox.unmount();inboxScope.hide();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
     $("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();
   }
   window.addEventListener("doc4docs-session",e=>session(e.detail));

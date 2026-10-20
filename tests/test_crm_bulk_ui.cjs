@@ -5,7 +5,7 @@ const bulk=read('crm-bulk.js'),crm=read('crm.js'),audience=read('crm-audience.js
 assert.match(bulk,/observer\.observe\(lane,\{childList:true\}\)/);
 assert.ok(!bulk.includes('subtree:true'),'Icon replacement must not recursively trigger the board observer');
 assert.match(bulk,/lead-bulk-preview/);assert.match(bulk,/lead-bulk-apply/);assert.match(bulk,/name="confirm" required/);
-assert.match(bulk,/seq!==request/);assert.match(bulk,/getScope\(\)\.doctor!==owner/);
+assert.match(bulk,/seq!==request/);assert.match(bulk,/scope.active\?scope.active\(\):getScope\(\).doctor===owner/);
 assert.match(bulk,/createElement\("label"\)/);assert.match(bulk,/wrap\.append\(label,card\)/);
 assert.match(audience,/onBulk\?\./);assert.match(crm,/!bulk\.isSelecting\(\)/);
 assert.match(read('crm-channel-settings.js'),/config_revision:channel\.config_revision/);

@@ -36,6 +36,23 @@ Evolution v2 service. Outbound sending is disabled by default.
 - The pilot listing is limited to 1,000 opportunities per doctor and 100 recent
   campaigns. Scale to paginated queries before expanding the pilot.
 
+## Multi-Professional Attendance
+
+Attendance has a checkbox-based professional selector, separate from the single
+professional context used by funnels and reports. The selection is remembered in
+the browser per signed-in user and intersected with the current permitted doctors.
+Each conversation displays its WhatsApp connection name and, for a combined inbox,
+its professional. Number/activity/search/unanswered filters cover that selection.
+
+`inbox-multi` validates every selected owner and reuses the existing per-doctor
+inbox, funnel and institute checks. Counters cover all matching conversations;
+the combined display contains the first 200, with global ordering preserved.
+No conversations or contacts are merged. Replies, attachments, search, closure,
+profiles, stage changes, bots and transfer commands retain the chosen thread's
+doctor context. Sender options never include another doctor's numbers. Switching
+the selected professionals invalidates old responses and clears the open chat.
+This is a read aggregation, not a permission grant or a connection transfer.
+
 ## Lead Transfers Between Professionals and Funnels
 
 The lead profile and inbox commercial record have a Transfer lead command. The

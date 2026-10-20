@@ -6,6 +6,11 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const syncing=new Set(),syncedAt=new Map();
   let opportunities=[],contextSeq=0;
   let clockOffset=0;
+  let scope="",catalog={channels:[],pipelines:[]};
+  const doctors=()=>state.inboxDoctors || [state.doctor];
+  const scopeKey=()=>JSON.stringify(doctors());
+  const channels=()=>catalog.channels.filter(c=>c.doctor_id===owner);
+  const profileContext=()=>{const signature=key(selected);return {doctor:owner,pipelines:catalog.pipelines,active:()=>Boolean(root && selected && signature===key(selected))};};
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
   const media=window.createCrmMedia({esc,icon,icons,onError:chatError,onBusy:()=>syncSend(),onChange:value=>{
@@ -46,12 +51,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     focusFrame=requestAnimationFrame(()=>{focusFrame=0;if(root && workspace===$("inboxWorkspace"))workspace.scrollIntoView({block:"start",behavior:"instant"});});
   }
   function mount(target) {
-    const changed=owner!==state.doctor;
-    if(changed){media.destroy();chatSearch.destroy();templates.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
+    const changed=scope!==scopeKey();
+    if(changed){media.destroy();chatSearch.destroy();templates.destroy();scope=scopeKey();owner=doctors().includes(state.doctor)?state.doctor:doctors()[0];selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;catalog={channels:state.data.channels.filter(c=>doctors().includes(c.doctor_id)),pipelines:state.data.pipelines.filter(p=>doctors().includes(p.doctor_id))};}
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
-    for(const option of $("inboxChannel").options){if(state.data.channels.find(c=>c.id===option.value)?.archived_at)option.textContent+=" · removido (histórico)";}
+    drawChannelFilter();
     $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
     $("inboxChannel").parentElement.insertAdjacentHTML("beforebegin",`<label class="channelFilter">Atividade<select id="inboxBusiness"><option value="all">Todas as atividades</option><option value="clinic">Clínica</option><option value="course">Cursos</option></select></label>`);
     $("inboxBusiness").value=state.business || "all";
@@ -66,8 +71,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.dataset.thread!==undefined){const item=list[Number(b.dataset.thread)];if(item)select(item);}
       if(b.id==="chatBack"){$("inboxWorkspace").classList.remove("chatActive");}
       if(b.id==="toggleContact"){$("inboxWorkspace").classList.toggle("showContact");b.setAttribute("aria-expanded",String($("inboxWorkspace").classList.contains("showContact")));}
-      if(b.id==="openProfile"){const l=leadFor();if(l)profile(l.id);}
-      if(b.dataset.commercial){const l=leadFor();if(l)profile(l.id,b.dataset.commercial);}
+      if(b.id==="openProfile"){const l=leadFor();if(l)profile(l.id,"record",profileContext());}
+      if(b.dataset.commercial){const l=leadFor();if(l)profile(l.id,b.dataset.commercial,profileContext());}
       if(b.id==="olderMessages")refreshThread(true);
       if(b.id==="closeConversation")closeConversation();
       if(b.id==="syncMessages")syncExternalMessages(true);
@@ -78,45 +83,68 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   async function refreshList() {
     if(!root)return;
-    const request=++listSeq,doc=owner;
+    const request=++listSeq,currentScope=scopeKey();
     try {
-      const data=await api("inbox",undefined,{doctor:doc,channel,kind:filter,search:state.search,business:state.business || "all"});
-      if(!root || request!==listSeq || doc!==owner)return;
+      const data=await api("inbox-multi",undefined,{doctor:doctors()[0],doctors:JSON.stringify(doctors()),channel,kind:filter,search:state.search,business:state.business || "all"});
+      if(!root || request!==listSeq || currentScope!==scopeKey())return;
+      catalog={channels:data.channels,pipelines:data.pipelines};drawChannelFilter();
       list=data.conversations;
       if(Number.isFinite(data.server_time))clockOffset=data.server_time-Date.now()/1000;
       $("inboxCount").textContent=`${data.counts.all} conversas`;
       root.querySelectorAll("[data-count]").forEach(n=>n.textContent=data.counts[n.dataset.count]);
       $("inboxLimit").hidden=data.total<=list.length;$("inboxLimit").textContent=`Exibindo ${list.length} de ${data.total}. Refine a busca.`;
       $("inboxError").hidden=true;drawList();
-    }catch(e){if(root && request===listSeq){$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
+      if(selected && (!catalog.channels.some(c=>c.id===selected.channel_id && c.doctor_id===owner) || selectedRecord && !catalog.pipelines.some(p=>p.id===selectedRecord.pipeline_id)))clearChat();
+      else if(selected){drawSenderOptions();drawInfo();syncSend();}
+    }catch(e){if(root && request===listSeq){if(e.status===403){list=[];drawList();clearChat();}$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
+  }
+  function drawChannelFilter(){
+    if(!$("inboxChannel"))return;
+    const options=`<option value="">Todos os números</option>${catalog.channels.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} · +${esc(c.phone)}${doctors().length>1?` · ${esc(state.data.doctors.find(d=>d.id===c.doctor_id)?.name || "")}`:""}${c.archived_at?" · removido (histórico)":""}</option>`).join("")}`;
+    if(!catalog.channels.some(c=>c.id===channel))channel="";
+    if($("inboxChannel").innerHTML!==options)$("inboxChannel").innerHTML=options;
+    $("inboxChannel").value=channel;
+  }
+  function clearChat(){
+    media.destroy();chatSearch.destroy();templates.destroy();selected=null;selectedRecord=null;threadData=null;messages=[];threadSeq++;openSeq++;contextSeq++;
+    $("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Selecione um cliente</h2></div>';$("contactPanel").replaceChildren();$("contactPanel").hidden=true;$("inboxWorkspace").classList.remove("chatActive","showContact");
+  }
+  function conversationOrigin(c){
+    const name=c.channel_name || "WhatsApp",doctor=c.doctor_name || "";
+    return `<span class="conversationOrigin"><span class="conversationConnection" title="${esc(`${name} · +${catalog.channels.find(ch=>ch.id===c.channel_id)?.phone || ""}`)}">${icon("smartphone")}<span>${esc(name)}</span></span>${doctors().length>1?`<span class="conversationDoctor" title="${esc(doctor)}">${esc(doctor)}</span>`:""}</span>`;
   }
   function drawList() {
     if(!root)return;
-    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,owner,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${waitingTimer(c)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
+    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.doctor_id===owner && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,c.doctor_id,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${waitingTimer(c)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationOrigin(c)}${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
     icons();updateTimers();
   }
   async function openLead(l) {
-    const doc=owner, request=++openSeq;
+    const doc=l.doctor_id, request=++openSeq;
     channel="";if($("inboxChannel"))$("inboxChannel").value="";
     try {
       const data=await api("lead",undefined,{doctor:doc,id:l.id});
-      if(!root || doc!==owner || request!==openSeq)return;
-      const sender=data.preferred_channel_id || data.messages[0]?.channel_id || state.data.channels.find(c=>c.state==="open")?.id || state.data.channels[0]?.id;
+      if(!root || !doctors().includes(doc) || request!==openSeq)return;
+      const available=catalog.channels.filter(c=>c.doctor_id===doc);
+      const sender=data.preferred_channel_id || data.messages[0]?.channel_id || available.find(c=>c.state==="open")?.id || available[0]?.id;
       if(!sender){$("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Nenhum número cadastrado</h2><p>Cadastre um número em Números para abrir o atendimento.</p></div>';$("inboxWorkspace").classList.add("chatActive");return;}
-      select({contact_id:l.contact_id,channel_id:sender,lead_id:l.id,_lead:data.lead});
+      select({doctor_id:doc,contact_id:l.contact_id,channel_id:sender,lead_id:l.id,_lead:data.lead});
     }catch(e){if(root && request===openSeq){$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
   }
   function select(item) {
+    const doc=item.doctor_id || catalog.channels.find(c=>c.id===item.channel_id)?.doctor_id;
+    if(!doctors().includes(doc))return;
     media.destroy();chatSearch.destroy();templates.destroy();renderedSearch="";
     openSeq++;
-    const previous=selected?.contact_id===item.contact_id?leadFor():null;
-    selected={contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};opportunities=[];contextSeq++;
+    const previous=owner===doc && selected?.contact_id===item.contact_id?leadFor():null;
+    owner=doc;
+    selected={doctor_id:doc,contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};opportunities=[];contextSeq++;
     selectedRecord=item._lead || state.data.leads.find(l=>l.id===item.lead_id) || (previous?.id===item.lead_id?previous:null);
     replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;
-    const l=leadFor(), ch=state.data.channels.find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
+    const l=leadFor(), ch=channels().find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
     $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact");
     $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button>${avatars.markup(l?.name || "Cliente",selected.contact_id,owner,selected.channel_id)}<div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleChatSearch" class="icon-button" aria-label="Buscar nesta conversa" title="Buscar nesta conversa" aria-expanded="false" aria-controls="chatSearch">${icon("search")}</button><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div id="chatSearch" class="chatSearch" role="search" aria-label="Busca no histórico desta conversa" hidden></div><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><div id="mediaPreview" class="mediaPreview" hidden></div><form id="replyForm"><div id="mediaTools"></div><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
     $("chatPane").querySelector(".chatHeader").insertAdjacentHTML("afterend",`<div class="conversationActions"><span id="conversationStatus" role="status">Carregando…</span><button id="syncMessages" class="icon-button" title="Sincronizar mensagens do WhatsApp" aria-label="Sincronizar mensagens do WhatsApp" ${!state.data.gateway_configured || ch?.state!=="open"?"disabled":""}>${icon("refresh-cw")}</button><button id="closeConversation" title="Fechar conversa sem responder" disabled>${icon("check-check")} Fechar conversa</button></div>`);
+    $("chatPane").querySelector(".chatIdentity").insertAdjacentHTML("beforeend",`<small class="chatDoctor">${esc(state.data.doctors.find(d=>d.id===owner)?.name || "")}</small>`);
     if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     chatSearch.mount($("chatSearch"),$("toggleChatSearch"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id});
     $("chatPane").querySelector(".replyOptions").insertAdjacentHTML("beforeend",'<div id="messageTemplateTools" class="messageTemplateTools"></div>');
@@ -135,20 +163,21 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function drawSenderOptions() {
     if(!$("replyChannel"))return;
-    const channels=state.data.channels.filter(c=>!c.archived_at);
-    if(!channels.some(c=>c.id===replyChannel))replyChannel=channels[0]?.id || "";
-    $("replyChannel").innerHTML=channels.map(c=>`<option value="${esc(c.id)}" ${c.id===replyChannel?"selected":""}>${esc(c.name)} · +${esc(c.phone)}${c.id===selected.channel_id?" · conversa atual":""}${c.state!=="open"?" · desconectado":""}</option>`).join("") || '<option value="">Nenhum número ativo</option>';
+    const senders=channels().filter(c=>!c.archived_at);
+    if(!senders.some(c=>c.id===replyChannel))replyChannel=senders[0]?.id || "";
+    $("replyChannel").innerHTML=senders.map(c=>`<option value="${esc(c.id)}" ${c.id===replyChannel?"selected":""}>${esc(c.name)} · +${esc(c.phone)}${c.id===selected.channel_id?" · conversa atual":""}${c.state!=="open"?" · desconectado":""}</option>`).join("") || '<option value="">Nenhum número ativo</option>';
   }
   function drawInfo() {
     if(!root || !selected)return;
-    const l=leadFor(), p=state.data.pipelines.find(p=>p.id===l?.pipeline_id), panel=$("contactPanel");
+    const l=leadFor(), p=catalog.pipelines.find(p=>p.id===l?.pipeline_id), panel=$("contactPanel");
+    if(l && !$("voiceCall"))$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     $("chatPane").querySelector(".chatCustomerTier")?.remove();
     if(l?.course_key){drawCourseInfo(l,p,panel);return;}
     panel.hidden=false;
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
     if(l){transferControl(panel,l);panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
     if(l){const calls=document.createElement("button");calls.dataset.commercial="calls";calls.innerHTML=`${icon("phone-call")} Ligações e gravações`;panel.append(calls);}
-    if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
+    if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await changeStage(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
     if(l){panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",customerValuePanel(l.customer_value));$("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${customerValueBadge(l.customer_value)}</span>`);const booking=document.createElement("div");booking.className="contactAppointment";booking.innerHTML=appointmentBadge(l.appointment);panel.querySelector("#openProfile").before(booking);const shortcuts=document.createElement("div");shortcuts.className="commercialShortcuts";shortcuts.innerHTML=`<button data-commercial="sales">${icon("shopping-bag")} Vendas fechadas</button><button data-commercial="quotes">${icon("file-clock")} Orçamentos pendentes</button><button data-commercial="appointments">${icon("calendar-days")} Agendamentos</button>`;panel.append(shortcuts);}
     if(l){
       const controls=document.createElement("div");controls.className="patientRefreshControls";
@@ -167,6 +196,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }
     contextPicker(panel);icons();
   }
+  async function changeStage(lead,id){
+    const signature=key(selected),doc=owner;
+    await moveLead(lead,id);
+    const data=await api("lead",undefined,{doctor:doc,id:lead.id});
+    if(root && selected && signature===key(selected) && selected.lead_id===lead.id){selectedRecord=data.lead;drawInfo();loadOpportunities();}
+  }
   async function loadOpportunities(){
     const signature=key(selected),doc=owner;
     try{const data=await api("contact-opportunities",undefined,{doctor:doc,contact:selected.contact_id});if(root && selected && signature===key(selected)){opportunities=data.opportunities;drawInfo();}}
@@ -184,20 +219,20 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function transferControl(panel,lead){
     if(!transferLead)return;
     const button=document.createElement("button");button.type="button";button.innerHTML=`${icon("arrow-right-left")} Transferir lead`;
-    button.onclick=()=>transferLead(lead);panel.querySelector("#openProfile").before(button);
+    button.onclick=()=>transferLead(lead,profileContext());panel.querySelector("#openProfile").before(button);
   }
   function drawCourseInfo(l,p,panel){
     panel.hidden=false;
     panel.innerHTML=`<div class="contactSummary"><span class="eyebrow">FICHA DO CURSO</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p>${l.email?`<p class="courseEmail">${esc(l.email)}</p>`:""}${courses.badge(l)}${courses.panel(l)}</div><div class="patientRefreshControls"><button id="refreshCourseContact">${icon("refresh-cw")} Atualizar Kiwify</button><p id="courseRefreshState" role="status" hidden></p></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name || "RegenCode")}</span><h3>${esc(l.title)}</h3><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${esc(s.id)}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha do curso</button><button data-commercial="orders">${icon("receipt-text")} Pedidos Kiwify</button><button data-commercial="calls">${icon("phone-call")} Ligações e gravações</button>`;
     transferControl(panel,l);
     $("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${courses.badge(l)}</span>`);
-    $("quickStage").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,new FormData(e.currentTarget).get("stage_id"));}catch(err){chatError(err.message);}finally{if(b.isConnected)b.disabled=false;}};
+    $("quickStage").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");b.disabled=true;try{await changeStage(l,new FormData(e.currentTarget).get("stage_id"));}catch(err){chatError(err.message);}finally{if(b.isConnected)b.disabled=false;}};
     $("refreshCourseContact").onclick=()=>{const doc=owner;courses.refresh(l,$("refreshCourseContact"),$("courseRefreshState"),updated=>{selectedRecord=updated;drawInfo();refreshList();},()=>Boolean(root && owner===doc && leadFor()?.id===l.id));};
     contextPicker(panel);icons();
   }
   function syncSend() {
     if(!$("sendReply"))return;
-    const ch=state.data.channels.find(c=>c.id===replyChannel);
+    const ch=channels().find(c=>c.id===replyChannel);
     const archived=Boolean(threadData?.channel?.archived_at);
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
     $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
@@ -219,7 +254,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   async function syncExternalMessages(force=false) {
     if(!root || !selected || !state.data.gateway_configured)return;
-    const doc=owner,target={...selected},signature=key(target),ch=state.data.channels.find(c=>c.id===target.channel_id);
+    const doc=owner,target={...selected},signature=key(target),ch=channels().find(c=>c.id===target.channel_id);
     if(ch?.state!=="open" || syncing.has(signature) || !force && Date.now()-(syncedAt.get(signature)||0)<300000)return;
     syncing.add(signature);syncedAt.set(signature,Date.now());
     if($("syncMessages"))$("syncMessages").disabled=true;

@@ -45,13 +45,14 @@
     }
     async function open(action,selection,override={}){
       const scope={...getScope(),...override},owner=scope.doctor,pipeline=scope.pipelines.find(p=>p.id===scope.pipeline);
+      const current=()=>scope.active?scope.active():getScope().doctor===owner;
       if(!pipeline){notice("Selecione um funil antes de continuar.");return;}
       const seq=++request;
       async function prepare(stage="",destination={}){
         modal("Conferir seleção",'<p class="connectionNote" role="status">Conferindo os leads selecionados…</p>');
         try{
           const preview=await api("lead-bulk-preview",{doctor_id:owner,pipeline_id:pipeline.id,action,selection,stage_id:stage,...destination},{doctor:owner});
-          if(seq!==request || !dialog().open || getScope().doctor!==owner)return;
+          if(seq!==request || !dialog().open || !current())return;
           const label={move:"Mover",transfer:"Transferir",delete:"Excluir",restore:"Restaurar"}[action];
           modal(`${label} ${preview.count} ${preview.count===1?"lead":"leads"}`,`<form id="crmBulkConfirm"><p class="connectionNote">${esc(preview.pipeline)}${preview.stage?` · ${esc(preview.stage)}`:""}</p>${action==="delete"?'<p>Os leads irão para a lixeira. Contatos, conversas e fichas externas serão preservados. Envios já em andamento não podem ser recolhidos.</p>':action==="restore"?'<p>Os leads voltarão à etapa anterior. Robôs e campanhas cancelados não serão retomados.</p>':""}<ul class="crmBulkSample">${preview.sample.map(l=>`<li>${esc(l.name)}<small>${esc(l.title)}</small></li>`).join("")}${preview.count>preview.sample.length?`<li>e mais ${preview.count-preview.sample.length} leads</li>`:""}</ul>${preview.automations.length?`<p class="inlineWarning">Esta etapa pode ativar: ${preview.automations.map(b=>esc(b.name)).join(", ")}. Mensagens automáticas seguem os limites do número.</p>`:""}<label class="check"><input type="checkbox" name="confirm" required>Confirmo ${action==="delete"?"a exclusão":action==="restore"?"a restauração":"a movimentação"} de ${preview.count} ${preview.count===1?"lead":"leads"}.</label><div class="formActions"><button type="button" data-bulk-cancel>Cancelar</button><button type="submit" class="primary ${action==="delete"?"crmDestructive":""}">${icon(action==="delete"?"trash-2":action==="restore"?"undo-2":"arrow-right")} ${label}</button></div></form>`);
           document.querySelector("[data-bulk-cancel]").onclick=()=>{request++;dialog().close();};
@@ -64,11 +65,11 @@
             form.querySelector(".crmBulkSample").after(warning);
           }
           document.getElementById("crmBulkConfirm").onsubmit=async e=>{
-            e.preventDefault();if(seq!==request || getScope().doctor!==owner)return;
+            e.preventDefault();if(seq!==request || !current())return;
             const form=e.currentTarget,submit=form.querySelector('[type="submit"]');if(submit.disabled)return;submit.disabled=true;
             try{
               const result=await api("lead-bulk-apply",{id:preview.id,doctor_id:owner,confirm:form.elements.confirm.checked},{doctor:owner});
-              if(seq!==request || getScope().doctor!==owner)return;
+              if(seq!==request || !current())return;
               chosen.clear();selecting=false;dialog().close();await onDone(result);notice(`${result.count} ${result.count===1?"lead":"leads"} ${action==="delete"?"enviados para a lixeira":action==="restore"?"restaurados":action==="transfer"?"transferidos":"movimentados"}.`);
             }catch(err){error(err.message);}finally{if(submit.isConnected)submit.disabled=false;}
           };
@@ -78,7 +79,7 @@
         modal("Transferir oportunidade",'<p class="connectionNote" role="status">Carregando destinos…</p>');
         try{
           const data=await api("lead-transfer-options",undefined,{doctor:owner});
-          if(seq!==request || !dialog().open || getScope().doctor!==owner)return;
+          if(seq!==request || !dialog().open || !current())return;
           modal("Transferir para outro doutor ou funil",`<form id="crmLeadTransferTarget"><p class="connectionNote">Origem · ${esc(pipeline.name)}</p><div class="formGrid"><label>Doutor de destino<select name="doctor" required><option value="">Selecionar doutor</option>${data.doctors.map(d=>`<option value="${esc(d.id)}" ${d.id===owner?"selected":""}>${esc(d.name)}</option>`).join("")}</select></label><label>Funil de destino<select name="pipeline" required></select></label></div><label>Etapa de destino<select name="stage" required></select></label><div class="formActions"><button type="submit" class="primary" disabled>${icon("arrow-right-left")} Conferir transferência</button></div></form>`);
           const form=document.getElementById("crmLeadTransferTarget"),doc=form.elements.doctor,target=form.elements.pipeline,stage=form.elements.stage,submit=form.querySelector('[type="submit"]');
           const stages=()=>{

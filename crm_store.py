@@ -849,6 +849,8 @@ class CrmStore:
             items = [dict(r) for r in rows if contact_visible(c, r["contact_id"], doctor)]
             catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
             for item in items:
+                item["doctor_id"] = doctor
+                item["doctor_name"] = doc["name"]
                 opportunities = [dict(r) for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=? AND contact_id=? AND deleted_at=0 ORDER BY updated_at DESC,id", (doctor, item["contact_id"]))
                                  if pipeline_visible(catalog[r["pipeline_id"]])]
                 item["businesses"] = list(dict.fromkeys("course" if catalog[r["pipeline_id"]]["course_key"] else "clinic" for r in opportunities))

@@ -1,0 +1,29 @@
+.crmDesktop .crmHeaderDoctor.crmInboxDoctors{position:relative;flex:0 1 290px;min-width:160px;font-size:13px;z-index:70}
+.crmInboxDoctors details{position:relative;min-width:0}
+.crmInboxDoctors summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;min-height:36px;padding:6px 8px;border:1px solid transparent;border-radius:6px;color:var(--ui-ink);font-weight:600}
+.crmInboxDoctors summary::-webkit-details-marker{display:none}
+.crmInboxDoctors summary:hover,.crmInboxDoctors details[open]>summary{background:#eef3f0;border-color:#dbe5df}
+.crmInboxDoctors summary:focus-visible{outline:2px solid #357d62;outline-offset:2px}
+.crmInboxDoctors summary>span{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.crmInboxDoctors summary svg{width:16px;height:16px;flex:none;color:#537365}
+.crmInboxDoctors summary svg:last-child{width:13px}
+.inboxDoctorMenu{position:absolute;top:calc(100% + 8px);left:0;width:340px;max-width:calc(100vw - 96px);padding:14px;background:#fcfdfd;border:1px solid #dce5df;border-radius:8px;box-shadow:0 12px 36px #163b3124;font-size:12px;color:var(--ui-ink)}
+.inboxDoctorMenu header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.inboxDoctorMenu header strong{font-size:13px}.inboxDoctorMenu header span{font-size:11px;color:#718078;white-space:nowrap}
+.inboxDoctorMenu input[type=search]{width:100%;min-height:36px!important;font-size:13px;padding:8px 10px}
+.inboxDoctorChoices{max-height:min(320px,45dvh);overflow:auto;margin:8px -5px;overscroll-behavior:contain}
+.crmDesktop .inboxDoctorChoices label{display:flex;flex-direction:row;align-items:center;gap:10px;padding:10px 8px;margin:0;border-radius:4px;font-size:13px;line-height:1.4;cursor:pointer;color:#344a3e}
+.inboxDoctorChoices label:hover{background:#eff4f1}.inboxDoctorChoices label:has(input:checked){color:#1e624b}
+.inboxDoctorChoices input[type=checkbox]{width:16px;height:16px;min-height:0!important;flex:none;margin:0;accent-color:#276a51}
+.inboxDoctorChoices span{overflow-wrap:anywhere}
+.inboxDoctorMenu footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid #e2e9e4}
+.inboxDoctorMenu footer button{font-size:12px;min-height:32px;padding:6px 12px}
+.inboxDoctorMenu footer [data-all]{background:transparent;color:#376851;border:0}
+.crmDesktop .conversationOrigin{display:flex;align-items:center;gap:5px;min-width:0;line-height:1.4;font-size:10px}
+.conversationConnection{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:2px 5px;border:1px solid #d8e5dd;border-radius:4px;background:#f0f5f2;color:#38634e;font-weight:600}
+.conversationConnection svg{width:11px;height:11px;flex:none}
+.conversationConnection>span,.conversationDoctor{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.conversationDoctor{flex:1;color:#78857e;font-size:10px}
+.conversationOrigin:has(.conversationDoctor) .conversationConnection{max-width:55%}
+.chatDoctor{font-size:11px;color:#6e7d75;display:block;margin-top:3px}
+@media(max-width:760px){.crmDesktop .crmHeaderDoctor.crmInboxDoctors{order:2;flex:1 1 100%;max-width:none}.crmInboxDoctors summary{min-height:36px}.inboxDoctorMenu{width:100%;max-width:none}.inboxDoctorMenu input[type=search]{font-size:16px}.crmDesktop .conversationOrigin{font-size:10px}}

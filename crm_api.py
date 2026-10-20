@@ -114,7 +114,7 @@ def _dispatch(handler, parsed, store, query, user, action):
                 from crm_kommo_import import status
                 return handler.auth_json({"ok": True, **status(store, doctor, query.get("pipeline", [""])[0],
                     query.get("id", [""])[0], query.get("page", [1])[0])})
-            filters = json.loads(query["filters"][0]) if action in {"", "inbox", "kanban-page"} and "filters" in query else {}
+            filters = json.loads(query["filters"][0]) if action in {"", "inbox", "inbox-multi", "kanban-page"} and "filters" in query else {}
             if not action:
                 return handler.auth_json({"ok": True, **store.listing(doctor, filters, kanban_pipeline=query.get("pipeline", [""])[0] if query.get("view") == ["kanban"] else None), "gateway_configured": EvolutionGateway().configured,
                                           "sends_enabled": sends_enabled() and store.worker_online(),
@@ -166,6 +166,11 @@ def _dispatch(handler, parsed, store, query, user, action):
                 return handler.auth_json({"ok": True, **store.inbox(doctor, handler.current_user["id"],
                     query.get("channel", [""])[0], query.get("kind", ["all"])[0], query.get("search", [""])[0], filters,
                     business=query.get("business", ["all"])[0])})
+            if action == "inbox-multi":
+                from crm_inbox import combined
+                return handler.auth_json({"ok": True, **combined(store, json.loads(query.get("doctors", ["null"])[0]),
+                    user["id"], query.get("channel", [""])[0], query.get("kind", ["all"])[0],
+                    query.get("search", [""])[0], filters, business=query.get("business", ["all"])[0])})
             if action == "contact-opportunities":
                 return handler.auth_json({"ok": True, **store.contact_opportunities(doctor, query.get("contact", [""])[0])})
             if action == "conversation":

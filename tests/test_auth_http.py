@@ -570,6 +570,44 @@ class HttpAuthTests(unittest.TestCase):
         status, _, raw = self.request("POST", f"/api/crm/lead?{base}", payload, cookie, {"X-DOC4DOCS-Request": "1"})
         self.assertEqual(status, 200, raw)
 
+    def test_multi_doctor_inbox_respects_live_staff_permissions(self):
+        from crm_api import store_for
+        from urllib.parse import urlencode
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Permitido", "Restrito"], "Outro doutor": ["Clinica"]})
+        first = crm.listing()["doctor_id"]
+        second = next(d["id"] for d in crm.listing()["doctors"] if d["id"] != first)
+        allowed, hidden = crm.listing(first)["pipelines"]
+        channels = []
+        for index, doc in enumerate((first, second)):
+            channel = crm.channel({"doctor_id": doc, "name": "Trafego" if index else "Organico", "phone": f"550000000000{index+1}"})
+            channels.append(channel)
+            with crm.db() as c:
+                instance = crm.row(c, "channels", channel)["instance"]
+            crm.receive(instance, {"key": {"remoteJid": "5500000000003@s.whatsapp.net", "id": f"received-{index}"},
+                "message": {"conversation": "Mensagem sintetica"}}, "messages.upsert")
+        with crm.db() as c:
+            c.execute("UPDATE leads SET pipeline_id=?,stage_id=? WHERE doctor_id=?", (allowed["id"], allowed["stages"][0]["id"], first))
+        path = "/api/crm/inbox-multi?" + urlencode({"clinic": "vielle", "doctor": first, "doctors": json.dumps([first, second])})
+        cookie, _ = self.login()
+        self.assertEqual(self.request("GET", path, cookie=cookie)[0], 403)
+        self.limit_permissions(["crm.view"])
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope={first: [allowed["id"]], second: None})
+        status, _, raw = self.request("GET", path, cookie=cookie)
+        self.assertEqual(status, 200, raw)
+        result = json.loads(raw)
+        self.assertEqual(result["counts"]["all"], 2)
+        self.assertEqual({r["doctor_id"] for r in result["conversations"]}, {first, second})
+        self.assertFalse(any(p["id"] == hidden["id"] for p in result["pipelines"]))
+        query = urlencode({"clinic": "vielle", "doctor": second, "channel": channels[1], "contact": result["conversations"][0]["contact_id"]})
+        self.assertEqual(self.request("GET", "/api/crm/conversation?" + query, cookie=cookie)[0], 200)
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope={first: [allowed["id"]]})
+        self.assertEqual(self.request("GET", path, cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/api/crm/conversation?" + query, cookie=cookie)[0], 403)
+        for selection in ([], None, "all", [True]):
+            bad = "/api/crm/inbox-multi?" + urlencode({"clinic": "vielle", "doctor": first, "doctors": json.dumps(selection)})
+            self.assertEqual(self.request("GET", bad, cookie=cookie)[0], 400)
+
     def test_bulk_leads_require_permission_origin_scope_and_explicit_confirmation(self):
         from crm_api import store_for
         crm = store_for(self.store)
