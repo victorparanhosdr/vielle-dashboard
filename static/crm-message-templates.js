@@ -29,7 +29,7 @@
     function show(s,mode="picker",token=null){
       if(!alive(s) || s.locked)return;
       s.mode=mode;s.token=token;s.archiveView=false;s.index=0;s.query=token?.query || "";s.input.value=s.query;s.menu.hidden=false;s.toggle.setAttribute("aria-expanded","true");
-      draw(s);if(mode==="picker")s.input.focus();load(s);
+      draw(s);if(mode==="picker")s.input.focus({preventScroll:true});load(s);
     }
     function insert(s,item){
       if(!alive(s) || s.locked || !item)return;
@@ -39,7 +39,7 @@
       const value=s.textarea.value.slice(0,start)+body+s.textarea.value.slice(end);
       if(value.length>s.textarea.maxLength){status(s,`A mensagem completa pode ter at\u00e9 ${s.textarea.maxLength} caracteres.`);return;}
       s.inserting=true;s.textarea.setRangeText(body,start,end,"end");s.textarea.dispatchEvent(new Event("input",{bubbles:true}));s.inserting=false;
-      hide(s);s.textarea.focus();onError("");
+      hide(s);s.textarea.focus({preventScroll:true});onError("");
     }
     async function restore(s,item){
       if(s.busy)return;s.busy=true;status(s,"Restaurando modelo\u2026");
@@ -48,7 +48,7 @@
     }
     function navigate(s,event){
       if(s.menu.hidden)return;
-      if(event.key==="Escape"){event.preventDefault();hide(s);s.textarea.focus();return;}
+      if(event.key==="Escape"){event.preventDefault();hide(s);s.textarea.focus({preventScroll:true});return;}
       if(["ArrowDown","ArrowUp"].includes(event.key)){
         event.preventDefault();s.index=(s.index+(event.key==="ArrowDown"?1:-1)+s.matches.length)%Math.max(1,s.matches.length);draw(s);
         s.rows.querySelector(".active")?.scrollIntoView({block:"nearest"});
@@ -64,7 +64,7 @@
       const close=()=>{if(busy)return;dialog.close();};
       dialog.querySelector("[data-editor-close]").onclick=close;
       dialog.oncancel=e=>{if(busy)e.preventDefault();};
-      dialog.onclose=()=>{dialog.remove();if(s.dialog===dialog)s.dialog=null;if(alive(s))s.toggle.focus();};
+      dialog.onclose=()=>{dialog.remove();if(s.dialog===dialog)s.dialog=null;if(alive(s))s.toggle.focus({preventScroll:true});};
       const body=form.elements.namedItem("body");body.oninput=()=>dialog.querySelector("[data-template-length]").textContent=`${body.value.length}/3000`;
       dialog.querySelectorAll("[data-variable]").forEach(b=>b.onclick=()=>{body.setRangeText(`{${b.dataset.variable}}`,body.selectionStart,body.selectionEnd,"end");body.oninput();body.focus();});
       form.onsubmit=async event=>{

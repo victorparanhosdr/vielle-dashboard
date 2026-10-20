@@ -2,7 +2,7 @@
 "use strict";
 window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
-  let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="";
+  let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
@@ -25,6 +25,11 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const messageText=m=>m.sender_name && m.body===`*${m.sender_name}*`?"":m.sender_name && m.body.startsWith(`*${m.sender_name}*\n\n`)?m.body.slice(m.sender_name.length+4):m.body;
   const messagePreview=m=>messageText(m) || ({audio:"Áudio",document:"Arquivo",image:"Imagem",video:"Vídeo"}[m.media_kind] || "");
   function chatError(message="") {if($("chatError")){$("chatError").textContent=message;$("chatError").hidden=!message;}}
+  function focus() {
+    cancelAnimationFrame(focusFrame);
+    const workspace=$("inboxWorkspace");if(!workspace)return;
+    focusFrame=requestAnimationFrame(()=>{focusFrame=0;if(root && workspace===$("inboxWorkspace"))workspace.scrollIntoView({block:"start",behavior:"instant"});});
+  }
   function mount(target) {
     const changed=owner!==state.doctor;
     if(changed){media.destroy();chatSearch.destroy();templates.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
@@ -46,7 +51,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.id==="voiceCall"){const l=leadFor();if(l)voice.open(l);}
       if(b.dataset.loadMedia)loadMedia(b);
     };
-    refreshList();if(selected)select(selected);icons();
+    refreshList();if(selected)select(selected);icons();focus();
   }
   async function refreshList() {
     if(!root)return;
@@ -102,7 +107,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const signature=key(selected),doc=owner;
       api("lead",undefined,{doctor:doc,id:selected.lead_id}).then(data=>{if(root && selected && signature===key(selected)){selectedRecord=data.lead;drawInfo();}}).catch(e=>{if(root && selected && signature===key(selected))chatError(e.message);});
     }
-    if(matchMedia("(max-width:760px)").matches)$("chatPane").scrollIntoView({block:"start",behavior:matchMedia("(prefers-reduced-motion:reduce)").matches?"instant":"smooth"});
+    if(matchMedia("(max-width:760px)").matches)focus();
   }
   function drawSenderOptions() {
     if(!$("replyChannel"))return;
@@ -234,7 +239,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
     finally{if(root && selected && signature===key(selected)){sending=false;syncSend();}}
   }
-  function unmount(){media.destroy();chatSearch.destroy();templates.destroy();root=null;listSeq++;threadSeq++;openSeq++;}
+  function unmount(){media.destroy();chatSearch.destroy();templates.destroy();cancelAnimationFrame(focusFrame);focusFrame=0;root=null;listSeq++;threadSeq++;openSeq++;}
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
-  return {mount,unmount,openLead};
+  return {mount,unmount,openLead,focus};
 };

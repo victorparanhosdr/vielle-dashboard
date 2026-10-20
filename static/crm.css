@@ -1,5 +1,6 @@
 .crmPage { --crm-silver:#667d8a;--crm-gold:#877342;--crm-bronze:#876957;font-variant-numeric:tabular-nums; }
 .crmContent { max-width:1800px; margin:auto; padding:28px 32px 48px; }
+.crmPage:has(#inboxWorkspace){padding-bottom:0}.crmPage:has(#inboxWorkspace) .crmContent{padding-bottom:max(12px,env(safe-area-inset-bottom))}.crmPage:has(#inboxWorkspace) .appAttendanceLauncher{display:none}
 .crmHeading,.commands,.crmFilters,.crmTabs,.crmTabs [role=tablist],.journey,.mission { display:flex;align-items:center;gap:12px; }
 .crmHeading { justify-content:space-between;flex-wrap:wrap;gap:18px;margin-bottom:24px; }
 .crmHeading h1 { margin:6px 0 0;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap; }
@@ -159,7 +160,7 @@
 .conversation .eventRow.in { background:#ecf1f5; }
 .qrImage { width:250px;height:250px;max-width:100%;object-fit:contain;display:block;margin:20px auto; }
 .crmPage .emptyState { text-align:center;color:var(--ui-muted);font-size:13px;padding:60px 20px; }
-.inboxWorkspace { display:grid;grid-template-columns:300px minmax(280px,1fr) 238px;min-height:620px;height:min(760px,80dvh);border-block:1px solid var(--ui-line);background:#fcfefd; }
+.inboxWorkspace { display:grid;grid-template-columns:300px minmax(280px,1fr) 238px;min-height:min(620px,calc(100dvh - 24px));height:calc(100dvh - 24px);border-block:1px solid var(--ui-line);background:#fcfefd; }
 .inboxWorkspace:not(.chatActive) { grid-template-columns:300px minmax(0,1fr); }
 .conversationList { min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--ui-line);background:#f8fbf9;overflow:hidden; }
 .inboxListHead { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:20px 14px 14px; }
@@ -263,7 +264,7 @@
   .stageRow button{grid-row:2}.stageRow button:nth-of-type(1){grid-column:2}.stageRow button:nth-of-type(2){grid-column:3}.stageRow button:nth-of-type(3){grid-column:4}
   .salesRadar{grid-template-columns:1fr 1fr;gap:18px}.teamLeaderboard{grid-column:1/-1}.record{flex-direction:column}.record .commands{justify-content:start}.recordMain{gap:12px}.recordMetrics{gap:10px;font-size:10px}.recordIcon{width:34px;height:38px}.record h3{font-size:13px}
   .crmPage .check{font-size:12px}.level span{font-size:11px}.journey .levelIcon{width:35px;height:42px}
-  .inboxWorkspace,.inboxWorkspace:not(.chatActive){grid-template-columns:minmax(0,1fr);height:76dvh;min-height:min(520px,76dvh)}.conversationList{border-right:0}.chatPane{display:none}.chatActive .conversationList{display:none}.chatActive .chatPane{display:flex}.chatHeader{padding:12px;gap:9px}.crmContent #chatBack{display:inline-flex;width:30px;min-height:36px;padding:4px}.chatHeader .contactAvatar{width:32px;height:32px;flex-basis:32px;font-size:10px}.chatIdentity h2{font-size:13px}.chatIdentity>span{font-size:9px;line-height:1.5;display:block}.chatHeader #toggleContact{width:32px;min-height:36px;padding:4px}
+  .inboxWorkspace,.inboxWorkspace:not(.chatActive){grid-template-columns:minmax(0,1fr)}.conversationList{border-right:0}.chatPane{display:none}.chatActive .conversationList{display:none}.chatActive .chatPane{display:flex}.chatHeader{padding:12px;gap:6px}.crmContent #chatBack{display:inline-flex;width:30px;min-height:36px;padding:4px}.chatHeader .contactAvatar{width:32px;height:32px;flex-basis:32px;font-size:10px}.crmPage .chatHeader .chatIdentity h2{font-size:13px}.chatIdentity>span{font-size:9px;line-height:1.5;display:block}.chatHeader #toggleContact{width:32px;min-height:36px;padding:4px}
   .contactPanel{top:72px;width:min(270px,100%)}.messageTimeline{padding:12px}.chatBubble{max-width:92%;padding:10px 12px}.chatBubble p{font-size:12px}.chatBubble small{font-size:8px;flex-wrap:wrap}.chatComposer{padding:10px 12px}.replyState{font-size:9px}.inboxSegments button{font-size:11px!important}.stageFeedback{bottom:16px;padding:14px;gap:10px}.stageFeedback strong{font-size:12px}.stageEmblem{width:36px;height:36px}.earnedXp{font-size:11px}
   .replyOptions{flex-wrap:wrap;gap:10px}.crmPage .replyOptions label{flex-basis:100%;max-width:none}.replySignature{flex-direction:row;align-items:center;padding-bottom:0;gap:8px}.replySignature strong{font-size:11px}.replyOptions select{font-size:10px}.crmPage .stageScene h2{font-size:23px}.sceneClient{font-size:14px;margin-bottom:26px}.stageFlight{grid-template-columns:minmax(0,1fr) 60px minmax(0,1fr);gap:8px}.stageFlight strong{font-size:12px}.flightFrom,.flightTo{padding:14px 8px;min-height:90px}.flightToken{width:30px;height:30px}.flightToken svg{width:16px;height:16px}.sceneEmblem{width:56px;height:56px}.sceneEmblem svg{width:28px;height:28px}
 }

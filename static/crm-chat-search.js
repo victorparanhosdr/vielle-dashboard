@@ -16,12 +16,12 @@ window.createCrmChatSearch = function ({api,esc,icon,icons,onResult,onClose}) {
   function close(restore=true) {
     if(!root || !shown)return;
     clearTimeout(timer);revision++;shown=false;root.hidden=true;query="";results=[];position=-1;total=0;before=0;busy=false;
-    $("[data-query]").value="";status();button.setAttribute("aria-expanded","false");button.focus();if(restore)onClose();
+    $("[data-query]").value="";status();button.setAttribute("aria-expanded","false");button.focus({preventScroll:true});if(restore)onClose();
   }
   function mount(target,toggle,nextScope) {
     destroy();root=target;button=toggle;scope={...nextScope};root.hidden=true;
     root.innerHTML=`<div class="chatSearchFields">${icon("search")}<input type="search" data-query maxlength="160" aria-label="Buscar nesta conversa" placeholder="Buscar nesta conversa" autocomplete="off"><select data-direction aria-label="Mensagens de"><option value="all">Todos</option><option value="in">Paciente</option><option value="out">Equipe</option></select></div><div class="chatSearchNavigation"><span data-search-count role="status" aria-live="polite"></span><button type="button" data-previous class="icon-button" title="Resultado anterior" aria-label="Resultado anterior" disabled>${icon("chevron-up")}</button><button type="button" data-next class="icon-button" title="Pr\u00f3ximo resultado" aria-label="Pr\u00f3ximo resultado" disabled>${icon("chevron-down")}</button><button type="button" data-close class="icon-button" title="Fechar busca" aria-label="Fechar busca">${icon("x")}</button></div>`;
-    button.onclick=()=>{if(shown){close();return;}shown=true;root.hidden=false;button.setAttribute("aria-expanded","true");$("[data-query]").focus();};
+    button.onclick=()=>{if(shown){close();return;}shown=true;root.hidden=false;button.setAttribute("aria-expanded","true");$("[data-query]").focus({preventScroll:true});};
     $("[data-query]").oninput=()=>{clearTimeout(timer);revision++;busy=true;status("Buscando\u2026");timer=setTimeout(()=>search(),300);};
     $("[data-query]").onkeydown=event=>{
       if(event.key==="Escape"){event.preventDefault();close();}
