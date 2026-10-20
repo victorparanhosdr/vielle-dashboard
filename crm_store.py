@@ -1313,7 +1313,10 @@ class CrmStore:
                     if incoming[0] and incoming[1] <= stamp:
                         self.resolve_conversation(c, ch["id"], contact["id"], incoming[0], "replied", "external")
             existing = c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchone()
-            if not existing and first:
+            transferred = c.execute("""SELECT 1 FROM lead_transfers t JOIN leads l ON l.id=t.lead_id
+                WHERE t.from_doctor_id=? AND t.contact_id=? AND l.doctor_id<>? LIMIT 1""",
+                (ch["doctor_id"], contact["id"], ch["doctor_id"])).fetchone()
+            if not existing and not transferred and first:
                 lead_id = uuid.uuid4().hex
                 c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at,source_name) VALUES(?,?,?,?,?,?,?,?,?)",
                           (lead_id, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now, name if first["course_key"] else ""))

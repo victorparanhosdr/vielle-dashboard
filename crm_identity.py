@@ -97,7 +97,7 @@ def merge(c, store, contacts, match):
                 snapshot[table] = [dict(r) for r in c.execute(f"SELECT * FROM {table} WHERE {column} IN (?,?)", (old, new))]
         lead_ids = [r["id"] for r in snapshot["leads"]]
         lead_slots = ",".join("?" for _ in lead_ids)
-        for table in ("events", "xp", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "kommo_import_refs"):
+        for table in ("events", "xp", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "kommo_import_refs", "lead_transfers"):
             if table in tables and lead_ids:
                 snapshot[table] = [dict(r) for r in c.execute(f"SELECT * FROM {table} WHERE lead_id IN ({lead_slots})", lead_ids)]
         c.execute("INSERT INTO contact_merges VALUES(?,?,?,?,?)", (old, new, patient, now, json.dumps(snapshot, ensure_ascii=False)))
@@ -117,7 +117,7 @@ def merge(c, store, contacts, match):
                         tuple(original[k] for k in ("stage_id", "title", "value_cents", "next_action", "created_at",
                               "consent_at", "consent_source", "email", "source_name", "deleted_at", "deleted_by")) + (keep["id"],))
                 c.execute("UPDATE leads SET deleted_at=?,deleted_by='Consolidacao de cadastro',revision=revision+1 WHERE id=?", (now, duplicate["id"]))
-                for table in ("events", "xp", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "voice_calls", "kommo_import_refs"):
+                for table in ("events", "xp", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "voice_calls", "kommo_import_refs", "lead_transfers"):
                     if table in tables:
                         c.execute(f"UPDATE {table} SET lead_id=? WHERE lead_id=?", (keep["id"], duplicate["id"]))
                 c.execute("UPDATE leads SET revision=revision+1 WHERE id=?", (keep["id"],))
@@ -129,7 +129,7 @@ def merge(c, store, contacts, match):
         for message in c.execute("SELECT id,campaign_id FROM messages WHERE contact_id=? AND campaign_id IS NOT NULL", (old,)).fetchall():
             if c.execute("SELECT 1 FROM messages WHERE contact_id=? AND campaign_id=?", (new, message["campaign_id"])).fetchone():
                 c.execute("UPDATE messages SET campaign_id=NULL WHERE id=?", (message["id"],))
-        for table in ("messages", "message_media", "voice_calls"):
+        for table in ("messages", "message_media", "voice_calls", "lead_transfers"):
             if table in tables:
                 c.execute(f"UPDATE {table} SET contact_id=? WHERE contact_id=?", (new, old))
         for read in c.execute("SELECT * FROM conversation_reads WHERE contact_id=?", (old,)).fetchall():

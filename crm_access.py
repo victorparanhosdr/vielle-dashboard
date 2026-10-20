@@ -70,8 +70,15 @@ def contact_visible(c, contact, doctor=""):
         return True
     doctor = doctor or CURRENT_DOCTOR.get()
     rows = [dict(r) for r in c.execute("SELECT p.* FROM leads l JOIN pipelines p ON p.id=l.pipeline_id WHERE l.contact_id=? AND l.deleted_at=0 AND (?='' OR l.doctor_id=?)", (contact, doctor, doctor))]
+    if any(pipeline_visible(row) for row in rows):
+        return True
+    # A permitted source funnel retains its own conversation history after a handoff.
+    origins = c.execute("""SELECT p.* FROM lead_transfers t JOIN pipelines p ON p.id=t.from_pipeline_id
+        WHERE t.contact_id=? AND t.from_doctor_id=?""", (contact, doctor)).fetchall()
+    if any(pipeline_visible(dict(row)) for row in origins):
+        return True
     if rows:
-        return any(pipeline_visible(row) for row in rows)
+        return False
     if scope is None:
         return True
     return bool(doctor and all_pipelines(doctor) and c.execute("SELECT 1 FROM messages m JOIN channels ch ON ch.id=m.channel_id WHERE m.contact_id=? AND ch.doctor_id=? LIMIT 1", (contact, doctor)).fetchone())

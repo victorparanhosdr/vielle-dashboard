@@ -682,6 +682,46 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(len(self.store.list_audit(action="crm_channel-remove")["events"]), 1)
         self.assertEqual(len(self.store.list_audit(action="crm_channel-restore")["events"]), 1)
 
+    def test_staff_can_transfer_leads_only_between_granted_funnels(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Origem"], "Outra doutora": ["Destino"]})
+        source = crm.listing()["doctor_id"]
+        target = next(d["id"] for d in crm.listing()["doctors"] if d["id"] != source)
+        origin = crm.listing(source)["pipelines"][0]
+        destination = crm.listing(target)["pipelines"][0]
+        lead = crm.lead({"doctor_id": source, "pipeline_id": origin["id"], "stage_id": origin["stages"][0]["id"],
+            "phone": "5500000000001", "name": "Contato sintetico", "title": "Encaminhar"}, "Equipe")
+        self.limit_permissions(["crm.view"])
+        staff, _ = self.login()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        status, _, raw = self.request("GET", f"/api/crm/lead-transfer-options?clinic=vielle&doctor={source}", cookie=staff)
+        self.assertEqual(status, 200, raw)
+        self.assertIn(destination["id"], [p["id"] for p in json.loads(raw)["pipelines"]])
+        payload = {"doctor_id": source, "pipeline_id": origin["id"], "action": "transfer", "selection": {"lead_ids": [lead]},
+                   "target_doctor_id": target, "target_pipeline_id": destination["id"], "stage_id": destination["stages"][1]["id"]}
+        path = f"/api/crm/lead-bulk-preview?clinic=vielle&doctor={source}"
+        self.assertEqual(self.request("POST", path, payload, staff)[0], 403)
+        source_scope = {source: [origin["id"]]}
+        full_scope = {**source_scope, target: [destination["id"]]}
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope=source_scope)
+        self.assertEqual(self.request("POST", path, payload, staff, headers)[0], 403)
+        status, _, raw = self.request("GET", f"/api/crm/lead-transfer-options?clinic=vielle&doctor={source}", cookie=staff)
+        self.assertNotIn(destination["id"], [p["id"] for p in json.loads(raw)["pipelines"]])
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope=full_scope)
+        status, _, raw = self.request("POST", path, payload, staff, headers)
+        self.assertEqual(status, 200, raw)
+        batch = json.loads(raw)["id"]
+        commit = f"/api/crm/lead-bulk-apply?clinic=vielle&doctor={source}"
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope=source_scope)
+        self.assertEqual(self.request("POST", commit, {"id": batch, "doctor_id": source, "confirm": True}, staff, headers)[0], 403)
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope=full_scope)
+        status, _, raw = self.request("POST", commit, {"id": batch, "doctor_id": source, "confirm": True}, staff, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["doctor_id"], target)
+        self.assertEqual(crm.detail(lead, target)["lead"]["pipeline_id"], destination["id"])
+        self.assertEqual(len(self.store.list_audit(action="crm_lead-bulk-apply")["events"]), 1)
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

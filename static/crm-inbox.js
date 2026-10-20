@@ -1,6 +1,6 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
@@ -146,7 +146,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(l?.course_key){drawCourseInfo(l,p,panel);return;}
     panel.hidden=false;
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
-    if(l){panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
+    if(l){transferControl(panel,l);panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
     if(l){const calls=document.createElement("button");calls.dataset.commercial="calls";calls.innerHTML=`${icon("phone-call")} Ligações e gravações`;panel.append(calls);}
     if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
     if(l){panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",customerValuePanel(l.customer_value));$("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${customerValueBadge(l.customer_value)}</span>`);const booking=document.createElement("div");booking.className="contactAppointment";booking.innerHTML=appointmentBadge(l.appointment);panel.querySelector("#openProfile").before(booking);const shortcuts=document.createElement("div");shortcuts.className="commercialShortcuts";shortcuts.innerHTML=`<button data-commercial="sales">${icon("shopping-bag")} Vendas fechadas</button><button data-commercial="quotes">${icon("file-clock")} Orçamentos pendentes</button><button data-commercial="appointments">${icon("calendar-days")} Agendamentos</button>`;panel.append(shortcuts);}
@@ -181,9 +181,15 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
     };
   }
+  function transferControl(panel,lead){
+    if(!transferLead)return;
+    const button=document.createElement("button");button.type="button";button.innerHTML=`${icon("arrow-right-left")} Transferir lead`;
+    button.onclick=()=>transferLead(lead);panel.querySelector("#openProfile").before(button);
+  }
   function drawCourseInfo(l,p,panel){
     panel.hidden=false;
     panel.innerHTML=`<div class="contactSummary"><span class="eyebrow">FICHA DO CURSO</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p>${l.email?`<p class="courseEmail">${esc(l.email)}</p>`:""}${courses.badge(l)}${courses.panel(l)}</div><div class="patientRefreshControls"><button id="refreshCourseContact">${icon("refresh-cw")} Atualizar Kiwify</button><p id="courseRefreshState" role="status" hidden></p></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name || "RegenCode")}</span><h3>${esc(l.title)}</h3><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${esc(s.id)}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha do curso</button><button data-commercial="orders">${icon("receipt-text")} Pedidos Kiwify</button><button data-commercial="calls">${icon("phone-call")} Ligações e gravações</button>`;
+    transferControl(panel,l);
     $("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${courses.badge(l)}</span>`);
     $("quickStage").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");b.disabled=true;try{await moveLead(l,new FormData(e.currentTarget).get("stage_id"));}catch(err){chatError(err.message);}finally{if(b.isConnected)b.disabled=false;}};
     $("refreshCourseContact").onclick=()=>{const doc=owner;courses.refresh(l,$("refreshCourseContact"),$("courseRefreshState"),updated=>{selectedRecord=updated;drawInfo();refreshList();},()=>Boolean(root && owner===doc && leadFor()?.id===l.id));};

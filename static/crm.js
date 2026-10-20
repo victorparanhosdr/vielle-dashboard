@@ -461,6 +461,7 @@
       const identity=document.createElement("p");identity.className="connectionNote";identity.textContent=patientLabel(l.experts_status)+(l.experts_uuid?` · ID ${l.experts_uuid}`:"");$("leadEdit").before(identity);
       const runBot=document.createElement("button");runBot.type="button";runBot.innerHTML=`${icon("workflow")} Iniciar robô`;$("leadEdit").after(runBot);runBot.onclick=()=>botsCenter.startForLead(l).catch(e=>error(e.message));
       const removeLead=document.createElement("button");removeLead.type="button";removeLead.className="icon-button";removeLead.title="Excluir lead";removeLead.setAttribute("aria-label","Excluir lead");removeLead.innerHTML=icon("trash-2");runBot.after(removeLead);removeLead.onclick=()=>bulk.open("delete",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id});
+      const transferLead=document.createElement("button");transferLead.type="button";transferLead.innerHTML=`${icon("arrow-right-left")} Transferir lead`;removeLead.after(transferLead);transferLead.onclick=()=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id});
       const origin=document.createElement("div");origin.innerHTML=window.CrmAttribution.lead(data.attribution,esc);$("leadEdit").before(origin);
       if(isCourse)identity.textContent=courses.label(l);
       const refresh=document.createElement("div");refresh.className="patientRefreshControls";
@@ -538,10 +539,10 @@
   const kanban=window.createCrmKanban({api,esc,icon,icons,leadCard,onRefresh:load,onLeads:rows=>{
     const known=new Set(state.data.leads.map(l=>l.id));state.data.leads.push(...rows.filter(l=>!known.has(l.id)));
   }});
-  const bulk=window.createCrmBulk({api,esc,icon,icons,modal,error,notice,getScope:()=>({doctor:state.doctor,pipeline:state.pipeline,pipelines:state.data?.pipelines || [],filters:{...state.filters,search:state.search,sort:state.sort}}),onDone:async()=>{listPicker?.destroy();listPicker=null;listSeed=null;listScope="";await load();}});
+  const bulk=window.createCrmBulk({api,esc,icon,icons,modal,error,notice,getScope:()=>({doctor:state.doctor,pipeline:state.pipeline,pipelines:state.data?.pipelines || [],filters:{...state.filters,search:state.search,sort:state.sort}}),onDone:async result=>{listPicker?.destroy();listPicker=null;listSeed=null;listScope="";if(result?.action==="transfer"){inbox.unmount();state.mode="board";state.doctor=result.doctor_id;state.pipeline=result.pipeline_id;state.filters={};state.search="";$("search").value="";fillFilterForm();}await load();}});
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,transferLead:l=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});

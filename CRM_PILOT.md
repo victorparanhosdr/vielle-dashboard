@@ -36,6 +36,39 @@ Evolution v2 service. Outbound sending is disabled by default.
 - The pilot listing is limited to 1,000 opportunities per doctor and 100 recent
   campaigns. Scale to paginated queries before expanding the pilot.
 
+## Lead Transfers Between Professionals and Funnels
+
+The lead profile and inbox commercial record have a Transfer lead command. The
+Kanban and list selection toolbars also support transferring multiple selected
+opportunities. The destination picker lists only permitted doctors, funnels and
+their stages, including institute permissions. Both source and destination access
+are checked again when the frozen, actor-bound confirmation is committed.
+
+Transfer changes the existing opportunity's owner/funnel/stage in place. The lead
+and contact IDs, notes, activities, value, follow-up date, attribution, opt-out and
+source references remain intact; no contact or opportunity copy is created. A
+contact already present in the destination (including its trash) blocks the whole
+batch rather than silently merging or overwriting a different opportunity. Stale
+lead or source/destination funnel revisions also block the whole transaction.
+
+Old bot runs/tasks and pending events for the moved opportunities are cancelled
+or consumed. Queued campaign recipients selected through those opportunities are
+skipped; legacy campaigns without an audience snapshot skip the related source
+contact. In-flight/unconfirmed automatic sends block transfer. Other opportunities,
+bots and campaign recipients remain unchanged. Administrative transfer grants no
+XP and emits no destination bot trigger, even when selecting a won stage.
+
+WhatsApp connections, conversations and media remain with the original number and
+doctor, under their existing access controls; transferring a lead does not grant
+access to another doctor's inbox or alter a phone connection. Later messages to
+the original number are retained there without automatically recreating the moved
+opportunity in the former doctor's funnel. An explicit new opportunity there is
+still possible. Clinical and course reports use the destination context without
+writing to Experts/Kiwify or moving external financial records. `lead_transfers`
+retains an original opportunity snapshot, route, actor, time and batch reference;
+the standard authentication audit also records preview/apply. Deployment itself
+does not move any live opportunities.
+
 ## WhatsApp Connection Transfers
 
 In Numbers, the Master can transfer an existing channel to another professional

@@ -1,0 +1,16 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
+const read=file=>fs.readFileSync(path.join(__dirname,'../static',file),'utf8');
+for(const file of ['crm.js','crm-bulk.js','crm-inbox.js','crm-audience.js'])new vm.Script(read(file));
+const bulk=read('crm-bulk.js');
+assert.match(bulk,/lead-transfer-options/);
+assert.match(bulk,/target_doctor_id:doc.value,target_pipeline_id:target.value/);
+assert.match(bulk,/p.doctor_id===doc.value && p.id!==pipeline.id/);
+assert.match(bulk,/seq!==request \|\| !dialog\(\).open \|\| getScope\(\).doctor!==owner/);
+assert.match(bulk,/A conexão WhatsApp e suas conversas continuam na origem/);
+assert.match(bulk,/robôs do destino não serão iniciados/);
+assert.match(bulk,/name="confirm" required/);
+assert.match(read('crm.js'),/Transferir lead/);
+assert.match(read('crm-inbox.js'),/Transferir lead/);
+assert.match(read('crm-audience.js'),/onBulk\?\.\("transfer",payload\(\)\)/);
+assert.match(read('crm.js'),/state.doctor=result.doctor_id;state.pipeline=result.pipeline_id/);
+console.log('Lead transfers: doctor/funnel/stage, frozen confirmation, stale responses, source chat boundary and destination navigation OK');

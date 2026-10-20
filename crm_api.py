@@ -86,6 +86,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "lead-transfer-options":
+                from crm_bulk import destinations
+                return handler.auth_json({"ok": True, **destinations(store, doctor)})
             if action == "channel-remove":
                 from crm_channels import removal_options
                 return handler.auth_json({"ok": True, **removal_options(store, query.get("id", [""])[0], doctor)})

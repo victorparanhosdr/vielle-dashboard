@@ -15,7 +15,7 @@
         if(wrap){wrap.classList.toggle("selected",chosen.has(id));wrap.querySelector("input").checked=chosen.has(id);wrap.querySelector("label").hidden=!selecting;}
         card.draggable=!selecting;
       });
-      toolbar.innerHTML=selecting?`<strong role="status">${chosen.size} selecionados</strong>${button("loaded","Selecionar carregados","list-checks")}${button("move","Mover etapa","arrow-right",!chosen.size)}${button("delete","Excluir","trash-2",!chosen.size)}<button type="button" data-bulk="clear" class="icon-button" aria-label="Encerrar seleção" title="Encerrar seleção">${icon("x")}</button>`:button("select","Selecionar leads","list-checks");
+      toolbar.innerHTML=selecting?`<strong role="status">${chosen.size} selecionados</strong>${button("loaded","Selecionar carregados","list-checks")}${button("move","Mover etapa","arrow-right",!chosen.size)}${button("transfer","Transferir","arrow-right-left",!chosen.size)}${button("delete","Excluir","trash-2",!chosen.size)}<button type="button" data-bulk="clear" class="icon-button" aria-label="Encerrar seleção" title="Encerrar seleção">${icon("x")}</button>`:button("select","Selecionar leads","list-checks");
       icons();
     }
     function decorate(){
@@ -39,7 +39,7 @@
         if(command==="select")selecting=true;
         if(command==="clear"){selecting=false;chosen.clear();}
         if(command==="loaded")board.querySelectorAll("[data-lead]").forEach(card=>chosen.add(card.dataset.lead));
-        if(command==="move" || command==="delete")return open(command,{lead_ids:[...chosen]});paint();
+        if(["move","transfer","delete"].includes(command))return open(command,{lead_ids:[...chosen]});paint();
       };
       observer=new MutationObserver(decorate);target.querySelectorAll(".columnCards").forEach(lane=>observer.observe(lane,{childList:true}));decorate();
     }
@@ -47,24 +47,54 @@
       const scope={...getScope(),...override},owner=scope.doctor,pipeline=scope.pipelines.find(p=>p.id===scope.pipeline);
       if(!pipeline){notice("Selecione um funil antes de continuar.");return;}
       const seq=++request;
-      async function prepare(stage=""){
+      async function prepare(stage="",destination={}){
         modal("Conferir seleção",'<p class="connectionNote" role="status">Conferindo os leads selecionados…</p>');
         try{
-          const preview=await api("lead-bulk-preview",{doctor_id:owner,pipeline_id:pipeline.id,action,selection,stage_id:stage},{doctor:owner});
+          const preview=await api("lead-bulk-preview",{doctor_id:owner,pipeline_id:pipeline.id,action,selection,stage_id:stage,...destination},{doctor:owner});
           if(seq!==request || !dialog().open || getScope().doctor!==owner)return;
-          const label={move:"Mover",delete:"Excluir",restore:"Restaurar"}[action];
+          const label={move:"Mover",transfer:"Transferir",delete:"Excluir",restore:"Restaurar"}[action];
           modal(`${label} ${preview.count} ${preview.count===1?"lead":"leads"}`,`<form id="crmBulkConfirm"><p class="connectionNote">${esc(preview.pipeline)}${preview.stage?` · ${esc(preview.stage)}`:""}</p>${action==="delete"?'<p>Os leads irão para a lixeira. Contatos, conversas e fichas externas serão preservados. Envios já em andamento não podem ser recolhidos.</p>':action==="restore"?'<p>Os leads voltarão à etapa anterior. Robôs e campanhas cancelados não serão retomados.</p>':""}<ul class="crmBulkSample">${preview.sample.map(l=>`<li>${esc(l.name)}<small>${esc(l.title)}</small></li>`).join("")}${preview.count>preview.sample.length?`<li>e mais ${preview.count-preview.sample.length} leads</li>`:""}</ul>${preview.automations.length?`<p class="inlineWarning">Esta etapa pode ativar: ${preview.automations.map(b=>esc(b.name)).join(", ")}. Mensagens automáticas seguem os limites do número.</p>`:""}<label class="check"><input type="checkbox" name="confirm" required>Confirmo ${action==="delete"?"a exclusão":action==="restore"?"a restauração":"a movimentação"} de ${preview.count} ${preview.count===1?"lead":"leads"}.</label><div class="formActions"><button type="button" data-bulk-cancel>Cancelar</button><button type="submit" class="primary ${action==="delete"?"crmDestructive":""}">${icon(action==="delete"?"trash-2":action==="restore"?"undo-2":"arrow-right")} ${label}</button></div></form>`);
           document.querySelector("[data-bulk-cancel]").onclick=()=>{request++;dialog().close();};
+          if(action==="transfer"){
+            const form=document.getElementById("crmBulkConfirm"),route=document.createElement("div");route.className="leadTransferSummary";
+            form.querySelector(".connectionNote").textContent=`Origem · ${preview.pipeline}`;
+            route.innerHTML=`<span>Destino</span><strong>${esc(preview.target_doctor)}</strong><p>${esc(preview.target_pipeline)} · ${esc(preview.stage)}</p>`;form.querySelector(".connectionNote").after(route);
+            const warning=document.createElement("p");warning.className="inlineWarning";
+            warning.textContent="Notas, atividades e rastreabilidade acompanham a oportunidade, sem duplicar o contato. A conexão WhatsApp e suas conversas continuam na origem. Automações antigas e seus envios pendentes serão interrompidos; robôs do destino não serão iniciados.";
+            form.querySelector(".crmBulkSample").after(warning);
+          }
           document.getElementById("crmBulkConfirm").onsubmit=async e=>{
             e.preventDefault();if(seq!==request || getScope().doctor!==owner)return;
             const form=e.currentTarget,submit=form.querySelector('[type="submit"]');if(submit.disabled)return;submit.disabled=true;
             try{
               const result=await api("lead-bulk-apply",{id:preview.id,doctor_id:owner,confirm:form.elements.confirm.checked},{doctor:owner});
               if(seq!==request || getScope().doctor!==owner)return;
-              chosen.clear();selecting=false;dialog().close();await onDone();notice(`${result.count} ${result.count===1?"lead":"leads"} ${action==="delete"?"enviados para a lixeira":action==="restore"?"restaurados":"movimentados"}.`);
+              chosen.clear();selecting=false;dialog().close();await onDone(result);notice(`${result.count} ${result.count===1?"lead":"leads"} ${action==="delete"?"enviados para a lixeira":action==="restore"?"restaurados":action==="transfer"?"transferidos":"movimentados"}.`);
             }catch(err){error(err.message);}finally{if(submit.isConnected)submit.disabled=false;}
           };
         }catch(err){if(seq===request && dialog().open)error(err.message);}
+      }
+      if(action==="transfer"){
+        modal("Transferir oportunidade",'<p class="connectionNote" role="status">Carregando destinos…</p>');
+        try{
+          const data=await api("lead-transfer-options",undefined,{doctor:owner});
+          if(seq!==request || !dialog().open || getScope().doctor!==owner)return;
+          modal("Transferir para outro doutor ou funil",`<form id="crmLeadTransferTarget"><p class="connectionNote">Origem · ${esc(pipeline.name)}</p><div class="formGrid"><label>Doutor de destino<select name="doctor" required><option value="">Selecionar doutor</option>${data.doctors.map(d=>`<option value="${esc(d.id)}" ${d.id===owner?"selected":""}>${esc(d.name)}</option>`).join("")}</select></label><label>Funil de destino<select name="pipeline" required></select></label></div><label>Etapa de destino<select name="stage" required></select></label><div class="formActions"><button type="submit" class="primary" disabled>${icon("arrow-right-left")} Conferir transferência</button></div></form>`);
+          const form=document.getElementById("crmLeadTransferTarget"),doc=form.elements.doctor,target=form.elements.pipeline,stage=form.elements.stage,submit=form.querySelector('[type="submit"]');
+          const stages=()=>{
+            const items=data.pipelines.find(p=>p.id===target.value)?.stages || [];
+            stage.innerHTML=items.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("") || '<option value="">Sem etapas disponíveis</option>';
+            stage.disabled=!items.length;submit.disabled=!doc.value || !target.value || !stage.value;
+          };
+          const pipelines=()=>{
+            const items=data.pipelines.filter(p=>p.doctor_id===doc.value && p.id!==pipeline.id);
+            target.innerHTML=items.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("") || '<option value="">Nenhum outro funil disponível</option>';
+            target.disabled=!items.length;stages();
+          };
+          doc.onchange=pipelines;target.onchange=stages;pipelines();
+          form.onsubmit=e=>{e.preventDefault();if(submit.disabled || seq!==request)return;prepare(stage.value,{target_doctor_id:doc.value,target_pipeline_id:target.value});};
+        }catch(err){if(seq===request && dialog().open)error(err.message);}
+        return;
       }
       if(action!=="move")return prepare();
       modal("Mover leads de etapa",`<form id="crmBulkStage"><p class="connectionNote">${esc(pipeline.name)}</p><label>Etapa de destino<select name="stage" required><option value="">Selecionar etapa</option>${pipeline.stages.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")}</select></label><div class="formActions"><button type="submit" class="primary">${icon("arrow-right")} Conferir movimentação</button></div></form>`);
