@@ -115,6 +115,13 @@ class HttpAuthTests(unittest.TestCase):
                 self.assertEqual(self.request("HEAD", path)[0], 200, path)
         self.report.assert_not_called()
 
+    def test_privacy_and_app_identity_pages_are_public_without_private_data(self):
+        with patch.object(self.app,'db',side_effect=AssertionError('No clinic DB access')):
+            for path in ('/privacidade.html','/sobre.html','/legal.css'):
+                self.assertEqual(self.request('GET',path)[0],200,path)
+                self.assertEqual(self.request('HEAD',path)[0],200,path)
+        self.report.assert_not_called()
+
     def test_public_pricing_does_not_bypass_private_routes(self):
         for path in ("/pricing/../index.html", "/precificacao/../master", "/static/../settings.html"):
             self.assertEqual(self.request("GET", path)[0], 303, path)

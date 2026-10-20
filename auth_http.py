@@ -22,6 +22,7 @@ PUBLIC_FILES.update({"/design-system.css", "/app-shell.js"})
 PUBLIC_FILES.update({"/crm-form.css", "/crm-form.js", "/crm-form-renderer.js", "/body-icons.js"})
 PUBLIC_FILES.add("/crm-attribution.js")
 PUBLIC_FILES.update({'/crm-form-phone.js','/crm-form-phone.css','/vendor/libphonenumber-max-1.13.15.js'})
+PUBLIC_FILES.update({'/privacidade.html','/sobre.html','/legal.css'})
 INTEGRATION_CALLBACKS = {"/auth/callback", "/webhooks/revoked"}
 ADMIN_API_PATHS = {"/api/settings", "/api/sync-all", "/api/clear-data", "/api/reset-kommo", "/api/sync", "/api/sync-clinica", "/auth/start"}
 

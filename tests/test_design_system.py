@@ -33,10 +33,15 @@ class Page(HTMLParser):
 class SharedDesignTests(unittest.TestCase):
     def test_every_page_uses_the_shared_foundation_last(self):
         pages = list((ROOT / "static").rglob("*.html"))
-        self.assertEqual(len(pages), 12)
+        self.assertEqual(len(pages), 14)
         for path in pages:
             with self.subTest(page=path.name):
                 page = Page(path.read_text())
+                if path.name in {'sobre.html','privacidade.html'}:
+                    self.assertIsNone(page.page)
+                    self.assertEqual(page.styles,['/legal.css'])
+                    self.assertEqual(page.scripts,[])
+                    continue
                 if path.name == "crm-form.html":
                     self.assertIsNone(page.page)
                     self.assertEqual(page.styles,["/crm-form.css","/crm-form-phone.css"])

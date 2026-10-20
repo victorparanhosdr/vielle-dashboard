@@ -8,4 +8,5 @@
 .flowCountry svg{width:14px;height:14px}
 .flowCountry select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .flowCountry option{background:var(--flow-background);color:var(--flow-answer);font-size:16px}
+.flowFooter>a{color:inherit;font-size:12px;opacity:.75;text-underline-offset:3px}
 @media(max-width:600px){.flowPhone{gap:12px}.flowPhone .flowInput{font-size:20px!important}.flowCountry{gap:5px}.flowCountryFlag{font-size:22px}.flowDialCode{font-size:12px}}

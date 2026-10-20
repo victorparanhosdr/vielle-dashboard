@@ -17,4 +17,5 @@ button:disabled { cursor: wait; opacity: .75; }
 .loginError { color: #9b3434; font-size: 14px; line-height: 1.5; margin: 0 0 16px; overflow-wrap: anywhere; }
 .loginError:empty { display: none; }
 .loginPanel a { color: #102b25; text-underline-offset: 3px; }
+.loginShell>nav{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:22px;color:#cfdbd3;font-size:13px}.loginShell>nav a{color:inherit;text-underline-offset:3px}
 @media (max-width: 400px) { .loginShell { padding: 28px 16px; } .loginPanel { padding: 24px; } }

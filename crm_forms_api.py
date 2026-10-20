@@ -105,9 +105,15 @@ def handle(handler, crm, action, query, user):
                 raise PermissionError('Configuracao exclusiva do Master.')
             from crm_form_accounts import listing
             from crm_form_integrations import capabilities
-            crm_data=crm.listing(doctor or None)
-            return handler.auth_json({'ok':True,'accounts':listing(forms,doctor or None),'doctors':crm_data['doctors'],
-                                      'pipelines':crm_data['pipelines'],'integrations':capabilities()})
+            from crm_access import pipeline_visible
+            with crm.db() as c:
+                if doctor:
+                    crm.row(c,'doctors',doctor)
+                doctors=[dict(r) for r in c.execute('SELECT * FROM doctors ORDER BY name')]
+                pipelines=[dict(r) for r in c.execute('SELECT * FROM pipelines ORDER BY name')
+                           if (not doctor or r['doctor_id']==doctor) and pipeline_visible(dict(r))]
+            return handler.auth_json({'ok':True,'accounts':listing(forms,doctor or None),'doctors':doctors,
+                                      'pipelines':pipelines,'integrations':capabilities()})
         if action=="forms":
             from crm_form_integrations import capabilities,start_worker
             from crm_form_accounts import listing
@@ -158,7 +164,7 @@ def handle(handler, crm, action, query, user):
             form=callback(forms,user["id"],query.get("state",[""])[0],query.get("code",[""])[0])
             destination="/crm.html?"+urlencode({"clinic":"vielle","mode":"forms","doctor":form["doctor_id"],"form":form["id"],"google":"connected"})
             if form.get('return_settings'):
-                destination='/settings.html?clinic=vielle&google=connected#googleFormsIntegration'
+                destination='/settings.html?'+urlencode({'clinic':'vielle','google':'connected','doctor':form['doctor_id']})+'#googleFormsIntegration'
             handler.send_response(303);handler.send_header("Location",destination);handler.send_header("Content-Length","0");handler.send_header("Referrer-Policy","no-referrer");handler.end_headers();return
         raise LookupError()
     if handler.command!="POST":
