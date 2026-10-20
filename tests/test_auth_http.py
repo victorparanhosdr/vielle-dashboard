@@ -420,6 +420,46 @@ class HttpAuthTests(unittest.TestCase):
         store.finish(store.claim(),"http-accepted")
         self.assertEqual(json.loads(self.request("GET",inbox,cookie=master)[2])["counts"]["unread"],0)
 
+    def test_manual_pdf_reply_is_not_blocked_by_another_unconfirmed_contact(self):
+        from crm_api import store_for
+        from crm_media import upload
+        from crm_worker import tick
+        from unittest.mock import Mock
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        doctor = store.listing()["doctor_id"]
+        channel = store.channel({"doctor_id": doctor, "name": "Organico", "phone": "5500000000001"})
+        with store.db() as c:
+            instance = store.row(c, "channels", channel)["instance"]
+            c.execute("UPDATE channels SET state='open' WHERE id=?", (channel,))
+        for index in (2, 3):
+            store.receive(instance, {"key": {"id": f"synthetic-in-{index}", "remoteJid": f"550000000000{index}@s.whatsapp.net"},
+                "message": {"conversation": "Contato sintetico"}}, "messages.upsert")
+        contacts = {r["phone"]: r["contact_id"] for r in store.inbox(doctor, "user")["conversations"]}
+        previous = store.reply({"doctor_id": doctor, "channel_id": channel, "contact_id": contacts["5500000000002"],
+            "body": "Envio anterior", "request_id": "old-request"}, self.user_id, True, sender_name="Equipe")
+        store.finish(store.claim(), error=True)
+        target = contacts["5500000000003"]
+        media = upload(store, doctor, channel, target, self.user_id, "pdf-upload", "orcamento-sintetico.pdf", "document", b"%PDF-1.4\n%%EOF\n")
+        self.limit_permissions(["crm.view"])
+        cookie, _ = self.login()
+        payload = {"doctor_id": doctor, "channel_id": channel, "contact_id": target, "media_id": media["id"],
+                   "body": "", "request_id": "pdf-reply"}
+        path = f"/api/crm/reply?clinic=vielle&doctor={doctor}"
+        with patch("crm_api.sends_enabled", return_value=True), patch.object(store, "worker_online", return_value=True):
+            status, _, raw = self.request("POST", path, payload, cookie, {"X-DOC4DOCS-Request": "1"})
+            self.assertEqual(status, 200, raw)
+            self.assertEqual(self.request("POST", path, payload, cookie, {"X-DOC4DOCS-Request": "1"})[0], 200)
+        gateway = Mock()
+        gateway.send.return_value = "pdf-accepted"
+        self.assertTrue(tick(store, gateway))
+        self.assertEqual(gateway.send.call_args.args[0]["contact_id"], target)
+        self.assertEqual(gateway.send.call_args.args[0]["media"]["kind"], "document")
+        self.assertFalse(tick(store, gateway))
+        gateway.send.assert_called_once()
+        with store.db() as c:
+            self.assertEqual(store.row(c, "messages", previous)["status"], "unknown")
+
     def test_crm_campaign_stays_blocked_when_manual_replies_are_enabled(self):
         from crm_api import store_for
         store=store_for(self.store)

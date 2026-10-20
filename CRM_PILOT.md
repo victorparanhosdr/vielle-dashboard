@@ -315,7 +315,12 @@ requires a recent worker heartbeat, a configured gateway and an open channel.
 - Manual replies have no DOC4DOCS daily quota and do not wait for campaign
   intervals or consume campaign quota. They retain queue priority. One in-flight
   send per channel, connection, consent/recent-inbound, opt-out, idempotency and
-  unknown-send safeguards remain unchanged. No throughput or anti-ban guarantee.
+  exact-payload duplicate safeguards remain enforced. New manual replies are not
+  blocked by an unrelated unconfirmed send, even in the same conversation. The
+  duplicate check uses recipient, sender number, signed text and attachment hash;
+  it also covers queued audio whose signature send has no confirmation. A queued
+  duplicate is skipped if an earlier identical send becomes unconfirmed before
+  dispatch. No throughput or anti-ban guarantee.
 - A campaign is drafted first, deduplicated by contact, and explicitly started.
   Another campaign may intentionally contact the same person; this is not a
   cross-campaign marketing frequency policy.
@@ -324,10 +329,12 @@ requires a recent worker heartbeat, a configured gateway and an open channel.
   messages to that contact clinic-wide, and staff can record other opt-out text.
 - A disconnected channel pauses its campaigns; reconnection does not auto-start.
 - Timeouts and crashes after a claim become `unknown`, pause the campaign and
-  block automatic retries and further dispatch for that number. The pilot cannot
-  reconcile ambiguous sends yet. Inspect the phone before any manual reconciliation;
-  cancelling a campaign does not clear an unknown send. Do not clear unknown states
-  to blindly retry. This intentionally leaves the channel blocked pending review.
+  block automatic retries and automated dispatch for that number. Only newly
+  requested manual messages carry `independent_manual_send=1`; the migration leaves
+  old queued rows at zero, so deployment does not release a blocked backlog or
+  resume campaigns/bots. Unconfirmed rows are never marked sent, cleared or retried
+  just to unblock another reply. Inspect the phone before any manual reconciliation;
+  cancelling a campaign does not clear an unknown send.
 - Sent means accepted by the connector, not delivered or read. Pause/cancel may
   not interrupt a message already in flight. Provider acceptance plus DB failure
   is inherently ambiguous; no claim of exactly-once external delivery is made.

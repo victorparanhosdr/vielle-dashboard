@@ -194,6 +194,8 @@ class CrmStore:
             for name in ("recipient_phone", "sender_name", "sender_user_id", "media_id", "depends_on"):
                 if name not in columns:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+            if "independent_manual_send" not in columns:
+                c.execute("ALTER TABLE messages ADD COLUMN independent_manual_send INTEGER NOT NULL DEFAULT 0")
             media_columns = {r[1] for r in c.execute("PRAGMA table_info(message_media)")}
             for name, definition in (("provider_payload", "TEXT NOT NULL DEFAULT ''"), ("download_state", "TEXT NOT NULL DEFAULT 'ready'")):
                 if name not in media_columns:
@@ -977,6 +979,19 @@ class CrmStore:
             self.resolve_conversation(c, p["channel_id"], p["contact_id"], marker, "closed", user)
             return self.conversation_status(c, p["channel_id"], p["contact_id"])
 
+    @staticmethod
+    def unconfirmed_duplicate(c, channel, contact, recipient, body, media=None):
+        # Compare the logical payload, including audio whose signature send timed out.
+        return bool(c.execute("""SELECT 1 FROM messages m
+            LEFT JOIN messages parent ON parent.id=m.depends_on
+            LEFT JOIN message_media attachment ON attachment.id=m.media_id
+            WHERE m.channel_id=? AND m.direction='out'
+            AND (m.status='unknown' OR (m.status='queued' AND parent.status='unknown'))
+            AND (m.recipient_phone=? OR (m.recipient_phone='' AND m.contact_id=?)) AND m.body=?
+            AND ((?='' AND m.media_id='') OR (attachment.sha256<>'' AND attachment.sha256=? AND attachment.kind=?))
+            LIMIT 1""", (channel, recipient, contact, body, media["id"] if media else "",
+                           media["sha256"] if media else "", media["kind"] if media else "")).fetchone())
+
     def reply(self, p, user, enabled=False, *, sender_name):
         media_id = text(p.get("media_id", ""), 32, False)
         body = text(p.get("body", ""), 3000, required=not media_id)
@@ -1020,17 +1035,17 @@ class CrmStore:
             recipient = self.conversation_peer(c, source, contact, ct["phone"])
             if p.get("phone") and phone(p["phone"]) != recipient:
                 raise Conflict("O telefone desta conversa mudou. Atualize antes de enviar.")
-            if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='unknown' LIMIT 1", (channel,)).fetchone():
-                raise ValueError("Ha envio sem confirmacao neste numero. Confira antes de continuar.")
+            if self.unconfirmed_duplicate(c, channel, contact, recipient, signed_message(body, name), media):
+                raise ValueError("Esta mensagem ja tem um envio sem confirmacao nesta conversa. Confira no WhatsApp antes de reenviar; outros envios continuam disponiveis.")
             marker = self.inbound_marker(c, source, contact, p.get("cursor", 0))
             key = uuid.uuid4().hex
             now, dependency = time.time(), ""
             if media and media["kind"] == "audio":
                 dependency = uuid.uuid4().hex
-                c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id)
-                    VALUES(?,?,?,?,'out',?,?,?,?)""", (dependency, channel, contact, signed_message(body, name), now - .000001, recipient, name, str(user)))
-            c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id,media_id,depends_on)
-                VALUES(?,?,?,?,'out',?,?,?,?,?,?)""", (key, channel, contact, signed_message(body, name), now, recipient, name, str(user), media_id, dependency))
+                c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id,independent_manual_send)
+                    VALUES(?,?,?,?,'out',?,?,?,?,1)""", (dependency, channel, contact, signed_message(body, name), now - .000001, recipient, name, str(user)))
+            c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id,media_id,depends_on,independent_manual_send)
+                VALUES(?,?,?,?,'out',?,?,?,?,?,?,1)""", (key, channel, contact, signed_message(body, name), now, recipient, name, str(user), media_id, dependency))
             if media:
                 c.execute("UPDATE message_media SET message_id=? WHERE id=?", (key, media_id))
             c.execute("INSERT INTO reply_requests(request_id,message_id,user_id,source_channel_id,inbound_cursor) VALUES(?,?,?,?,?)",
@@ -1180,10 +1195,19 @@ class CrmStore:
                 AND ch.state='open' AND ch.archived_at=0 AND ((m.campaign_id IS NULL AND m.bot_run_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
                 AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
-                AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
+                AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id
+                    AND (pending.status='sending' OR (pending.status='unknown'
+                        AND (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.independent_manual_send=0))))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
+                if r["independent_manual_send"] and not r["campaign_id"] and not r["bot_run_id"]:
+                    logical = c.execute("""SELECT m.* FROM messages m JOIN reply_requests reply ON reply.message_id=m.id
+                        WHERE m.id=? OR m.depends_on=? ORDER BY (m.id=?) DESC LIMIT 1""", (r["id"], r["id"], r["id"])).fetchone()
+                    attachment = c.execute("SELECT * FROM message_media WHERE id=?", (logical["media_id"],)).fetchone() if logical and logical["media_id"] else None
+                    if logical and (not logical["media_id"] or attachment) and self.unconfirmed_duplicate(c, r["channel_id"], r["contact_id"], r["phone"], logical["body"], dict(attachment) if attachment else None):
+                        c.execute("UPDATE messages SET status='skipped',skip_reason='Mensagem identica sem confirmacao; confira no WhatsApp antes de reenviar' WHERE id IN (?,?) AND status='queued'", (r["id"], logical["id"]))
+                        continue
                 if r["bot_run_id"]:
                     from crm_bots import message_allowed
                     if not message_allowed(c, r["bot_run_id"]):

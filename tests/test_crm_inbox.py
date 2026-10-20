@@ -214,7 +214,7 @@ class InboxTests(unittest.TestCase):
         outbound=self.store.conversation(self.a,self.channel,item["contact_id"])["messages"][-1]["seq"]
         with self.assertRaises(ValueError):self.store.reply({**p,"request_id":"scope-2","cursor":outbound},"user",True)
 
-    def test_direct_unknown_blocks_channel_without_retry(self):
+    def test_direct_unknown_does_not_retry_the_same_message(self):
         item=self.incoming()
         with self.store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))
         p=self.payload(item,body="Vamos agendar",request_id="request-1")
