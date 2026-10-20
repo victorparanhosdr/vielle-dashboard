@@ -195,14 +195,33 @@ class CommercialTests(unittest.TestCase):
         self.assertEqual(self.data()["summary"]["sales_count"],0)
         self.assertEqual(self.data()["warnings"]["identity"],1)
 
-    def test_inactive_refunded_missing_amount_and_zero(self):
-        self.add("inactive",status="inactive");self.add("deleted",deleted=True);self.add("refund",status="refunded")
+    def test_refunded_missing_amount_and_zero(self):
+        self.add("deleted",deleted=True);self.add("refund",status="refunded")
         self.add("zero",final_amount=0)
         self.add("missing",final_amount=None)
         with sqlite3.connect(self.path) as c:c.execute("UPDATE clinica_sales SET total=NULL WHERE uuid='missing'")
         data=self.data();self.assertEqual(data["summary"]["sales_count"],2)
         self.assertEqual(data["summary"]["sales_cents"],0);self.assertEqual(data["warnings"]["amount"],1)
         self.assertEqual(next(i for i in data["items"] if i["uuid"]=="zero")["amount_cents"],0)
+
+    def test_historical_inactive_sales_count_without_turning_quotes_into_sales(self):
+        for uid, amount, status in (("march", 590000, "inactive"), ("may", 430000, "inactive"),
+                                    ("september", 440000, "active"), ("october", 120000, "active")):
+            self.add(uid, status=status, final_amount=amount)
+        self.add("inactive-quote", kind="sale_quote", status="inactive", final_amount=999999)
+        self.add("cancelled", status="cancelled", final_amount=999999)
+        self.add("refunded", status="refunded", final_amount=999999)
+        self.add("deleted", status="inactive", deleted_at="2026-10-19", final_amount=999999)
+        self.add("other-doctor", status="inactive", seller={"uuid":"doc-b","name":"Outro"}, final_amount=999999)
+        before=self.path.read_bytes()
+        data=self.data()
+        self.assertEqual(data["summary"]["sales_count"],4)
+        self.assertEqual(data["summary"]["sales_cents"],1580000)
+        self.assertEqual({item["uuid"] for item in data["items"]},{"march","may","september","october"})
+        value=self.value()
+        self.assertEqual((value["tier"],value["sales_count"],value["sales_cents"]),("gold",4,1580000))
+        self.assertEqual(self.data(kind="quotes")["summary"]["quotes_count"],1)
+        self.assertEqual(self.path.read_bytes(),before)
 
     def test_pagination_totals_and_invalid_filters(self):
         for i in range(26):self.add(f"sale-{i}")

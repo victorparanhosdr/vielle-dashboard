@@ -83,7 +83,8 @@ class PatientCommercial:
             if cancelled(raw) or raw.get("active") is False or normalized(raw.get("status")) in {"removed", "excluida"}:
                 continue
             status = quote_source_status(raw, row["type"])
-            is_sale = status is None and sale_counts_for_patient_followup(raw, row["type"]) and normalized(raw.get("status")) != "inactive"
+            # Historical sale records can be inactive without being cancelled.
+            is_sale = status is None and sale_counts_for_patient_followup(raw, row["type"])
             identities = {str(entity.get("uuid") or entity.get("id")) for key in ("patient", "buyer", "buyer_person", "person", "client", "customer")
                           if isinstance((entity := raw.get(key)), dict) and (entity.get("uuid") or entity.get("id"))}
             if identities and identities != {patient_uuid}:
