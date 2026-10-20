@@ -160,6 +160,24 @@ class KommoMigrationTests(unittest.TestCase):
         with self.store.db() as c:
             self.assertEqual(tuple(c.execute("SELECT experts_uuid,opted_out FROM contacts").fetchone()), ("p2", 1))
 
+    def test_unlinked_contact_uses_the_shared_phone_as_primary_even_after_a_new_number(self):
+        records = [self.record(numbers=["5533999988888", "5511999994444"])]
+        previous = self.preview(records)
+        self.apply(previous)
+        result = self.apply(self.retry(previous, records))["report"]
+        self.assertEqual((result["created"], result["review"]), (1, 1))
+        lead = self.store.listing(self.doctor)["leads"][0]
+        self.assertEqual((lead["phone"], lead["experts_uuid"], lead["experts_status"]), ("5511999994444", "", "review"))
+
+    def test_existing_primary_new_number_is_not_silently_made_shared(self):
+        records = [self.record(numbers=["5533999988888", "5511999994444"])]
+        self.store.lead({"doctor_id": self.doctor, "pipeline_id": self.pipe["id"], "stage_id": self.pipe["stages"][0]["id"],
+                         "name": "Nome Kommo", "phone": "5533999988888", "title": "Preservar"}, "Equipe")
+        previous = self.preview(records)
+        self.apply(previous)
+        result = self.apply(self.retry(previous, records))["report"]
+        self.assertEqual((result["created"], result["review"], result["issue_count"]), (0, 0, 1))
+
     def test_retry_source_requires_a_completed_migration_owned_by_the_target(self):
         previous = self.preview([self.record()])
         with self.assertRaises(ValueError):

@@ -183,11 +183,16 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
             continue
         number = next((n for n, m in zip(record["phones"], matches) if m["status"] == "matched"),
                       next((n for n in record["phones"] if phones.get(n) == cid), record["phones"][0]))
+        if unlinked and not cid:
+            number = next(n for n, m in zip(record["phones"], matches) if m["status"] == "review")
+        if unlinked and next(m for n, m in zip(record["phones"], matches) if n == number)["status"] != "review":
+            report["issues"].append({"source_id": record["source_id"], "name": record["name"], "reason": REASONS["conflict"]})
+            continue
         if apply:
             evidence = {"identity_name": record["name"]} if any(m.get("match_basis") == "phone_name" for m in matches) else {}
             contact = store.contact(c, number, record["name"], **evidence)
             if contact["experts_uuid"] != patient or contact["experts_status"] not in ({"review"} if unlinked else {"matched", "new"}):
-                raise Conflict("A identidade do paciente mudou durante a importacao. Gere outra previa.")
+                raise Conflict(f"A identidade do paciente mudou na oportunidade Kommo #{record['source_id']}. Gere outra previa.")
             if cid and cid != contact["id"]:
                 raise Conflict("O cadastro mudou durante a importacao. Gere outra previa.")
             cid = contact["id"]
