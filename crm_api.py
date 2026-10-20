@@ -71,6 +71,9 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action=="bots" or action.startswith("bots/"):
+            from crm_bots_api import handle as bots_handle
+            return bots_handle(handler,store,action,query,user)
         if action=="forms" or action.startswith("forms/"):
             from crm_forms_api import handle as forms_handle
             return forms_handle(handler,store,action,query,user)

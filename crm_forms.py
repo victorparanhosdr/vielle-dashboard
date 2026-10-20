@@ -395,6 +395,8 @@ class FormStore:
                 lead_state="reused" if existing else "created"
                 if not existing:
                     c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at,email,source_name) VALUES(?,?,?,?,?,?,?,?,?,?)",(lead,row["doctor_id"],pipeline["id"],stage["id"],contact["id"],info["title"],now,now,answers.get(config["email_field"],""),name if pipeline["course_key"] else ""))
+                    from crm_bots import emit
+                    emit(c,lead,"created",now)
                 self.crm.event(c,lead,"Formulario","form_response",f"Nova resposta: {info['title']} · resposta {ident}",now)
             number=c.execute("SELECT coalesce(max(row_number),1)+1 FROM form_responses WHERE form_id=?",(row["id"],)).fetchone()[0]
             c.execute("INSERT INTO form_responses VALUES(?,?,?,?,?,?,?,?,?)",(ident,row["id"],nonce,now,row["published"],json.dumps(answers,ensure_ascii=False),lead,lead_state,number))

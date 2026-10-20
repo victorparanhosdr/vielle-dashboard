@@ -242,6 +242,9 @@ class CrmStore:
                     location = location_from_phone(contact["phone"])
                     c.execute("UPDATE contacts SET service_location=?,service_location_source=? WHERE id=?",
                               (location, "ddd" if location else "pending", contact["id"]))
+        from crm_bots import schema
+        with self.db() as c:
+            schema(c)
 
     def contact(self, c, number, name, *, identity_name="", clinical=None):
         current = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
@@ -422,6 +425,8 @@ class CrmStore:
                 if old["stage_id"] != stage:
                     previous = self.row(c, "stages", old["stage_id"])
                     self.event(c, key, actor, "stage", target["name"], now)
+                    from crm_bots import emit
+                    emit(c, key, "stage", now)
                     if target["kind"] == "won" or (target["kind"] == "open" and previous["kind"] == "open" and target["position"] > previous["position"]):
                         self.award(c, key, doctor, actor, "Fechamento" if target["kind"] == "won" else "Avanco no funil",
                                    25 if target["kind"] == "won" else 5, key + (":won" if target["kind"] == "won" else ":stage:" + stage), now)
@@ -446,6 +451,8 @@ class CrmStore:
                 c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,value_cents,consent_at,consent_source,next_action,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                           (key, doctor, pipeline, stage, contact["id"], text(p.get("title")), value, now if consent else None, source, due, now, now))
                 self.event(c, key, actor, "created", "Oportunidade criada", now)
+                from crm_bots import emit
+                emit(c, key, "created", now)
                 if destination["course_key"]:
                     c.execute("UPDATE leads SET email=?,source_name=? WHERE id=?", (address, name, key))
         return key
@@ -1091,21 +1098,26 @@ class CrmStore:
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
-                AND ch.state='open' AND (m.campaign_id IS NULL OR ch.next_send_at<=?) AND ct.opted_out=0
+                AND ch.state='open' AND ((m.campaign_id IS NULL AND m.bot_run_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
                 AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
+                if r["bot_run_id"]:
+                    from crm_bots import message_allowed
+                    if not message_allowed(c, r["bot_run_id"]):
+                        c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (r["id"],))
+                        continue
                 if r["campaign_id"] and (local.weekday() not in json.loads(r["weekdays"]) or not r["hour_from"]*60+r["minute_from"] <= local.hour*60+local.minute < r["hour_to"]*60+r["minute_to"]):
                     continue
-                if r["campaign_id"]:
-                    used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
+                if r["campaign_id"] or r["bot_run_id"]:
+                    used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND (campaign_id IS NOT NULL OR bot_run_id<>'') AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
                     if used >= r["daily_limit"]:
                         continue
                 c.execute("UPDATE messages SET status='sending',claimed_at=? WHERE id=?", (now, r["id"]))
-                if r["campaign_id"]:
+                if r["campaign_id"] or r["bot_run_id"]:
                     c.execute("UPDATE channels SET next_send_at=? WHERE id=?", (now + r["interval_seconds"], r["channel_id"]))
                 return r
         return None
@@ -1184,7 +1196,7 @@ class CrmStore:
                 return False
             if from_me:
                 # An echo can arrive before the sendText HTTP response returns its ID.
-                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin='crm'
+                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin IN ('crm','bot')
                     AND status IN ('sending','unknown') AND provider_id IS NULL AND recipient_phone=? AND body=?
                     AND claimed_at>=? AND claimed_at<=?""", (ch["id"], number, body, (stamp or now)-120, (stamp or now)+120)).fetchall()
                 if len(pending) == 1:
@@ -1219,6 +1231,14 @@ class CrmStore:
             existing = c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchone()
             first = c.execute("SELECT s.id,s.pipeline_id FROM stages s JOIN pipelines p ON p.id=s.pipeline_id WHERE p.doctor_id=? AND s.kind='open' ORDER BY p.name,s.position LIMIT 1", (ch["doctor_id"],)).fetchone()
             if not existing and first:
+                lead_id = uuid.uuid4().hex
                 c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                          (uuid.uuid4().hex, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now))
+                          (lead_id, ch["doctor_id"], first["pipeline_id"], first["id"], contact["id"], "Conversa no WhatsApp" if from_me else "Conversa recebida", now, now))
+                if not from_me and not history:
+                    from crm_bots import emit
+                    emit(c, lead_id, "created", now, channel=ch["id"])
+            if not from_me and not history:
+                from crm_bots import emit
+                for opportunity in c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchall():
+                    emit(c, opportunity["id"], "incoming", now, channel=ch["id"], message=message_id)
             return True

@@ -15,6 +15,11 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
         return False
     try:
         with store.db() as c:
+            if item.get("bot_run_id"):
+                from crm_bots import message_allowed
+                if not message_allowed(c, item["bot_run_id"]):
+                    c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (item["id"],))
+                    return True
             current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,ct.phone,ct.experts_status,ch.state FROM messages m
                 LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN contacts ct ON ct.id=m.contact_id
                 JOIN channels ch ON ch.id=m.channel_id WHERE m.id=?""", (item["id"],)).fetchone()
@@ -22,7 +27,7 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
                 status = "skipped" if current["opted_out"] else "cancelled" if current["status"] == "cancelled" else "queued"
                 c.execute("UPDATE messages SET status=? WHERE id=?", (status, item["id"]))
                 return True
-            if item["campaign_id"] and (current["experts_status"] == "review" or current["phone"] != item["phone"]):
+            if (item["campaign_id"] or item.get("bot_run_id")) and (current["experts_status"] == "review" or current["phone"] != item["phone"]):
                 c.execute("UPDATE messages SET status='skipped',skip_reason='Cadastro ou telefone alterado; confira o contato' WHERE id=?", (item["id"],))
                 return True
         if item.get("media_id"):
@@ -35,7 +40,8 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
 
 
 def run(auth, stop):
-    store = CrmStore(auth.path.parent / "crm" / "vielle")
+    from crm_api import store_for
+    store = store_for(auth)
     gateway = EvolutionGateway()
     webhook_next = {}
     while not stop.wait(2):

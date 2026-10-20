@@ -7662,6 +7662,8 @@ if __name__ == "__main__":
     from crm_voice import run_archive
     threading.Thread(target=run_archive, args=(auth_store, threading.Event()), daemon=True).start()
     from crm_gateway import sends_enabled
+    from crm_bots import run_worker as run_bot_worker
+    threading.Thread(target=run_bot_worker, args=(auth_store, threading.Event()), daemon=True).start()
     if sends_enabled():
         from crm_worker import run as run_crm_worker
         threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()

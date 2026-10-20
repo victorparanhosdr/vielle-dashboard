@@ -316,3 +316,48 @@ no pending quote omit the currency amount. Unavailable/ambiguous/partial quote
 histories show a review state rather than an authoritative zero. Totals exclude
 these unknown amounts and disclose partial coverage. Bronze/silver/gold remains
 based only on valid closed sales. No provider writes or new per-card API calls.
+
+## Forms and automation workspace
+
+The CRM rail includes Forms and Automations. Forms have editable drafts,
+immutable published snapshots, signed anonymous submission sessions, private
+answer files, CSV export and optional deduplicated opportunity creation. Clinic
+and institute/course scopes remain separate. Uploads are bounded and unused
+answer files expire after 24 hours; submitted attachments remain private.
+
+Email notifications need CRM_SMTP_HOST, CRM_SMTP_PORT (587 or 465), CRM_SMTP_FROM,
+CRM_SMTP_USER and CRM_SMTP_PASSWORD. Notifications contain a private CRM link,
+not answers or attachments. Configure CRM_GOOGLE_CLIENT_ID and
+CRM_GOOGLE_CLIENT_SECRET for the application's Google OAuth client, with the
+callback https://doc4docs.com.br/api/crm/forms/google-callback?clinic=vielle.
+DOC4DOCS_PUBLIC_URL overrides the public base URL. Each form connects through
+the user's own Google consent flow with drive.file scope. Tokens are encrypted
+on the persistent volume. No shared Codex Google connection is used. Google
+row updates are deterministic and use RAW cells. Unconfirmed email deliveries
+are not automatically retried. Missing configuration is shown in the editor.
+
+Robots are created as inactive drafts. Only the Master can explicitly publish
+or pause them. Saving an active robot edits only its draft. Publishing cancels
+old executions and applies only to future live events, never historical imports
+or all existing leads. A manual start is available from the opportunity record.
+The supported blocks are message, form link, delay, condition, move stage, note,
+task, tag, set opportunity field, close conversation and finish. No arbitrary
+code, external webhooks, AI calls or Meta conversion events are executed.
+Drawflow 0.0.60 is vendored with its MIT license, without a production CDN.
+
+The bot worker stores each run, current block, due time and execution log in
+SQLite. Local state changes and advancement commit in the same transaction.
+WhatsApp sends use the existing durable queue. Unconfirmed sends stop the run
+and are never automatically repeated. Bots and campaigns share each number's
+200/day ceiling and 30-second minimum dispatch spacing; manual replies retain
+their existing behavior. Descadastro is always respected. By default a new
+customer reply or an unrelated stage change interrupts the run. Stage-trigger
+chains are bounded, graphs reject cycles, and a contact has a bounded number
+of daily launches. The activating user's access is rechecked by the worker.
+The deployment does not create or activate customer robots.
+
+The synthetic preview accepts --forms-fixture and --bots-fixture. It disables
+all real sends and uses a loopback-only test session. Never expose that helper
+as a production endpoint. Tests cover draft/public separation, private uploads,
+deduplication, scoped access, opt-outs, races, restart recovery, queue limits,
+explicit activation and preservation of the active version when editing.

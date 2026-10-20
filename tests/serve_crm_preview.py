@@ -325,6 +325,18 @@ if "--communications-fixture" in sys.argv:
                     c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=?",(now-86400,now-86400,key))
 
 
+if "--bots-fixture" in sys.argv:
+    from crm_bots import BotStore
+    bots = BotStore(store)
+    doc = next(d for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    pipeline = next(p for p in store.listing(doc["id"])["pipelines"] if not p["course_key"])
+    nodes = [{"id":"1","kind":"start","data":{},"x":30,"y":160,"next":{"next":"2"}},
+        {"id":"2","kind":"delay","data":{"minutes":1440},"x":320,"y":160,"next":{"next":"3"}},
+        {"id":"3","kind":"condition","data":{"field":"tag","value":"Retorno"},"x":610,"y":160,"next":{"yes":"4","no":"5"}},
+        {"id":"4","kind":"task","data":{"title":"Retomar atendimento","minutes":60},"x":900,"y":60,"next":{"next":"5"}},
+        {"id":"5","kind":"end","data":{},"x":900,"y":300,"next":{}}]
+    bots.save({"doctor_id":doc["id"],"pipeline_id":pipeline["id"],"name":"Acompanhamento · exemplo","definition":{"nodes":nodes,"trigger":{"kind":"stage","stage_id":pipeline["stages"][0]["id"],"delay_minutes":0},"stop_on_reply":True}},1)
+
 if "--staff-fixture" in sys.argv:
     auth.create_user("Jane Teste", "preview-staff", password, clinic_keys=["vielle"], permissions={"vielle": ["crm.view"]})
     token = auth.login("preview-staff", password)
