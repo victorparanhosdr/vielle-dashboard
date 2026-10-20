@@ -58,6 +58,8 @@ def preview(store, payload, actor):
             raise ValueError("Selecione os leads da lixeira.")
         with store.db() as c:
             rows = [lead(c, store, ident, doctor, pipeline, True) for ident in dict.fromkeys(ids)]
+            if any(c.execute("SELECT merged_into FROM contacts WHERE id=?", (r["contact_id"],)).fetchone()[0] for r in rows):
+                raise ValueError("Este cadastro foi consolidado com outro paciente. O historico esta preservado na oportunidade principal.")
     else:
         from crm_campaigns import selection as select_leads
         rows, _, _, _ = select_leads(store, {**selection, "doctor_id": doctor, "pipeline_id": pipeline, "pipeline_ids": [pipeline]})

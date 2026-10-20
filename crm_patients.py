@@ -6,6 +6,21 @@ import sqlite3
 import threading
 import time
 import unicodedata
+import phonenumbers
+
+
+def phone_keys(value):
+    """Full numbers only; pair a valid Brazilian mobile with its legacy form."""
+    number = re.sub(r"\D", "", str(value)) if isinstance(value, (str, int)) else ""
+    if not 10 <= len(number) <= 15:
+        return ()
+    modern = number[:4] + "9" + number[4:] if len(number) == 12 else number
+    if number.startswith("55") and re.fullmatch(r"55\d{2}9[6-9]\d{7}", modern):
+        parsed = phonenumbers.parse("+" + modern, None)
+        if phonenumbers.is_valid_number(parsed) and phonenumbers.number_type(parsed) == phonenumbers.PhoneNumberType.MOBILE:
+            legacy = modern[:4] + modern[5:]
+            return tuple(dict.fromkeys((number, modern, legacy)))
+    return (number,)
 
 
 def search_key(value):
@@ -93,9 +108,11 @@ class PatientDirectory:
             self.refresh()
             if not self.available:
                 return {"status": "unchecked", "synced_at": self.synced_at}
-            candidates = list(self.index.get(re.sub(r"\D", "", number), {}).values())
+            keys = phone_keys(number)
+            candidates = list({uid: p for key in keys for uid, p in self.index.get(key, {}).items()}.values())
             if len(candidates) == 1 and candidates[0]["name"]:
-                return {"status": "matched", **candidates[0], "synced_at": self.synced_at}
+                return {"status": "matched", **candidates[0], "synced_at": self.synced_at,
+                        "match_basis": "phone" if candidates[0]["uuid"] in self.index.get(keys[0], {}) else "phone_variant"}
             return {"status": "review" if candidates else "new", "candidates": candidates, "synced_at": self.synced_at}
 
     def invalidate(self):
@@ -111,13 +128,15 @@ class PatientDirectory:
             if not self.available:
                 return {"available": False, "items": [], "page": 1, "pages": 1, "total": 0, "synced_at": self.synced_at}
             matches = [p for p in self.patients if not query or query in search_key(p["name"]) or
-                       (digits and any(digits in number for number in p["numbers"]))]
+                       (digits and any(digits in key for number in p["numbers"] for key in phone_keys(number)))]
             matches.sort(key=lambda p: (search_key(p["name"]), p["uuid"]))
             pages = max(1, (len(matches) + 24) // 25)
             page = min(page, pages)
+            def owners(number):
+                return {uid for key in phone_keys(number) for uid in self.index.get(key, {})}
             items = [{"uuid": p["uuid"], "name": p["name"],
-                      "phones": [number for number in p["numbers"] if len(self.index[number]) == 1],
-                      "shared_phone": any(len(self.index[number]) > 1 for number in p["numbers"])}
+                      "phones": [number for number in p["numbers"] if len(owners(number)) == 1],
+                      "shared_phone": any(len(owners(number)) > 1 for number in p["numbers"])}
                      for p in matches[(page - 1) * 25:page * 25]]
             return {"available": True, "items": items, "page": page, "pages": pages,
                     "total": len(matches), "synced_at": self.synced_at}

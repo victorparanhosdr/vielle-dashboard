@@ -92,6 +92,19 @@ class KommoMigrationTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT COUNT(*) FROM contacts").fetchone()[0], 1)
             self.assertEqual(c.execute("SELECT COUNT(*) FROM leads").fetchone()[0], 1)
 
+    def test_migration_groups_ninth_digit_variants_and_future_runs_reuse_contact(self):
+        modern, legacy = "5533999991111", "553399991111"
+        key = self.preview([self.record(10, [legacy]), self.record(11, [modern])])
+        result = self.apply(key)["report"]
+        self.assertEqual((result["created"], result["duplicates"], result["issue_count"]), (1, 1, 0))
+        lead = self.store.listing(self.doctor)["leads"][0]
+        self.assertEqual((lead["name"], lead["experts_uuid"]), ("Nome correto Experts", "p1"))
+        result = self.apply(self.preview([self.record(12, [modern])]))["report"]
+        self.assertEqual((result["created"], result["reused"]), (0, 1))
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM contacts WHERE merged_into='' ").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM leads WHERE deleted_at=0").fetchone()[0], 1)
+
     def test_existing_opportunity_and_optout_manual_location_are_preserved(self):
         lid = self.store.lead({"doctor_id": self.doctor, "pipeline_id": self.pipe["id"], "stage_id": self.pipe["stages"][1]["id"],
                                "name": "Paciente", "phone": "5533999991111", "title": "Trabalho da equipe", "value_cents": 56700}, "Equipe")

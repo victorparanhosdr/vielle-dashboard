@@ -12,7 +12,7 @@ import uuid
 from zoneinfo import ZoneInfo
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_metrics import THREADS_CTE
-from crm_patients import match_patient_name
+from crm_patients import match_patient_name, phone_keys
 from crm_access import check_row, contact_visible, pipeline_visible, doctor_visible, CRM_SCOPE
 
 TZ = ZoneInfo("America/Sao_Paulo")
@@ -255,9 +255,17 @@ class CrmStore:
         from crm_channels import schema as channel_schema
         with self.db() as c:
             channel_schema(c)
+        from crm_identity import schema as identity_schema, backup as identity_backup
+        with self.db() as c:
+            identity_schema(c)
+        identity_backup(self)
 
     def contact(self, c, number, name, *, identity_name="", clinical=None):
+        from crm_identity import contacts_for, merge
         current = c.execute("SELECT ct.* FROM contacts ct JOIN contact_phones p ON p.contact_id=ct.id WHERE p.phone=?", (number,)).fetchone()
+        variants = contacts_for(c, number)
+        if not current and len(variants) == 1:
+            current = variants[0]
         if clinical is None:
             clinical = not current or not self.course_only(c, current["id"])
         match = self.patient_lookup(number) if clinical else {"status": "new"}
@@ -267,6 +275,18 @@ class CrmStore:
         if evidence:
             match = match_patient_name(match, evidence)
         linked = c.execute("SELECT * FROM contacts WHERE experts_uuid=?", (match.get("uuid", ""),)).fetchone() if match["status"] == "matched" else None
+        if clinical and match["status"] in {"matched", "new"}:
+            candidates = {row["id"]: dict(row) for row in variants}
+            if linked:
+                candidates[linked["id"]] = dict(linked)
+            repaired = merge(c, self, list(candidates.values()), match if match["status"] == "matched" else {**match, "phone_only": True})
+            if repaired:
+                current = repaired
+                linked = current
+        elif not clinical and len(variants) > 1 and all(self.course_only(c, row["id"]) for row in variants):
+            repaired = merge(c, self, variants, {"status": "new", "phone_only": True, "course_only": True})
+            if repaired:
+                current = repaired
         if not current:
             if linked:
                 current = linked
@@ -274,7 +294,7 @@ class CrmStore:
                 cid = uuid.uuid4().hex
                 c.execute("INSERT INTO contacts(id,name,phone,experts_status) VALUES(?,?,?,?)", (cid, name, number, "unchecked" if clinical else "new"))
                 current = c.execute("SELECT * FROM contacts WHERE id=?", (cid,)).fetchone()
-            c.execute("INSERT OR IGNORE INTO contact_phones VALUES(?,?)", (number, current["id"]))
+        c.execute("INSERT OR IGNORE INTO contact_phones VALUES(?,?)", (number, current["id"]))
         cid = current["id"]
         if not clinical:
             return dict(current)
@@ -305,10 +325,14 @@ class CrmStore:
         return bool(kinds) and all(row[0] for row in kinds)
 
     def reconcile_patients(self):
+        from crm_identity import backup as identity_backup
+        identity_backup(self)
         with self.db() as c:
-            contacts = c.execute("SELECT id,name,phone FROM contacts").fetchall()
+            c.execute("BEGIN IMMEDIATE")
+            contacts = c.execute("SELECT id,name,phone FROM contacts WHERE merged_into='' ORDER BY id").fetchall()
             for contact in contacts:
-                self.contact(c, contact["phone"], contact["name"])
+                if not c.execute("SELECT merged_into FROM contacts WHERE id=?", (contact["id"],)).fetchone()[0]:
+                    self.contact(c, contact["phone"], contact["name"])
 
     @contextmanager
     def db(self):
@@ -329,6 +353,8 @@ class CrmStore:
             raise LookupError("Registro nao encontrado.")
         result = dict(r)
         check_row(c, table, result)
+        if table == "contacts" and result.get("merged_into"):
+            raise Conflict("Este cadastro foi consolidado com o contato principal. Atualize o CRM.")
         if table == "leads" and result.get("deleted_at"):
             raise LookupError("Oportunidade na lixeira.")
         return result
@@ -433,6 +459,7 @@ class CrmStore:
                 old = self.owned(c, "leads", key, doctor)
                 contact = self.row(c, "contacts", old["contact_id"])
                 self.contact(c, contact["phone"], contact["name"], clinical=not destination["institute_key"])
+                old = self.owned(c, "leads", key, doctor)
                 if old["pipeline_id"] != pipeline:
                     raise ValueError("O cliente pertence a outro funil.")
                 if old["revision"] != p.get("revision"):
@@ -532,6 +559,7 @@ class CrmStore:
 
     def detail(self, key, doctor):
         from crm_attribution import lead_history
+        self.reconcile_patients()
         with self.db() as c:
             lead = self.owned(c, "leads", key, doctor)
             binding = self.row(c, "pipelines", lead["pipeline_id"])
@@ -627,8 +655,10 @@ class CrmStore:
         patients = list({l["experts_uuid"] for l in leads if not l.get("course_key") and l["experts_uuid"] and l["experts_status"] == "matched"})
         summaries = self.commercial_source.summaries(patients, doctor_name, include_search=include_search) if self.commercial_source and patients else {}
         for lead in leads:
+            if include_search:
+                lead["_experts_search"] = " ".join(key for r in c.execute("SELECT phone FROM contact_phones WHERE contact_id=?", (lead["contact_id"],)) for key in phone_keys(r[0]))
             if lead.get("course_key"):
-                aliases = [r[0] for r in c.execute("SELECT phone FROM contact_phones WHERE contact_id=?", (lead["contact_id"],))]
+                aliases = list(dict.fromkeys(key for r in c.execute("SELECT phone FROM contact_phones WHERE contact_id=?", (lead["contact_id"],)) for key in phone_keys(r[0])))
                 lead["course_data"] = self.course_source.summary(lead["institute_key"], lead["course_key"], [lead.get("email", "")], aliases) if self.course_source else {"state": "unavailable"}
                 lead["customer_value"] = {"state": "course", "tier": None}
                 lead["customer_history"] = {"sales_state": "unlinked", "quotes_state": "unlinked"}
@@ -654,7 +684,7 @@ class CrmStore:
             lead["customer_value"] = result
             lead["customer_history"] = history
             if include_search:
-                lead["_experts_search"] = data.get("search_text", "")
+                lead["_experts_search"] += " " + data.get("search_text", "")
 
     def appointments(self, key, doctor, scope="doctor", period="all", page=1):
         if scope == "clinic" and CRM_SCOPE.get() is not None:

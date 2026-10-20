@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urlencode
 
-from crm_patients import experts_phone, match_patient_name, search_key
+from crm_patients import experts_phone, match_patient_name, search_key, phone_keys
 from crm_store import Conflict, phone
 from institute_report import email
 
@@ -151,8 +151,11 @@ def extract(request, progress=lambda message: None, *, funnel="Organico Paranhos
 def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
     destination = store.owned(c, "pipelines", pipeline, doctor)
     course = bool(destination["course_key"])
-    contacts = {r["id"]: dict(r) for r in c.execute("SELECT * FROM contacts")}
-    phones = {r["phone"]: r["contact_id"] for r in c.execute("SELECT * FROM contact_phones")}
+    contacts = {r["id"]: dict(r) for r in c.execute("SELECT * FROM contacts WHERE merged_into=''")}
+    phones = {}
+    for r in c.execute("SELECT * FROM contact_phones"):
+        for key in phone_keys(r["phone"]):
+            phones.setdefault(key, set()).add(r["contact_id"])
     patients = {r["experts_uuid"]: r["id"] for r in contacts.values() if r["experts_uuid"]}
     existing = {r["contact_id"]: r["id"] for r in c.execute("SELECT id,contact_id FROM leads WHERE pipeline_id=?", (pipeline,))}
     refs = {r[0] for r in c.execute("SELECT source_lead FROM kommo_import_refs WHERE source_pipeline=?", (pack["source_pipeline"],))}
@@ -182,7 +185,7 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
                 reason = "identity"
         matched = next((m for m in matches if m["status"] == "matched"), None)
         patient = matched["uuid"] if matched else ""
-        found = {phones[n] for n in record["phones"] if n in phones}
+        found = {cid for n in record["phones"] for key in phone_keys(n) for cid in phones.get(key, ())}
         if patient in patients:
             found.add(patients[patient])
         if not reason and len(found) > 1:
@@ -200,7 +203,7 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
                                      "reason": REASONS[reason]})
             continue
         number = next((n for n, m in zip(record["phones"], matches) if m["status"] == "matched"),
-                      next((n for n in record["phones"] if phones.get(n) == cid), record["phones"][0]))
+                      next((n for n in record["phones"] if cid in phones.get(n, ())), record["phones"][0]))
         if unlinked and not cid:
             number = next(n for n, m in zip(record["phones"], matches) if m["status"] == "review")
         if unlinked and next(m for n, m in zip(record["phones"], matches) if n == number)["status"] != "review":
@@ -223,7 +226,8 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
         if patient:
             contacts[cid].update(experts_uuid=patient, name=matched["name"])
         for n in record["phones"]:
-            phones[n] = cid
+            for key in phone_keys(n):
+                phones.setdefault(key, set()).add(cid)
         if patient:
             patients[patient] = cid
         if cid not in touched:
@@ -347,6 +351,7 @@ def prepare(store, doctor, pipeline, *, background=True, source=None, retry_from
                             record.update(phones=numbers, reason="")
             if store.patient_directory and not destination["course_key"]:
                 store.patient_directory.invalidate()
+            store.reconcile_patients()
             with store.db() as c:
                 report = process(store, c, pack, doctor, pipeline)
                 c.execute("UPDATE kommo_import_jobs SET status='ready',message='Previa pronta. Nenhum cliente foi importado ainda.',payload=?,report=? WHERE id=?",
@@ -380,6 +385,7 @@ def commit(store, doctor, pipeline, job_id, actor):
         original.backup(backup)
     if store.patient_directory:
         store.patient_directory.invalidate()
+    store.reconcile_patients()
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
         target_row = store.owned(c, "pipelines", pipeline, doctor)
