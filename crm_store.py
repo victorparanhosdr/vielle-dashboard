@@ -245,6 +245,9 @@ class CrmStore:
                     location = location_from_phone(contact["phone"])
                     c.execute("UPDATE contacts SET service_location=?,service_location_source=? WHERE id=?",
                               (location, "ddd" if location else "pending", contact["id"]))
+        from crm_contact_phone import schema as phone_schema
+        with self.db() as c:
+            phone_schema(c)
         from crm_bots import schema
         with self.db() as c:
             schema(c)
@@ -270,7 +273,8 @@ class CrmStore:
             current = variants[0]
         if clinical is None:
             clinical = not current or not self.course_only(c, current["id"])
-        match = self.patient_lookup(number) if clinical else {"status": "new"}
+        manual_phone = current and c.execute("SELECT 1 FROM contact_phone_settings WHERE contact_id=?", (current["id"],)).fetchone()
+        match = self.patient_lookup(current["phone"] if manual_phone else number) if clinical else {"status": "new"}
         # Only the migration's trusted source name or its stored evidence may
         # resolve a shared phone. WhatsApp push names are never identity evidence.
         evidence = identity_name or (current["experts_match_name"] if current and current["experts_uuid"] else "")
@@ -357,6 +361,10 @@ class CrmStore:
         check_row(c, table, result)
         if table == "contacts" and result.get("merged_into"):
             raise Conflict("Este cadastro foi consolidado com o contato principal. Atualize o CRM.")
+        if table == "contacts":
+            from crm_contact_phone import decorate
+            result["canonical_phone"] = result["phone"]
+            decorate(c, result)
         if table == "leads" and result.get("deleted_at"):
             raise LookupError("Oportunidade na lixeira.")
         return result
@@ -463,7 +471,7 @@ class CrmStore:
             if p.get("id"):
                 old = self.owned(c, "leads", key, doctor)
                 contact = self.row(c, "contacts", old["contact_id"])
-                self.contact(c, contact["phone"], contact["name"], clinical=not destination["institute_key"])
+                self.contact(c, contact["canonical_phone"], contact["name"], clinical=not destination["institute_key"])
                 old = self.owned(c, "leads", key, doctor)
                 if old["pipeline_id"] != pipeline:
                     raise ValueError("O cliente pertence a outro funil.")
@@ -570,10 +578,12 @@ class CrmStore:
             binding = self.row(c, "pipelines", lead["pipeline_id"])
             lead.update({k: binding[k] for k in ("institute_key", "course_key")})
             contact = self.row(c, "contacts", lead["contact_id"])
-            self.contact(c, contact["phone"], contact["name"], clinical=not binding["institute_key"])
+            self.contact(c, contact["canonical_phone"], contact["name"], clinical=not binding["institute_key"])
             contact = self.row(c, "contacts", lead["contact_id"])
             lead.update({k: contact[k] for k in ("name", "phone", "opted_out", "experts_uuid", "experts_status", "experts_checked_at",
-                                               "service_location", "service_location_source", "service_location_revision")})
+                                               "service_location", "service_location_source", "service_location_revision", "phone_revision", "phone_removed")})
+            from crm_contact_phone import editable
+            lead["can_edit_phone"] = editable(c, contact["id"])
             if lead["course_key"] and lead["source_name"]:
                 lead["name"] = lead["source_name"]
             self.attach_appointments([lead], self.row(c, "doctors", doctor)["name"])
@@ -729,6 +739,8 @@ class CrmStore:
     def filtered_leads(self, c, doctor, doctor_name, filters):
         catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
         leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])]
+        from crm_contact_phone import attach
+        attach(c, leads)
         location_pending = {}
         for lead in leads:
             if not catalog[lead["pipeline_id"]]["course_key"] and not lead["service_location"]:
@@ -827,6 +839,9 @@ class CrmStore:
 
     @staticmethod
     def conversation_peer(c, channel, contact, fallback):
+        setting = c.execute("SELECT phone FROM contact_phone_settings WHERE contact_id=?", (contact,)).fetchone()
+        if setting is not None:
+            return setting["phone"]
         peer = c.execute("""SELECT recipient_phone FROM messages WHERE channel_id=? AND contact_id=? AND recipient_phone<>''
             AND (direction='in' OR status IN ('queued','sending','sent','unknown')) ORDER BY created_at DESC,rowid DESC LIMIT 1""", (channel, contact)).fetchone()
         return peer[0] if peer else fallback
@@ -849,6 +864,8 @@ class CrmStore:
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
                 JOIN channels ch ON ch.id=t.channel_id ORDER BY m.created_at DESC,m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
             items = [dict(r) for r in rows if contact_visible(c, r["contact_id"], doctor)]
+            from crm_contact_phone import attach
+            attach(c, items)
             catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
             for item in items:
                 item["doctor_id"] = doctor
@@ -937,7 +954,7 @@ class CrmStore:
             attach(c, messages, legacy=True)
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
-            allowed = not ct["opted_out"] and not ch["archived_at"]
+            allowed = not ct["opted_out"] and not ch["archived_at"] and bool(ct["phone"])
             return {"contact": ct, "channel": ch, "messages": messages, "has_older": has_older,
                     "inbound_cursor": max((m["seq"] for m in messages if m["direction"] == "in"), default=0),
                     **self.conversation_status(c, channel, contact),
@@ -1032,6 +1049,8 @@ class CrmStore:
                 raise ValueError("Envios indisponiveis. Conecte o numero e habilite o servidor WhatsApp.")
             if ct["opted_out"]:
                 raise ValueError("Contato descadastrado. Envio bloqueado.")
+            if not ct["phone"]:
+                raise ValueError("Telefone removido da ficha. Cadastre um telefone antes de enviar.")
             recipient = self.conversation_peer(c, source, contact, ct["phone"])
             if p.get("phone") and phone(p["phone"]) != recipient:
                 raise Conflict("O telefone desta conversa mudou. Atualize antes de enviar.")
@@ -1103,7 +1122,7 @@ class CrmStore:
                 if scope["institute_key"]:
                     institutes.add(scope["institute_key"])
                 contact = self.row(c, "contacts", lead["contact_id"])
-                if contact["opted_out"] or contact["experts_status"] == "review":
+                if contact["opted_out"] or contact["experts_status"] == "review" or not contact["phone"]:
                     raise ValueError("Contato descadastrado ou cadastro a conferir. Envio bloqueado.")
                 if scope["course_key"] and lead["source_name"]:
                     contact["name"] = lead["source_name"]
@@ -1179,6 +1198,7 @@ class CrmStore:
             for key in stale:
                 c.execute("UPDATE campaigns SET status='paused',last_error='Envio sem confirmacao. Revisao necessaria.' WHERE id=?", (key,))
             c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE status='queued' AND contact_id IN (SELECT id FROM contacts WHERE opted_out=1)")
+            c.execute("UPDATE messages SET status='skipped',skip_reason='Telefone removido da ficha' WHERE status='queued' AND contact_id IN (SELECT contact_id FROM contact_phone_settings WHERE phone='')")
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Oportunidade indisponivel para este doutor'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND NOT EXISTS
                 (SELECT 1 FROM leads l JOIN campaigns ca ON ca.doctor_id=l.doctor_id

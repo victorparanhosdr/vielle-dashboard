@@ -274,6 +274,10 @@ def _dispatch(handler, parsed, store, query, user, action):
             store.activity(p, actor)
         elif action == "service-location":
             store.save_service_location(p, actor)
+        elif action == "phone-update":
+            from crm_contact_phone import save
+            result["id"] = save(store, p, handler.current_user)
+            result["lead"] = store.detail(result["id"], p["doctor_id"])["lead"]
         elif action == "conversation-close":
             result.update(store.close_conversation(p, handler.current_user["id"]))
         elif action == "conversation-sync":

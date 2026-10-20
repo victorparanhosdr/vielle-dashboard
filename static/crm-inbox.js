@@ -1,6 +1,6 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
@@ -176,6 +176,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     panel.hidden=false;
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
     if(l){transferControl(panel,l);panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
+    if(l)phoneControl(panel,l);
     if(l){const calls=document.createElement("button");calls.dataset.commercial="calls";calls.innerHTML=`${icon("phone-call")} Ligações e gravações`;panel.append(calls);}
     if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await changeStage(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
     if(l){panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",customerValuePanel(l.customer_value));$("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${customerValueBadge(l.customer_value)}</span>`);const booking=document.createElement("div");booking.className="contactAppointment";booking.innerHTML=appointmentBadge(l.appointment);panel.querySelector("#openProfile").before(booking);const shortcuts=document.createElement("div");shortcuts.className="commercialShortcuts";shortcuts.innerHTML=`<button data-commercial="sales">${icon("shopping-bag")} Vendas fechadas</button><button data-commercial="quotes">${icon("file-clock")} Orçamentos pendentes</button><button data-commercial="appointments">${icon("calendar-days")} Agendamentos</button>`;panel.append(shortcuts);}
@@ -221,10 +222,21 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const button=document.createElement("button");button.type="button";button.innerHTML=`${icon("arrow-right-left")} Transferir lead`;
     button.onclick=()=>transferLead(lead,profileContext());panel.querySelector("#openProfile").before(button);
   }
+  function phoneControl(panel,lead){
+    panel.querySelector(".contactSummary>p").textContent=lead.phone?"+"+lead.phone:"Sem telefone cadastrado";
+    if($("voiceCall"))$("voiceCall").disabled=!lead.phone;
+    if(!editPhone)return;
+    const controls=document.createElement("div");controls.className="contactPhoneActions";
+    controls.innerHTML=`<button type="button" data-edit-phone>${icon("square-pen")} ${lead.phone?"Editar telefone":"Adicionar telefone"}</button>${lead.phone?`<button type="button" data-remove-phone class="icon-button" title="Remover só o telefone" aria-label="Remover só o telefone">${icon("phone-off")}</button>`:""}`;
+    controls.querySelector("[data-edit-phone]").onclick=()=>editPhone(lead,profileContext());
+    controls.querySelector("[data-remove-phone]")?.addEventListener("click",()=>editPhone(lead,profileContext(),true));
+    panel.querySelector(".contactSummary>p").after(controls);
+  }
   function drawCourseInfo(l,p,panel){
     panel.hidden=false;
     panel.innerHTML=`<div class="contactSummary"><span class="eyebrow">FICHA DO CURSO</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p>${l.email?`<p class="courseEmail">${esc(l.email)}</p>`:""}${courses.badge(l)}${courses.panel(l)}</div><div class="patientRefreshControls"><button id="refreshCourseContact">${icon("refresh-cw")} Atualizar Kiwify</button><p id="courseRefreshState" role="status" hidden></p></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name || "RegenCode")}</span><h3>${esc(l.title)}</h3><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${esc(s.id)}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha do curso</button><button data-commercial="orders">${icon("receipt-text")} Pedidos Kiwify</button><button data-commercial="calls">${icon("phone-call")} Ligações e gravações</button>`;
     transferControl(panel,l);
+    phoneControl(panel,l);
     $("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${courses.badge(l)}</span>`);
     $("quickStage").onsubmit=async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button");b.disabled=true;try{await changeStage(l,new FormData(e.currentTarget).get("stage_id"));}catch(err){chatError(err.message);}finally{if(b.isConnected)b.disabled=false;}};
     $("refreshCourseContact").onclick=()=>{const doc=owner;courses.refresh(l,$("refreshCourseContact"),$("courseRefreshState"),updated=>{selectedRecord=updated;drawInfo();refreshList();},()=>Boolean(root && owner===doc && leadFor()?.id===l.id));};
@@ -242,7 +254,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     $("replyBody").maxLength=media.value() && media.value().kind!=="audio"?Math.min(1000,1024-senderName().length-4):3000;
     $("replyBody").placeholder=media.hasDraft()?"Legenda opcional…":"Escreva uma mensagem…";
     $("replyChannel").disabled=sending || archived;
-    $("replyState").textContent=archived?"Número removido · histórico disponível para consulta":!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"";
+    $("replyState").textContent=archived?"Número removido · histórico disponível para consulta":threadData?.contact.phone_removed?"Telefone removido da ficha · cadastre um telefone para responder":!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"";
     syncResolution();
   }
   function syncResolution() {
@@ -301,7 +313,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
         icons();
       }
       $("chatName").textContent=data.contact.name;
-      $("chatName").nextElementSibling.textContent=`${data.channel.name} · Cliente +${data.reply_phone}`;
+      $("chatName").nextElementSibling.textContent=`${data.channel.name} · ${data.reply_phone?"Cliente +"+data.reply_phone:"Telefone removido da ficha"}`;
       syncSend();
     }catch(e){if(root && request===threadSeq)chatError(e.message);}
   }
@@ -334,5 +346,6 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
   setInterval(updateTimers,1000);
   function setFilter(kind){if(!["all","unread","waiting"].includes(kind))return;filter=kind;if(root){root.querySelectorAll("[data-inbox-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.inboxFilter===kind)));refreshList();}}
-  return {mount,unmount,openLead,focus,setFilter};
+  function updateLead(lead){if(root && selected && selected.lead_id===lead.id){selectedRecord=lead;drawInfo();refreshThread();refreshList();}}
+  return {mount,unmount,openLead,focus,setFilter,updateLead,clearSelection:()=>{if(root)clearChat();}};
 };

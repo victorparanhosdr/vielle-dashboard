@@ -232,6 +232,8 @@ class VoiceService:
             self.expire(c, now)
             lead = self.store.owned(c, "leads", payload.get("lead_id"), doctor)
             contact = self.store.row(c, "contacts", lead["contact_id"])
+            if not contact["phone"]:
+                raise ValueError("Telefone removido da ficha. Cadastre um telefone antes de ligar.")
             if contact["opted_out"]:
                 raise ValueError("Contato descadastrado. As ligacoes para este contato estao bloqueadas.")
             if contact["experts_status"] == "review":

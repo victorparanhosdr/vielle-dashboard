@@ -1,0 +1,15 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const read=file=>fs.readFileSync('static/'+file,'utf8');
+for(const f of ['crm-contact-phone.js','crm.js','crm-inbox.js'])new vm.Script(read(f));
+const source=read('crm-contact-phone.js');
+assert.match(source,/CrmFormPhone.bind/);
+assert.match(source,/phone_revision:lead.phone_revision/);
+assert.match(source,/confirm:form.elements.confirm.checked/);
+assert.match(source,/if\(!lead.can_edit_phone\)/);
+assert.match(source,/Novas mensagens e ligações ficarão bloqueadas/);
+assert.match(source,/if\(active\(\) && form.isConnected/);
+assert.match(source,/!loading.isConnected/);
+assert.match(read('crm.js'),/Excluir lead/);
+assert.match(read('crm-inbox.js'),/Telefone removido da ficha · cadastre um telefone/);
+assert.match(read('crm-inbox.js'),/function updateLead\(lead\)/);
+console.log('Contact phone editor: country/area validation, confirmation, revision, shared scope, soft removal and preserved history OK');

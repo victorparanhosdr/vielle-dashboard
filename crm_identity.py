@@ -57,6 +57,8 @@ def merge(c, store, contacts, match):
     manual_locations = {r["service_location"] for r in contacts if r["service_location_source"] == "manual"}
     if len(manual_locations) > 1:
         return None
+    if any(c.execute("SELECT 1 FROM contact_phone_settings WHERE contact_id=?", (r["id"],)).fetchone() for r in contacts):
+        return None
     for contact in contacts:
         if contact["experts_uuid"] and contact["experts_uuid"] != patient:
             return None

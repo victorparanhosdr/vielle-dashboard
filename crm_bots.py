@@ -339,6 +339,8 @@ class BotStore:
                 run = dict(row)
                 bot = dict(c.execute("SELECT * FROM crm_bots WHERE id=?", (run["bot_id"],)).fetchone())
                 lead = dict(c.execute("SELECT l.*,ct.name,ct.phone,ct.opted_out,ct.service_location FROM leads l JOIN contacts ct ON ct.id=l.contact_id WHERE l.id=?", (run["lead_id"],)).fetchone())
+                from crm_contact_phone import attach
+                attach(c, [lead])
                 info = json.loads(run["definition"])
                 inbound = c.execute("SELECT coalesce(max(rowid),0) FROM messages WHERE contact_id=? AND direction='in'", (lead["contact_id"],)).fetchone()[0]
                 reason = ""
@@ -376,6 +378,8 @@ class BotStore:
             if message[0] != "sent":
                 raise ValueError("Envio sem confirmacao ou bloqueado. Nao sera reenviado automaticamente.")
         elif kind in {"message", "form"}:
+            if not lead["phone"]:
+                raise ValueError("Telefone removido da ficha. Mensagem automatica nao enviada.")
             channel = data.get("channel_id") or run["channel_id"]
             if not channel:
                 raise ValueError("Escolha um numero no bloco para iniciar fora de uma conversa.")

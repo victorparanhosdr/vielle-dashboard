@@ -460,6 +460,34 @@ class HttpAuthTests(unittest.TestCase):
         with store.db() as c:
             self.assertEqual(store.row(c, "messages", previous)["status"], "unknown")
 
+    def test_contact_phone_edit_remove_require_scope_revision_and_confirmation(self):
+        from crm_api import store_for
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Permitido", "Restrito"]})
+        doctor = store.listing()["doctor_id"]
+        allowed, hidden = store.listing(doctor)["pipelines"]
+        lead = store.lead({"doctor_id": doctor, "pipeline_id": allowed["id"], "stage_id": allowed["stages"][0]["id"],
+            "phone": "5500000000002", "name": "Sintetico", "title": "Teste"}, "Equipe")
+        self.limit_permissions(["crm.view"])
+        cookie, _ = self.login()
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope={doctor: [allowed["id"]]})
+        path = f"/api/crm/phone-update?clinic=vielle&doctor={doctor}"
+        payload = {"id": lead, "doctor_id": doctor, "phone": "+55 11 98765-4321", "phone_revision": 1, "confirm": True}
+        headers = {"X-DOC4DOCS-Request": "1"}
+        self.assertEqual(self.request("POST", path, payload, cookie)[0], 403)
+        self.assertEqual(self.request("POST", path, {**payload, "confirm": False}, cookie, headers)[0], 400)
+        status, _, raw = self.request("POST", path, payload, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        updated = json.loads(raw)["lead"]
+        self.assertEqual(updated["phone"], "5511987654321")
+        self.assertEqual(self.request("POST", path, payload, cookie, headers)[0], 409)
+        status, _, raw = self.request("POST", path, {**payload, "phone_revision": updated["phone_revision"], "remove": True}, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertTrue(json.loads(raw)["lead"]["phone_removed"])
+        with store.db() as c:
+            c.execute("UPDATE leads SET pipeline_id=?,stage_id=? WHERE id=?", (hidden["id"], hidden["stages"][0]["id"], lead))
+        self.assertEqual(self.request("POST", path, {**payload, "phone_revision": 3}, cookie, headers)[0], 403)
+
     def test_crm_campaign_stays_blocked_when_manual_replies_are_enabled(self):
         from crm_api import store_for
         store=store_for(self.store)

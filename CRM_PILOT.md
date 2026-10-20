@@ -36,6 +36,27 @@ Evolution v2 service. Outbound sending is disabled by default.
 - The pilot listing is limited to 1,000 opportunities per doctor and 100 recent
   campaigns. Scale to paginated queries before expanding the pilot.
 
+## Contact Phone Editing and Removal
+
+The lead profile and attendance record have a validated country/area-code phone
+editor and a separate remove-phone command. Lead deletion is a distinct, labelled
+trash action. Phone changes require confirmation, a contact revision and access
+to every funnel sharing that contact. Another contact's number or a different
+Experts patient is rejected rather than silently merging identities.
+
+Changes keep contact/lead IDs, attribution, conversations, media and clinical
+records. Old destinations remain in message/call history and a private phone edit
+audit. New replies use the explicitly saved phone, not the old thread's peer;
+stale composer destinations are rejected. Removal clears the active phone in
+profiles and lists, blocks new WhatsApp/voice/automatic sends, and preserves the
+identity phone privately for history/reconciliation. Later inbound events do not
+reactivate it. A valid phone can be entered again from the same editor.
+
+Queued messages and active bots are stopped on change, never silently redirected.
+In-flight messages/calls must finish first; unconfirmed sends remain unconfirmed.
+Automatic identity merges do not override a manually edited phone. CRM phone
+editing does not modify any phone or financial record in Experts or Kiwify.
+
 ## Multi-Professional Attendance
 
 Attendance has a checkbox-based professional selector, separate from the single

@@ -20,11 +20,12 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
                 if not message_allowed(c, item["bot_run_id"]):
                     c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (item["id"],))
                     return True
-            current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,ct.phone,ct.experts_status,ch.state FROM messages m
+            current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,coalesce(ps.phone,ct.phone) phone,ct.experts_status,ch.state FROM messages m
                 LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN contacts ct ON ct.id=m.contact_id
+                LEFT JOIN contact_phone_settings ps ON ps.contact_id=ct.id
                 JOIN channels ch ON ch.id=m.channel_id WHERE m.id=?""", (item["id"],)).fetchone()
-            if current["status"] != "running" or current["opted_out"] or current["state"] != "open":
-                status = "skipped" if current["opted_out"] else "cancelled" if current["status"] == "cancelled" else "queued"
+            if current["status"] != "running" or current["opted_out"] or not current["phone"] or current["state"] != "open":
+                status = "skipped" if current["opted_out"] or not current["phone"] else "cancelled" if current["status"] == "cancelled" else "queued"
                 c.execute("UPDATE messages SET status=? WHERE id=?", (status, item["id"]))
                 return True
             if (item["campaign_id"] or item.get("bot_run_id")) and (current["experts_status"] == "review" or current["phone"] != item["phone"]):

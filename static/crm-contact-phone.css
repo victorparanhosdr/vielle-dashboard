@@ -1,0 +1,12 @@
+.contactPhoneActions{display:flex;align-items:center;gap:7px;margin:10px 0 16px;flex-wrap:wrap}
+.crmDesktop .contactPhoneActions button{width:auto;min-height:32px;padding:6px 9px;font-size:11px}
+.crmDesktop .contactPhoneActions .icon-button{width:32px;padding:6px}
+.contactPhoneActions svg{width:14px;height:14px;flex:none}
+.contactPhoneForm{--flow-answer:#293a32;--flow-accent:#286a50;--flow-background:#fff;display:grid;gap:16px}
+.contactPhoneForm .flowPhone{border:1px solid #d7e3db;border-radius:6px;margin:0;padding:0 12px;box-sizing:border-box;gap:12px}
+.contactPhoneForm .flowInput{font-size:17px!important;background:transparent}
+.contactPhoneForm .flowCountryFlag{font-size:21px}
+.contactPhoneForm>p{line-height:1.65;font-size:13px;margin:0}
+.crmPage .contactPhoneForm label.check{flex-direction:row;align-items:flex-start;line-height:1.5;gap:9px}
+.contactPhoneForm .check input{flex:none;width:16px;height:16px;min-height:0!important;margin:1px 0}
+@media(max-width:600px){.contactPhoneForm .flowInput{font-size:16px!important}.contactPhoneForm .flowPhone{gap:9px;padding-inline:9px}}
