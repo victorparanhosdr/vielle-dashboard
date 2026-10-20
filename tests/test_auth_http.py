@@ -253,6 +253,26 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
 
+    def test_crm_dashboard_permission_and_operator_visibility(self):
+        from crm_api import store_for
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        doctor = store.listing()["doctor_id"]
+        path = f"/api/crm/dashboard?clinic=vielle&doctor={doctor}"
+        cookie, _ = self.login()
+        self.assertEqual(self.request("GET", path)[0], 401)
+        self.assertEqual(self.request("GET", path, cookie=cookie)[0], 403)
+        self.limit_permissions(["crm.view"])
+        status, _, raw = self.request("GET", path, cookie=cookie)
+        self.assertEqual(status, 200, raw)
+        self.assertIsNone(json.loads(raw)["operators"])
+        master = self.master_cookie()
+        status, _, raw = self.request("GET", path, cookie=master)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["operators"], [])
+        self.assertEqual(self.request("GET", path + "&days=365", cookie=master)[0], 400)
+        self.assertEqual(self.request("GET", path.replace("clinic=vielle", "clinic=inspire"), cookie=master)[0], 403)
+
     def test_crm_staff_permission_allows_work_without_master_configuration(self):
         from crm_api import store_for, MASTER_ACTIONS
         store = store_for(self.store)

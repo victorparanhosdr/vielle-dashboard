@@ -6,7 +6,8 @@
   const icons = () => window.lucide?.createIcons();
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:new URLSearchParams(location.search).get("mode")==="inbox"?"inbox":"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const requestedMode=new URLSearchParams(location.search).get("mode");
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",pipeline:"",mode:["dashboard","board","inbox","campaigns","channels","templates"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
   let presentation="board",listPicker=null,listSeed=null,listScope="";
   const tierLabels={bronze:"Bronze",silver:"Prata",gold:"Ouro"};
   const locationLabels={capelinha:"Capelinha","belo-horizonte":"Belo Horizonte","sao-paulo":"São Paulo"};
@@ -204,15 +205,20 @@
   }
   function render() {
     if(!state.data) return;
+    document.body.dataset.crmMode=state.mode;
+    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens"})[state.mode];
+    const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);history.replaceState(null,"",url);
+    $("newLead").hidden=!["board","inbox"].includes(state.mode);
+    $("addDoctor").hidden=!state.data.can_manage || !["board","channels"].includes(state.mode);
     kanban.destroy();
     if(listPicker){listSeed=listPicker.payload();listPicker.destroy();listPicker=null;}
     const oldBoard=$("crmView").querySelector(".crmBoard"), oldPipeline=oldBoard?.dataset.pipeline, scrollX=oldBoard?.scrollLeft || 0;
     $("pipelineField").hidden=state.mode!=="board";$("newLead").disabled=!pipeline();
     $("crmSearchTools").hidden=!clientMode();
-    document.querySelector('.journey').hidden=state.mode==="board" && presentation==="list";
+    document.querySelector('.journey').hidden=!document.body.classList.contains("crmJourneyOpen");
     document.querySelector('.crmSort').hidden=state.mode==="board" && presentation==="list";
     document.querySelector('.crmSearchBar').classList.toggle('columnSorting',state.mode==="board" && presentation==="list");
-    $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="inbox" ? '<span class="connectionNote">WhatsApp · Atendimento da equipe</span>' : state.mode==="campaigns" ? `<span class="connectionNote">${state.data.campaigns_enabled?"Disparos habilitados":"Disparos de campanha desativados"}</span><button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : `<button class="primary" id="newChannel">${icon("plus")} Número</button>`;
+    $("viewActions").innerHTML=state.mode==="board" ? `<div class="crmPresentation" role="group" aria-label="Visualização dos funis"><button id="showKanban" aria-pressed="${presentation==='board'}" title="Kanban">${icon("columns-3")} Kanban</button><button id="showList" aria-pressed="${presentation==='list'}" title="Lista">${icon("list")} Lista</button></div><button id="editPipeline" ${pipeline()?"":"disabled"}>${icon("sliders-horizontal")} Fases</button><button id="newPipeline">${icon("plus")} Funil</button>` : state.mode==="campaigns" ? `<button class="primary" id="newCampaign">${icon("plus")} Campanha</button>` : state.mode==="channels" ? `<button class="primary" id="newChannel">${icon("plus")} Número</button>` : "";
     if(state.mode==="board" && pipeline()?.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase()==="organico paranhos")$("viewActions").insertAdjacentHTML("beforeend",`<button id="importKommo">${icon("download")} Importar Kommo</button>`);
     if(!state.data.can_manage){
       ["editPipeline","newPipeline","newChannel","importKommo"].forEach(id=>{if($(id))$(id).hidden=true;});
@@ -220,7 +226,7 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():state.mode==="campaigns"?"":channels();
+    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard"].includes(state.mode)?"":state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
     if(!state.data.can_manage)$("crmView").querySelectorAll("[data-connect]").forEach(button=>button.hidden=true);
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
@@ -232,6 +238,8 @@
     if(state.mode==="channels")voice.settings($("voiceSettings"),state.doctor);
     }
     if(state.mode==="campaigns")campaignCenter.mount($("crmView"));else campaignCenter.unmount();
+    if(state.mode==="dashboard")dashboard.mount($("crmView"),state.doctor);else dashboard.unmount();
+    if(state.mode==="templates")templateLibrary.manage($("crmTemplatesLibrary"));else templateLibrary.destroy();
     document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===state.mode)));
     icons();
   }
@@ -480,6 +488,8 @@
   const audiencePicker=window.createCrmAudience({api,esc,icon,icons});
   const campaignCenter=window.createCrmCampaigns({state,api,esc,icon,icons,modal,error,load,audiencePicker});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars});
+  const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
+  const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});
   window.addEventListener("doc4docs-open-attendance",()=>{
     if(!state.data)return;
     if(state.mode!=="inbox"){state.mode="inbox";render();load();}
@@ -537,7 +547,7 @@
     try{await moveLead(l,col.dataset.stage);}catch(err){notice(err.message);}
   };
   function sessionAllowed(data){return Boolean(data?.clinics?.some(c=>c.key==="vielle") && data.permissions?.vielle?.includes("crm.view"));}
-  function session(data){state.session=data;if(!sessionAllowed(data)){inbox.unmount();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}$("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();}
+  function session(data){state.session=data;if(!sessionAllowed(data)){inbox.unmount();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}$("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();}
   window.addEventListener("doc4docs-session",e=>session(e.detail));
   if(window.doc4docsSession)session(window.doc4docsSession);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});

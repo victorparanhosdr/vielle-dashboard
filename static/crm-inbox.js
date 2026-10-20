@@ -4,6 +4,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
+  let clockOffset=0;
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
   const media=window.createCrmMedia({esc,icon,icons,onError:chatError,onBusy:()=>syncSend(),onChange:value=>{
@@ -25,6 +26,18 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const messageText=m=>m.sender_name && m.body===`*${m.sender_name}*`?"":m.sender_name && m.body.startsWith(`*${m.sender_name}*\n\n`)?m.body.slice(m.sender_name.length+4):m.body;
   const messagePreview=m=>messageText(m) || ({audio:"Áudio",document:"Arquivo",image:"Imagem",video:"Vídeo"}[m.media_kind] || "");
   function chatError(message="") {if($("chatError")){$("chatError").textContent=message;$("chatError").hidden=!message;}}
+  function waitingTime(seconds){
+    seconds=Math.max(0,Math.floor(seconds));const pad=n=>String(n).padStart(2,"0"),h=Math.floor(seconds/3600),m=Math.floor(seconds/60)%60,s=seconds%60;
+    return h>=24?`${Math.floor(h/24)}d ${pad(h%24)}h`:h?`${pad(h)}:${pad(m)}:${pad(s)}`:`${pad(m)}:${pad(s)}`;
+  }
+  function waitingTimer(c){
+    const since=Number(c.waiting_since);if(!c.unread || !Number.isFinite(since) || since<=0)return date(c.created_at);
+    return `<time class="crmWaitTimer" data-wait-since="${since}" title="Sem resposta desde ${esc(new Date(since*1000).toLocaleString("pt-BR"))}">${icon("clock-3")}<span></span></time>`;
+  }
+  function updateTimers(){
+    if(!root || document.hidden)return;const now=Date.now()/1000+clockOffset;
+    root.querySelectorAll("[data-wait-since]").forEach(node=>{const seconds=now-Number(node.dataset.waitSince);node.querySelector("span").textContent=waitingTime(seconds);node.classList.toggle("overdue",seconds>=3600);node.setAttribute("aria-label",`Sem resposta há ${waitingTime(seconds)}`);});
+  }
   function focus() {
     cancelAnimationFrame(focusFrame);
     const workspace=$("inboxWorkspace");if(!workspace)return;
@@ -35,7 +48,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(changed){media.destroy();chatSearch.destroy();templates.destroy();owner=state.doctor;selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;}
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
-    root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><h2>Ponto de atendimento</h2><span id="inboxCount"></span></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Aguardando"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
+    root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
+    $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
     $("inboxChannel").onchange=()=>{channel=$("inboxChannel").value;refreshList();};
     $("inboxWorkspace").onclick=event=>{
       const b=event.target.closest("button");if(!b)return;
@@ -60,6 +74,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const data=await api("inbox",undefined,{doctor:doc,channel,kind:filter,search:state.search});
       if(!root || request!==listSeq || doc!==owner)return;
       list=data.conversations;
+      if(Number.isFinite(data.server_time))clockOffset=data.server_time-Date.now()/1000;
       $("inboxCount").textContent=`${data.counts.all} conversas`;
       root.querySelectorAll("[data-count]").forEach(n=>n.textContent=data.counts[n.dataset.count]);
       $("inboxLimit").hidden=data.total<=list.length;$("inboxLimit").textContent=`Exibindo ${list.length} de ${data.total}. Refine a busca.`;
@@ -68,8 +83,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function drawList() {
     if(!root)return;
-    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,owner,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${date(c.created_at)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
-    icons();
+    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,owner,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${waitingTimer(c)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
+    icons();updateTimers();
   }
   async function openLead(l) {
     const doc=owner, request=++openSeq;
@@ -241,5 +256,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function unmount(){media.destroy();chatSearch.destroy();templates.destroy();cancelAnimationFrame(focusFrame);focusFrame=0;root=null;listSeq++;threadSeq++;openSeq++;}
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
-  return {mount,unmount,openLead,focus};
+  setInterval(updateTimers,1000);
+  function setFilter(kind){if(!["all","unread","waiting"].includes(kind))return;filter=kind;if(root){root.querySelectorAll("[data-inbox-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.inboxFilter===kind)));refreshList();}}
+  return {mount,unmount,openLead,focus,setFilter};
 };

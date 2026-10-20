@@ -39,7 +39,7 @@ class SharedDesignTests(unittest.TestCase):
                 page = Page(path.read_text())
                 self.assertTrue(page.page)
                 self.assertIn("/design-system.css", page.styles)
-                self.assertEqual(page.styles[-1], "/crm.css" if page.page == "crm" else "/design-system.css")
+                self.assertEqual(page.styles[-1], "/crm-shell.css" if page.page == "crm" else "/design-system.css")
                 self.assertEqual(len(page.ids), len(set(page.ids)))
                 if page.page != "login":
                     self.assertIn("/app-shell.js", page.scripts)

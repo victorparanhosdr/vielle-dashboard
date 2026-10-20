@@ -11,6 +11,7 @@ import unicodedata
 import uuid
 from zoneinfo import ZoneInfo
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
+from crm_metrics import THREADS_CTE
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
@@ -679,19 +680,7 @@ class CrmStore:
             if channel:
                 self.owned(c, "channels", channel, doctor)
             # Campaign drafts are not conversations until dispatch has actually begun.
-            rows = c.execute("""WITH visible AS (
-                SELECT m.rowid seq,m.*,row_number() OVER(PARTITION BY m.channel_id,m.contact_id ORDER BY m.created_at DESC,m.rowid DESC) newest
-                FROM messages m JOIN channels ch ON ch.id=m.channel_id
-                WHERE ch.doctor_id=? AND (?='' OR ch.id=?) AND
-                (m.direction='in' OR m.status IN ('sent','sending','unknown') OR (m.campaign_id IS NULL AND m.status='queued'))
-            ), threads AS (
-                SELECT channel_id,contact_id,max(CASE WHEN newest=1 THEN seq END) latest,
-                sum(CASE WHEN direction='in' AND seq>coalesce((SELECT resolved_through FROM conversation_resolutions r
-                    WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0)
-                    AND coalesce(nullif(provider_timestamp,0),created_at)>=coalesce((SELECT external_reply_at FROM conversation_resolutions r
-                    WHERE r.channel_id=visible.channel_id AND r.contact_id=visible.contact_id),0) THEN 1 ELSE 0 END) unread
-                FROM visible GROUP BY channel_id,contact_id
-            ) SELECT m.*,t.unread,(SELECT kind FROM message_media WHERE id=m.media_id) media_kind,
+            rows = c.execute(THREADS_CTE + """SELECT m.*,t.unread,t.waiting_since,(SELECT kind FROM message_media WHERE id=m.media_id) media_kind,
                 ct.name,ct.phone,ct.experts_status,ct.experts_uuid,ct.opted_out,
                 ct.service_location,ct.service_location_source,ct.service_location_revision,ch.name channel_name,
                 (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
@@ -711,7 +700,9 @@ class CrmStore:
             counts = {"all": len(items), "unread": sum(r["unread"] > 0 for r in items),
                       "waiting": sum(r["unread"] > 0 for r in items)}
             items = [r for r in items if kind == "all" or r["unread"]]
-            return {"conversations": items[:200], "total": len(items), "counts": counts, "filter_incomplete": incomplete}
+            if kind == "waiting":
+                items.sort(key=lambda r: r["waiting_since"] or float("inf"))
+            return {"conversations": items[:200], "total": len(items), "counts": counts, "filter_incomplete": incomplete, "server_time": time.time()}
 
     @staticmethod
     def conversation_marker(c, channel, contact, marker):

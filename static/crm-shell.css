@@ -1,0 +1,168 @@
+/* Dedicated CRM workspace. Shared account and notification controls remain intact. */
+body.crmDesktop{--ui-bg:#f6f8f8;--ui-surface:#fcfdfd;--ui-ink:#293a32;--ui-green:#1e624b;--ui-muted:#718078;--ui-line:#e0e7e3;--crm-rail:64px;--crm-header-height:64px;display:grid;grid-template-columns:var(--crm-rail) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden;padding:0!important;background:var(--ui-bg);}
+.crmDesktop>.appChrome{grid-column:2;grid-row:1;position:relative;top:auto;min-width:0;z-index:60;background:#fcfdfdf5;box-shadow:none;border:0;}
+.crmDesktop .appTopbar{min-height:64px;padding:9px 22px;gap:20px;flex-wrap:nowrap;}
+.crmDesktop .appBrand{flex:0 0 auto;font-size:13px;font-weight:700;color:#164f3c;letter-spacing:0;}
+.crmDesktop .appContext{padding:0 0 0 18px;max-width:210px;flex:none;}
+.crmDesktop .appContext a{border:0!important;background:none!important;padding:5px 0;min-height:34px;font-size:13px;}
+body.crmPage.crmDesktop .appAreas,body.crmPage.crmDesktop .appNav,body.crmPage.crmDesktop .appMobileNavToggle,body.crmPage.crmDesktop .crmTabs{display:none!important;}
+.crmDesktop .appContext svg:first-child{display:none;}
+.crmDesktop .appHeaderActions{margin-left:0;gap:10px;}
+.crmDesktop .appAccountToggle{min-height:36px;gap:8px;font-size:12px;}
+.crmDesktop .appAvatar{width:30px;height:30px;font-size:11px;background:#e3ece6;color:#416552;}
+.crmDesktop .appUserName{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.crmDesktop .appIconButton{width:34px;height:34px;background:transparent!important;border-color:transparent!important;}
+.crmDesktop .appNotificationBadge{background:#276a51;border-color:#fcfdfd;}
+.crmDesktop .appNotificationPanel{top:calc(100% + 6px);right:16px;}
+.crmDesktop .crmHeaderDoctor{font-size:0;gap:0;flex:0 1 260px;min-width:120px;}
+.crmDesktop .crmHeaderDoctor select{font-size:13px;min-height:36px!important;padding:6px 24px 6px 8px;background:transparent!important;border-color:transparent!important;}
+.crmDesktop .crmHeaderSearch{margin-left:auto;flex:0 1 340px;min-width:160px;background:#f1f4f4;}
+.crmDesktop .crmHeaderSearch input{font-size:13px;min-height:36px!important;padding:7px 0;background:transparent!important;}
+.crmDesktop:not([data-crm-mode=board]):not([data-crm-mode=inbox]) .crmHeaderSearch{display:none;}
+.crmDesktop:not([data-crm-mode=board]):not([data-crm-mode=inbox]) .appHeaderActions{margin-left:auto;}
+.crmDesktop .crmRail{grid-column:1;grid-row:1/-1;z-index:65;display:flex;flex-direction:column;align-items:center;gap:26px;padding:16px 10px 14px;background:#103d32;min-height:0;}
+.crmDesktop .crmRailBrand{height:32px;display:flex;align-items:center;justify-content:center;color:#f0f5f2;text-decoration:none;font-size:17px;font-weight:650;}
+.crmDesktop .crmRailModules,.crmDesktop .crmRailBottom{display:flex;flex-direction:column;align-items:center;gap:8px;}
+.crmDesktop .crmRailBottom{margin-top:auto;gap:10px;}
+.crmDesktop .crmRail :is(button,.crmRailBottom a){position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:42px;min-height:42px;padding:0;border:0!important;border-radius:6px;background:transparent!important;color:#a5c0b5!important;text-decoration:none;cursor:pointer;}
+.crmDesktop .crmRail svg{width:19px;height:19px;stroke-width:1.65;}
+.crmDesktop .crmRail :is(button,a):hover{color:#fff!important;background:#ffffff0b!important;}
+.crmDesktop .crmRail [aria-selected=true]{color:#fff!important;background:#ffffff13!important;}
+.crmDesktop .crmRail [aria-selected=true]::before{content:"";position:absolute;left:-10px;top:12px;width:2px;height:18px;background:#b8d3c5;border-radius:0 2px 2px 0;}
+.crmRailTooltip{position:fixed;left:70px;translate:0 -50%;z-index:2000;pointer-events:none;background:#25483b;color:#f8fbf9;font:500 12px/1.4 var(--ui-font);padding:7px 10px;border-radius:5px;box-shadow:0 4px 16px #163b3120;}
+.crmDesktop>.crmContent{grid-column:2;grid-row:2;min-width:0;min-height:0;max-width:none;width:100%;height:100%;margin:0;padding:20px 24px;overflow:auto;display:flex;flex-direction:column;}
+.crmDesktop #crmApp{min-height:0;flex:1;display:flex;flex-direction:column;}
+.crmDesktop #crmView{min-width:0;min-height:0;flex:1;}
+.crmDesktop .crmHeading{margin:0 0 16px;gap:16px;flex-shrink:0;}
+.crmDesktop .crmHeading h1{font-size:21px;margin:0;}
+.crmDesktop #pipelineField{font-size:0;width:240px;flex:0 1 240px;min-width:130px;}
+.crmDesktop #pipelineField select{font-size:13px;min-height:36px;padding:7px 10px;}
+.crmDesktop .crmHeading>.commands{margin-left:auto;}
+.crmDesktop .crmHeading button{min-height:34px;font-size:12px;padding:6px 10px;}
+.crmDesktop #viewActions{gap:7px;}
+.crmDesktop .crmFilters{display:none;margin:0;}
+.crmDesktop .crmFilters label{max-width:320px;}
+.crmDesktop .crmSearchTools{margin:0 0 14px;flex:none;}
+.crmDesktop .crmSearchBar{display:flex;justify-content:flex-end;gap:8px;}
+.crmDesktop .crmSort{width:190px;}
+.crmDesktop .journey{display:none!important;}
+.crmDesktop.crmJourneyOpen .journey{display:flex!important;position:fixed;z-index:90;left:calc(var(--crm-rail) + 16px);right:16px;bottom:20px;border-radius:7px;padding:20px;box-shadow:0 12px 48px #173d3230;}
+.crmDesktop[data-crm-mode=inbox]>.crmContent{padding:0!important;overflow:hidden;}
+.crmDesktop:not([data-crm-mode=board]) .crmFilters{display:none;}
+.crmDesktop[data-crm-mode=inbox] .crmHeading,.crmDesktop[data-crm-mode=inbox] .crmFilters,.crmDesktop[data-crm-mode=inbox] .crmSearchTools{display:none;}
+.crmDesktop[data-crm-mode=inbox] #crmView{display:flex;overflow:hidden;}
+.crmDesktop .appAttendanceLauncher{display:none!important;}
+.crmDesktop .inboxWorkspace{height:100%;min-height:0;flex:1;grid-template-columns:340px minmax(0,1fr) 300px;border:0;overflow:hidden;}
+.crmDesktop .inboxWorkspace:not(.chatActive){grid-template-columns:340px minmax(0,1fr);}
+.crmDesktop .conversationList{background:#fcfdfd;}
+.crmDesktop .inboxListHead{padding:20px 18px 12px;flex:none;}
+.crmDesktop .inboxListHead h2{font-size:19px;font-weight:650;}
+.crmDesktop .inboxListHead>span{font-size:11px;}
+.crmDesktop .inboxListHead .icon-button{width:32px;min-height:32px;padding:6px;background:none!important;border-color:transparent!important;}
+.crmDesktop .channelFilter{padding:0 18px 12px;font-size:11px;}
+.crmDesktop .channelFilter select{font-size:12px;min-height:36px!important;background:#f5f7f6!important;border-color:#e3e9e6!important;}
+.crmDesktop .inboxSegments{padding:0 16px;gap:8px;border-bottom:1px solid var(--ui-line);flex:none;}
+.crmDesktop .inboxSegments button{position:relative;min-height:36px;padding:6px 2px 10px;font-size:12px!important;background:transparent!important;border:0!important;border-radius:0;}
+.crmDesktop .inboxSegments button[aria-pressed=true]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#276c52;}
+.crmDesktop .inboxSegments span{font-size:11px;}
+.crmDesktop .conversationRows{padding:6px 8px;min-height:0;}
+.crmDesktop .conversationRow{padding:13px 10px;gap:10px;border:0!important;border-bottom:1px solid #eaf0ec!important;border-radius:6px;margin-bottom:2px;}
+.crmDesktop .conversationRow.active{background:#eaf2ee!important;box-shadow:inset 2px 0 #36755a!important;}
+.crmDesktop .conversationPreview{gap:5px;}
+.crmDesktop .conversationName strong{font-size:14px;font-weight:650;}
+.crmDesktop .conversationName small{font-size:11px;white-space:nowrap;}
+.crmDesktop .conversationSnippet{font-size:13px;}
+.crmDesktop .conversationFacts{gap:7px;}
+.crmDesktop .conversationFacts .customerTier{font-size:10px;min-height:18px;padding:1px 5px;}
+.crmDesktop .conversationFacts .serviceLocation{font-size:11px;}
+.crmDesktop .conversationFacts .conversationQuote{font-size:11px;}
+.crmDesktop .conversationRow::before{display:none;}
+.crmDesktop .unreadCount{font-size:10px;min-width:19px;height:19px;display:grid;place-items:center;align-self:center;}
+.crmDesktop .chatPane{background:#f0f4f4;min-height:0;}
+.crmDesktop .chatHeader{min-height:76px;padding:14px 22px;background:#fbfcfc;gap:12px;flex:none;}
+.crmDesktop .chatIdentity h2{font-size:17px;}
+.crmDesktop .chatIdentity>span{font-size:12px;}
+.crmDesktop .chatHeader .icon-button{background:none!important;border-color:transparent!important;width:34px;min-height:34px;padding:7px;}
+.crmDesktop .chatHeader .contactAvatar{width:42px;height:42px;flex-basis:42px;}
+.crmDesktop .messageTimeline{padding:24px 28px;min-height:0;}
+.crmDesktop .chatMessages{gap:14px;min-height:100%;justify-content:flex-end;}
+.crmDesktop .chatDay{background:#f8faf9;border:1px solid #e1e8e4;font-size:11px;padding:4px 12px;color:#75877b;}
+.crmDesktop .chatBubble{max-width:min(560px,88%);padding:12px 16px;border-radius:8px;border-color:#e1e8e5;}
+.crmDesktop .chatBubble.out{background:#e7f0eb;color:#294436;border-color:#d7e5dd;border-radius:8px;}
+.crmDesktop .chatBubble p{font-size:14px;line-height:1.6;}
+.crmDesktop .messageAuthor{font-size:12px;color:#24654b;}
+.crmDesktop .chatBubble small,.crmDesktop .chatBubble.out small{font-size:10px;color:#7c9084;}
+.crmDesktop .chatBubble.unknown small{color:#8f4856;}
+.crmDesktop .chatDocument{background:#ffffff80;border-color:#d9e4dd;}
+.crmDesktop .conversationActions{order:3;flex:none;border-top:1px solid var(--ui-line);border-bottom:0;background:#fcfdfd;padding:6px 18px;}
+.crmDesktop .chatSearch{order:1;flex:none;}
+.crmDesktop .messageTimeline{order:2;}
+.crmDesktop .chatComposer{order:4;background:#fcfdfd;padding:12px 18px 16px;max-height:55%;overflow:visible;}
+.crmDesktop .conversationActions>span{font-size:12px;}
+.crmDesktop .conversationActions button{font-size:11px;min-height:30px;background:none!important;border-color:transparent!important;}
+.crmDesktop .replyOptions{gap:14px;margin-bottom:10px;}
+.crmDesktop .replyOptions label{font-size:11px;max-width:480px;}
+.crmDesktop .replyOptions select{font-size:12px;min-height:36px!important;padding:6px 9px!important;}
+.crmDesktop .replySignature>span{font-size:11px;}.crmDesktop .replySignature strong{font-size:12px;}
+.crmDesktop #replyState:empty{display:none;}
+.crmDesktop #replyForm{align-items:flex-end;gap:8px;}
+.crmDesktop #replyBody{min-height:48px;max-height:120px;background:#fafcfc!important;font-size:14px;}
+.crmDesktop .contactPanel{display:block;position:static;width:auto;box-shadow:none;background:#fcfdfd;padding:22px 20px;overflow:auto;}
+.crmDesktop .inboxListHead #inboxCount{display:block;font-size:11px;color:var(--ui-muted);margin-top:5px;}
+.crmDesktop .contactSummary>h3{font-size:17px;margin:12px 0 8px;}
+.crmDesktop .contactSummary>.eyebrow{font-size:12px;font-weight:600;color:#738479;}
+.crmDesktop .identityTag{font-size:12px;margin:14px 0;}.crmDesktop .contactSummary>p{font-size:12px;}
+.crmDesktop .contactSummary>.serviceLocation{font-size:12px;}
+.crmDesktop .customerValueSummary>strong{color:#2f4738;font-size:24px;}
+.crmDesktop .customerValueSummary>small,.crmDesktop .customerValueSummary>p{font-size:11px;}
+.crmDesktop .opportunityQuotes{margin:16px 0;}.crmDesktop .opportunityQuotes strong{font-size:20px;}
+.crmDesktop .contactPanel button{font-size:12px;min-height:36px;}
+.crmDesktop .crmWorkspace{gap:18px;grid-template-columns:minmax(0,1fr) 225px;}
+.crmDesktop .crmBoard{grid-auto-columns:290px;min-width:0;}
+.crmDesktop .crmColumn{background:#eef2f0;border-top-width:2px;}
+.crmDesktop .leadCard:not([data-tier=gold]):not([data-tier=silver]):not([data-tier=bronze]){background:#fcfdfd!important;}
+.crmDesktop .leadCard:hover{transform:none;}
+.crmDesktop .columnHead strong{font-size:13px;}
+.crmDesktop .salesRadar h2{font-size:14px;}
+.crmWaitTimer{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;color:#8a7040;font-variant-numeric:tabular-nums;margin-left:auto;}
+.crmWaitTimer svg{width:12px;height:12px;}.crmWaitTimer.overdue{color:#a05252;}
+.crmDesktop #notice:not([hidden]){margin:12px 20px;}
+.crmDesktop .crmTemplatesLibrary{max-width:1000px;}
+.crmDesktop .crmTemplatesLibrary .messageTemplatesToggle{display:none;}
+.crmDesktop .crmTemplatesLibrary .messageTemplatesMenu{position:static;width:100%;max-height:none;box-shadow:none;border:0;padding:0;}
+.crmDesktop .crmTemplatesLibrary .messageTemplatesMenu>header{margin-bottom:12px;}
+.crmDesktop .crmTemplatesLibrary .messageTemplateRows{max-height:none;}
+.crmDesktop .crmTemplatesLibrary .messageTemplateRow{padding:8px 0;}
+.crmDesktop .crmTemplatesLibrary .messageTemplateRow strong{font-size:14px;}
+.crmDesktop .crmTemplatesLibrary .messageTemplateRow small{font-size:13px;}
+.crmDesktop .crmTemplatesLibrary .messageTemplatesMenu>footer{justify-content:flex-start;padding-top:16px;margin-top:12px;}
+.crmDesktop .crmTemplatesLibrary .messageTemplatesMenu>footer button{flex:none;}
+.crmDashboard{max-width:1600px;margin:0 auto;padding-bottom:24px;}
+.dashboardToolbar{display:flex;align-items:center;gap:12px;justify-content:flex-end;padding-bottom:18px;color:var(--ui-muted);font-size:12px;}
+.dashboardToolbar>span{margin-right:auto;}.crmDesktop .dashboardPeriod{display:flex;flex-direction:row;align-items:center;gap:10px;}
+.crmDesktop .dashboardPeriod select{width:180px;font-size:12px;padding:7px 10px;min-height:36px;}
+.dashboardMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;border-block:1px solid var(--ui-line);padding:22px 0;}
+.crmDesktop .dashboardMetric{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:9px;padding:0 22px;border:0!important;border-right:1px solid var(--ui-line)!important;border-radius:0;background:transparent!important;color:var(--ui-ink)!important;box-shadow:none!important;text-align:left;min-width:0;}
+body.crmPage.crmDesktop button.dashboardMetric{border:0!important;border-right:1px solid var(--ui-line)!important;background:transparent!important;box-shadow:none!important;border-radius:0;}
+.dashboardMetric:first-child{padding-left:0;}.crmDesktop .dashboardMetric:last-child{border-right:0!important;padding-right:0;}
+.dashboardMetric>span{display:flex;align-items:center;gap:7px;color:var(--ui-muted);font-size:12px;font-weight:500;}.dashboardMetric svg{width:16px;height:16px;}
+.dashboardMetric>strong{font-size:30px;line-height:1.2;font-weight:600;}.dashboardMetric>small{font-size:11px;line-height:1.6;color:var(--ui-muted);font-weight:400;}
+.dashboardWaiting:hover>strong{color:#24664c;}.dashboardCharts{display:grid;grid-template-columns:minmax(0,2fr) minmax(250px,1fr);gap:36px;padding:30px 0;border-bottom:1px solid var(--ui-line);}
+.crmDashboard section>header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px;flex-wrap:wrap;}.crmDashboard h2{font-size:16px;margin:0;}.crmDashboard section>header>span{color:var(--ui-muted);font-size:11px;}
+.chartLegend{display:flex;gap:14px;}.chartLegend>span{display:flex;align-items:center;gap:5px;}.chartLegend>span::before{content:"";width:7px;height:7px;border-radius:2px;background:#447d64;}.chartLegend>.replies::before{background:#94a9b1;}
+.dashboardBars{display:grid;grid-template-columns:repeat(var(--bar-count),minmax(0,1fr));gap:5px;height:210px;padding-top:8px;}
+.dashboardBarGroup{display:flex;flex-direction:column;min-width:0;gap:10px;}.dashboardBarMarks{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:180px;border-bottom:1px solid var(--ui-line);}
+.dashboardBarMarks>i{display:block;width:min(18px,40%);max-height:100%;background:#447d64;border-radius:3px 3px 0 0;}.dashboardBarMarks>.replies{background:#94a9b1;}.dashboardBarGroup>span{font-size:10px;color:var(--ui-muted);white-space:nowrap;text-align:center;}
+.dashboardQueueRow{margin-bottom:18px;}.dashboardQueueRow>div{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6c8173;margin-bottom:8px;}.dashboardQueueRow strong{font-weight:600;color:var(--ui-ink);}
+.dashboardQueueRow meter{appearance:none;display:block;width:100%;height:5px;border:0;background:#e6ece8;border-radius:3px;}.dashboardQueueRow meter::-webkit-meter-bar{border:0;background:#e6ece8;height:5px;}.dashboardQueueRow meter::-webkit-meter-optimum-value{background:#7b9c8a;}.dashboardQueueRow meter::-moz-meter-bar{background:#7b9c8a;}
+.dashboardConnections{display:flex;align-items:center;gap:7px;color:var(--ui-muted);font-size:11px;margin-top:24px;}.dashboardConnections svg{width:14px;height:14px;}
+.dashboardFunnels,.dashboardOperators{padding:28px 0;border-bottom:1px solid var(--ui-line);}.dashboardFunnelRow{display:grid;grid-template-columns:minmax(150px,1fr) minmax(100px,3fr) 45px 75px;gap:18px;align-items:center;padding:10px 0;font-size:12px;}.dashboardFunnelRow>small{font-size:11px;color:var(--ui-muted);}.dashboardFunnelRow>strong{text-align:right;}
+.dashboardFunnelTrack{height:6px;background:#e7ede9;border-radius:3px;}.dashboardFunnelTrack>i{display:block;height:100%;background:#779b87;border-radius:3px;}
+.dashboardTable{overflow-x:auto;}.dashboardOperators table{border-collapse:collapse;width:100%;font-size:12px;}.dashboardOperators :is(th,td){padding:13px 12px;border-bottom:1px solid #e4eae6;text-align:left;}.dashboardOperators th{color:var(--ui-muted);font-size:11px;font-weight:500;background:#f0f4f1;}.dashboardOperators td:first-child{font-weight:550;}
+.dashboardEmpty{font-size:12px;color:var(--ui-muted);}.dashboardError{font-size:13px;color:#9c4b55;}
+@media(max-width:1100px){.dashboardMetrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.crmDesktop .dashboardMetric:nth-child(2){border:0!important}.crmDesktop .dashboardMetric:nth-child(3){padding-left:0}.dashboardCharts{grid-template-columns:minmax(0,1fr);gap:30px}.dashboardQueue{max-width:600px}}
+@media(max-width:760px){.dashboardToolbar{flex-wrap:wrap}.dashboardToolbar>span{flex-basis:100%}.dashboardMetrics{gap:20px 12px}.crmDesktop .dashboardMetric{padding:0 8px;gap:8px}.dashboardMetric>span{font-size:11px;align-items:flex-start}.dashboardMetric>strong{font-size:25px}.dashboardCharts{padding:24px 0}.dashboardFunnelRow{grid-template-columns:minmax(0,1fr) 40px;gap:8px 12px}.dashboardFunnelTrack{grid-row:2;grid-column:1}.dashboardFunnelRow>small{grid-column:2;grid-row:2}.dashboardFunnelRow>strong{grid-column:2;grid-row:1}.dashboardOperators :is(th,td){padding:10px 7px;min-width:75px}.dashboardToolbar .dashboardPeriod{flex:1;min-width:0}.crmDesktop .dashboardPeriod select{width:100%;min-width:0}.dashboardPeriod{font-size:0!important}.dashboardBarGroup>span{font-size:9px}}
+@media(max-width:1450px){.crmDesktop .inboxWorkspace{grid-template-columns:300px minmax(0,1fr) 260px}.crmDesktop .inboxWorkspace:not(.chatActive){grid-template-columns:300px minmax(0,1fr)}.crmDesktop .appTopbar{gap:14px;padding-inline:16px}.crmDesktop .crmHeaderDoctor{flex-basis:210px}.crmDesktop .appUserName{max-width:100px}.crmDesktop .chatHeader{padding-inline:16px}.crmDesktop .conversationName strong{font-size:13px}}
+@media(max-width:1200px){.crmDesktop .inboxWorkspace,.crmDesktop .inboxWorkspace:not(.chatActive){grid-template-columns:290px minmax(0,1fr)}.crmDesktop .contactPanel{display:none;position:absolute;right:0;top:76px;bottom:0;width:290px;z-index:5;box-shadow:-10px 0 28px #163d3214}.crmDesktop .showContact .contactPanel:not([hidden]){display:block}.crmDesktop .chatHeader #toggleContact{display:inline-flex}.crmDesktop .crmWorkspace{grid-template-columns:minmax(0,1fr)}.crmDesktop .salesRadar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:0;padding:16px 0}.crmDesktop .appBrand{display:none}.crmDesktop .appContext{border:0;padding:0}.crmDesktop .crmHeaderDoctor{flex-basis:200px}.crmDesktop .crmHeaderSearch{flex-basis:240px}}
+@media(max-width:760px){body.crmDesktop{--crm-rail:54px;grid-template-rows:auto minmax(0,1fr)}.crmDesktop .crmRail{padding:12px 5px;gap:20px}.crmDesktop .crmRail :is(button,.crmRailBottom a){height:42px;width:44px}.crmDesktop .crmRail [aria-selected=true]::before{left:-5px}.crmRailTooltip{left:60px}.crmDesktop .appTopbar{flex-wrap:wrap;gap:7px 10px;padding:8px 12px}.crmDesktop .appContext{order:0;flex:1;max-width:none}.crmDesktop .appContext a{font-size:12px;min-height:30px}.crmDesktop .appHeaderActions{order:1;margin-left:auto}.crmDesktop .appAccountToggle{padding:0;min-width:28px}.crmDesktop .appUserName,.crmDesktop .appAccountToggle>svg{display:none}.crmDesktop .crmHeaderDoctor{order:2;flex:1 1 100%;max-width:none}.crmDesktop .crmHeaderDoctor select{font-size:16px;min-height:36px!important}.crmDesktop .crmHeaderSearch{order:3;flex:1 1 100%;min-width:0;margin:0}.crmDesktop .crmHeaderSearch input{font-size:16px}.crmDesktop>.crmContent{padding:16px 12px}.crmDesktop .crmHeading{gap:12px}.crmDesktop .crmHeading h1{font-size:20px}.crmDesktop .crmHeading>.commands{margin-left:0;flex-wrap:wrap}.crmDesktop #viewActions{flex-wrap:wrap}.crmDesktop .crmHeading button{font-size:11px;min-height:34px}.crmDesktop .crmSearchBar{flex-wrap:wrap}.crmDesktop .crmSort{flex:1;width:auto}.crmDesktop .crmFilters label{max-width:none}.crmDesktop .inboxWorkspace,.crmDesktop .inboxWorkspace:not(.chatActive){grid-template-columns:minmax(0,1fr)}.crmDesktop .inboxListHead{padding:16px 12px 12px}.crmDesktop .inboxListHead h2{font-size:17px}.crmDesktop .inboxSegments{padding-inline:10px;gap:4px}.crmDesktop .inboxSegments button{font-size:11px!important}.crmDesktop .channelFilter{padding-inline:12px}.crmDesktop .conversationRow{padding:12px 8px}.crmDesktop .conversationName strong{font-size:13px}.crmDesktop .chatHeader{padding:10px;gap:6px;min-height:66px;flex-wrap:wrap}.crmDesktop .chatHeader .contactAvatar{width:30px;height:30px;flex-basis:30px}.crmDesktop .chatHeader .chatIdentity{flex:1;min-width:65px}.crmDesktop .chatIdentity h2{font-size:14px}.crmDesktop .chatIdentity>span{font-size:10px}.crmDesktop .chatHeader .icon-button,.crmDesktop .chatHeader #toggleChatSearch,.crmDesktop .chatHeader #toggleContact{width:28px;min-height:32px;padding:4px}.crmDesktop .chatHeader #voiceCall{width:28px}.crmDesktop .messageTimeline{padding:12px}.crmDesktop .chatBubble{max-width:96%;padding:10px 12px}.crmDesktop .chatBubble p{font-size:13px;line-height:1.5}.crmDesktop .chatBubble small{font-size:10px}.crmDesktop .conversationActions{padding:5px 10px;flex-wrap:wrap}.crmDesktop .conversationActions>span{font-size:11px}.crmDesktop .conversationActions button{padding:5px;font-size:10px;min-height:30px}.crmDesktop .chatComposer{padding:8px 10px 12px;max-height:55%}.crmDesktop .replyOptions{gap:8px;flex-wrap:wrap;margin-bottom:8px}.crmDesktop .replyOptions label{flex:1 1 100%}.crmDesktop .replyOptions select{font-size:16px}.crmDesktop .replySignature{padding:0;gap:2px;flex:1}.crmDesktop .messageTemplatesToggle{min-height:30px;padding:5px 7px}.crmDesktop #replyBody{font-size:16px;min-height:44px}.crmDesktop #replyForm{gap:5px}.crmDesktop .contactPanel{top:66px;width:min(290px,100%)}.crmDesktop .salesRadar{grid-template-columns:minmax(0,1fr)}.crmDesktop.crmJourneyOpen .journey{display:grid!important;left:calc(var(--crm-rail) + 8px);right:8px;bottom:8px;max-height:70dvh;overflow:auto}.crmDesktop .appNotificationPanel{right:8px;width:calc(100% - 16px)}.crmDesktop .appAccountMenu{right:0;width:min(250px,calc(100vw - 76px))}}
+@media(prefers-reduced-motion:reduce){.crmDesktop *{scroll-behavior:auto!important;transition:none!important}}

@@ -66,6 +66,9 @@ def handle_request(handler, parsed):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "dashboard":
+                from crm_dashboard import dashboard
+                return handler.auth_json({"ok": True, **dashboard(store, doctor, query.get("days", [7])[0], include_operators=bool(user.get("is_master")))})
             if action == "message-templates":
                 from crm_templates import listing
                 return handler.auth_json({"ok": True, "templates": listing(store, query.get("archived") == ["1"])})

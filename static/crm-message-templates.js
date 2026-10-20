@@ -7,7 +7,7 @@
   window.createCrmMessageTemplates=({api,esc,icon,icons,getContext,onError})=>{
     let session=null,items=[],request=0;
     const alive=s=>session===s && s.valid;
-    function hide(s){if(!alive(s))return;s.menu.hidden=true;s.toggle.setAttribute("aria-expanded","false");s.mode="";}
+    function hide(s){if(!alive(s) || s.library)return;s.menu.hidden=true;s.toggle.setAttribute("aria-expanded","false");s.mode="";}
     function status(s,message=""){if(!alive(s))return;s.status.textContent=message;s.status.hidden=!message;}
     async function load(s){
       const seq=++request;status(s,"Carregando modelos\u2026");
@@ -21,7 +21,7 @@
       if(!alive(s))return;
       s.matches=matching(s.archiveView?s.archived:items,s.query);s.index=Math.max(0,Math.min(s.index,s.matches.length-1));
       s.rows.innerHTML=s.matches.map((m,i)=>`<li class="messageTemplateRow ${i===s.index?"active":""}"><button type="button" data-template-use="${i}" title="${esc(m.title)}"><span><strong>${esc(m.title)}</strong><code>/${esc(m.shortcut)}</code></span><small>${esc(m.body.slice(0,140))}</small></button><button type="button" data-template-edit="${i}" class="icon-button" title="${s.archiveView?"Restaurar":"Editar"} ${esc(m.title)}" aria-label="${s.archiveView?"Restaurar":"Editar"} ${esc(m.title)}">${icon(s.archiveView?"archive-restore":"pencil")}</button></li>`).join("") || '<li class="messageTemplatesEmpty">Nenhum modelo encontrado</li>';
-      s.rows.querySelectorAll("[data-template-use]").forEach(b=>b.onclick=()=>s.archiveView?restore(s,s.matches[Number(b.dataset.templateUse)]):insert(s,s.matches[Number(b.dataset.templateUse)]));
+      s.rows.querySelectorAll("[data-template-use]").forEach(b=>b.onclick=()=>s.archiveView?restore(s,s.matches[Number(b.dataset.templateUse)]):s.library?editor(s,s.matches[Number(b.dataset.templateUse)]):insert(s,s.matches[Number(b.dataset.templateUse)]));
       s.rows.querySelectorAll("[data-template-edit]").forEach(b=>b.onclick=()=>s.archiveView?restore(s,s.matches[Number(b.dataset.templateEdit)]):editor(s,s.matches[Number(b.dataset.templateEdit)]));
       s.tools.querySelector("[data-template-heading]").textContent=s.archiveView?"Modelos arquivados":"Modelos de mensagens";
       s.tools.querySelector("[data-template-archived]").innerHTML=`${icon(s.archiveView?"messages-square":"archive")} ${s.archiveView?"Ativos":"Arquivados"}`;icons();
@@ -53,7 +53,7 @@
         event.preventDefault();s.index=(s.index+(event.key==="ArrowDown"?1:-1)+s.matches.length)%Math.max(1,s.matches.length);draw(s);
         s.rows.querySelector(".active")?.scrollIntoView({block:"nearest"});
       }
-      if(["Enter","Tab"].includes(event.key) && s.matches.length){event.preventDefault();if(s.archiveView)restore(s,s.matches[s.index]);else insert(s,s.matches[s.index]);}
+      if(["Enter","Tab"].includes(event.key) && s.matches.length){event.preventDefault();if(s.archiveView)restore(s,s.matches[s.index]);else if(s.library)editor(s,s.matches[s.index]);else insert(s,s.matches[s.index]);}
     }
     function editor(s,item=null){
       hide(s);s.dialog?.remove();const dialog=document.createElement("dialog");s.dialog=dialog;
@@ -64,7 +64,7 @@
       const close=()=>{if(busy)return;dialog.close();};
       dialog.querySelector("[data-editor-close]").onclick=close;
       dialog.oncancel=e=>{if(busy)e.preventDefault();};
-      dialog.onclose=()=>{dialog.remove();if(s.dialog===dialog)s.dialog=null;if(alive(s))s.toggle.focus({preventScroll:true});};
+      dialog.onclose=()=>{dialog.remove();if(s.dialog===dialog)s.dialog=null;if(alive(s))(s.library?s.input:s.toggle).focus({preventScroll:true});};
       const body=form.elements.namedItem("body");body.oninput=()=>dialog.querySelector("[data-template-length]").textContent=`${body.value.length}/3000`;
       dialog.querySelectorAll("[data-variable]").forEach(b=>b.onclick=()=>{body.setRangeText(`{${b.dataset.variable}}`,body.selectionStart,body.selectionEnd,"end");body.oninput();body.focus();});
       form.onsubmit=async event=>{
@@ -103,6 +103,10 @@
       icons();load(s);
     }
     function availability(available){const s=session;if(!s)return;s.locked=!available;s.toggle.disabled=!available;if(!available)hide(s);}
-    return {mount,destroy,availability};
+    function manage(tools){
+      const textarea=document.createElement("textarea");textarea.hidden=true;textarea.maxLength=3000;
+      mount(tools,textarea);tools.append(textarea);session.library=true;session.mode="library";session.menu.hidden=false;session.toggle.hidden=true;
+    }
+    return {mount,manage,destroy,availability};
   };
 })();
