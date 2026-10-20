@@ -13,7 +13,7 @@ import time
 from urllib.parse import urlsplit
 import uuid
 
-from crm_access import pipeline_visible
+from crm_access import form_visible
 from crm_store import Conflict, phone, text
 from institute_report import email
 from crm_attribution import config as tracking_config, capture as capture_attribution, finish_url
@@ -259,7 +259,7 @@ class FormStore:
         if not row or doctor is not None and row["doctor_id"] != doctor:
             raise LookupError("Formulario nao encontrado.")
         row = dict(row)
-        if not pipeline_visible(row):
+        if not form_visible(row):
             raise PermissionError("Seu usuario nao possui acesso ao instituto deste formulario.")
         from crm_form_accounts import resolve
         return resolve(self,c,row)
@@ -279,7 +279,7 @@ class FormStore:
     def listing(self, doctor):
         with self.crm.db() as c:
             self.crm.row(c,"doctors",doctor)
-            rows = [dict(r) for r in c.execute("SELECT f.*,(SELECT count(*) FROM form_responses WHERE form_id=f.id) responses FROM crm_forms f WHERE doctor_id=? ORDER BY updated_at DESC", (doctor,)) if pipeline_visible(dict(r))]
+            rows = [dict(r) for r in c.execute("SELECT f.*,(SELECT count(*) FROM form_responses WHERE form_id=f.id) responses FROM crm_forms f WHERE doctor_id=? ORDER BY updated_at DESC", (doctor,)) if form_visible(dict(r))]
             from crm_form_accounts import resolve
             return [{**self.metadata(resolve(self,c,r)),"responses":r["responses"]} for r in rows]
 
@@ -295,6 +295,9 @@ class FormStore:
             c.execute("BEGIN IMMEDIATE")
             doctor = payload.get("doctor_id")
             self.crm.row(c,"doctors",doctor)
+            from crm_access import all_pipelines
+            if not info["crm"]["pipeline_id"] and not all_pipelines(doctor):
+                raise PermissionError("Selecione um funil permitido para criar ou editar este formulario.")
             binding = {"institute_key":"","course_key":""}
             if info["crm"]["pipeline_id"]:
                 binding = self.crm.owned(c,"pipelines",info["crm"]["pipeline_id"],doctor)

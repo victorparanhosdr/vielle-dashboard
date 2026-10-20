@@ -11,7 +11,7 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from clinic_catalog import SUPPORTED_CLINICS, validate_clinic_keys
-from access_store import AccessStoreMixin, initialize_access_schema
+from access_store import AccessStoreMixin, initialize_access_schema, validate_crm_scope, CRM_SCOPE_UNCHANGED
 from access_policy import permission_map
 
 
@@ -140,7 +140,7 @@ class AuthStore(AccessStoreMixin):
             initialize_access_schema(conn, version)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, actor_id=None):
+    def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         if status not in ("active", "inactive") or not isinstance(is_master, bool):
@@ -148,6 +148,9 @@ class AuthStore(AccessStoreMixin):
         login = normalize_login(login)
         keys = validate_clinic_keys([] if clinic_keys is None else clinic_keys)
         permissions = permission_map(keys, permissions)
+        crm_scope = validate_crm_scope(crm_scope)
+        if is_master and crm_scope is not None:
+            raise ValueError("O Master possui acesso a todo o CRM.")
         encoded = hash_password(password)
         now = utc_now()
         with self.connection() as conn:
@@ -160,6 +163,7 @@ class AuthStore(AccessStoreMixin):
             conn.executemany("INSERT INTO user_clinics (user_id, clinic_key, created_at) VALUES (?, ?, ?)",
                              [(user_id, key, now) for key in keys])
             self._save_permissions(conn, user_id, keys, permissions)
+            self._save_crm_scope(conn, user_id, crm_scope, actor_id)
             self._audit(conn, "user_created", actor_id, user_id, {"clinics": keys, "permissions": permissions})
             return user_id
 
@@ -206,6 +210,7 @@ class AuthStore(AccessStoreMixin):
         keys = [item[0] for item in conn.execute("SELECT clinic_key FROM user_clinics WHERE user_id = ?", (user["id"],))]
         user["clinic_keys"] = list(SUPPORTED_CLINICS) if user["is_master"] else [key for key in SUPPORTED_CLINICS if key in keys]
         from access_policy import clinic_permissions
+        user["crm_scope"] = None if user["is_master"] else self._crm_scope(conn, user["id"])
         user["permissions"] = {clinic: clinic_permissions(clinic) if user["is_master"] else [item[0] for item in conn.execute("SELECT permission_key FROM user_clinic_permissions WHERE user_id = ? AND clinic_key = ? ORDER BY permission_key", (user["id"], clinic))] for clinic in user["clinic_keys"]}
         return user
 
@@ -222,7 +227,7 @@ class AuthStore(AccessStoreMixin):
             row = conn.execute(f"SELECT {USER_PUBLIC_COLUMNS} FROM users WHERE id = ?", (user_id,)).fetchone()
             return self._public_memberships(conn, row) if row else None
 
-    def update_user(self, user_id, nome, login, *, clinic_keys=None, permissions=None, actor_id=None):
+    def update_user(self, user_id, nome, login, *, clinic_keys=None, permissions=None, crm_scope=CRM_SCOPE_UNCHANGED, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         login = normalize_login(login)
@@ -232,6 +237,10 @@ class AuthStore(AccessStoreMixin):
             old = conn.execute("SELECT login, is_master FROM users WHERE id = ?", (user_id,)).fetchone()
             if not old:
                 return False
+            if crm_scope is not CRM_SCOPE_UNCHANGED:
+                if old["is_master"]:
+                    raise ValueError("O Master possui acesso a todo o CRM.")
+                self._save_crm_scope(conn, user_id, crm_scope, actor_id)
             old_keys = [row[0] for row in conn.execute("SELECT clinic_key FROM user_clinics WHERE user_id = ?", (user_id,))]
             old_permissions = {clinic: [row[0] for row in conn.execute("SELECT permission_key FROM user_clinic_permissions WHERE user_id = ? AND clinic_key = ? ORDER BY permission_key", (user_id, clinic))] for clinic in old_keys}
             if permissions is not None and keys is None:
@@ -341,7 +350,9 @@ class AuthStore(AccessStoreMixin):
                 FROM sessions s JOIN users u ON u.id = s.user_id
                 WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'
             """, (self.token_hash(token), int(time.time()))).fetchone()
-            return dict(row) if row else None
+            if row is None:
+                return None
+            return dict(row) | {"crm_scope": None if row["is_master"] else self._crm_scope(conn, row["id"])}
 
     def logout(self, token):
         with self.connection() as conn:

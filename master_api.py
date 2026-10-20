@@ -8,6 +8,28 @@ from urllib.parse import parse_qs
 from auth_store import normalize_login, password_bytes
 from clinic_catalog import CLINIC_DISPLAY_NAMES, validate_clinic_keys
 from access_policy import MODULES, ACTION_LABELS, permission_map
+from access_store import validate_crm_scope
+
+
+def crm_catalog(auth):
+    from crm_api import store_for
+    with store_for(auth).db() as c:
+        return {"doctors": [dict(r) for r in c.execute("SELECT id,name FROM doctors ORDER BY name")],
+                "pipelines": [dict(r) for r in c.execute("SELECT id,name,doctor_id,institute_key,course_key FROM pipelines ORDER BY name")]}
+
+
+def crm_scope_fields(auth, data):
+    if "crm_scope" not in data:
+        return {}
+    scope = validate_crm_scope(data["crm_scope"])
+    if scope:
+        catalog = crm_catalog(auth)
+        doctors = {d["id"] for d in catalog["doctors"]}
+        pipelines = {p["id"]: p["doctor_id"] for p in catalog["pipelines"]}
+        for doctor, selected in scope.items():
+            if doctor not in doctors or selected is not None and any(pipelines.get(p) != doctor for p in selected):
+                raise ValueError("Profissional ou funil do CRM indisponivel. Atualize a lista.")
+    return {"crm_scope": scope}
 
 
 def user_fields(data, fields):
@@ -61,7 +83,8 @@ class MasterApiMixin:
                     raise ValueError("Filtro inválido.")
                 self.auth_json({"ok": True, **store.list_users(search, status, page),
                                 "clinics": [{"key": key, "name": name} for key, name in CLINIC_DISPLAY_NAMES.items()],
-                                "modules": MODULES, "actions": ACTION_LABELS, "profiles": store.list_profiles()})
+                                "modules": MODULES, "actions": ACTION_LABELS, "profiles": store.list_profiles(),
+                                "crm_catalog": crm_catalog(store)})
                 return True
             match = re.fullmatch(r"/api/master/users/([1-9][0-9]{0,17})/(edit|status|password)", parsed.path)
             profile_match = re.fullmatch(r"/api/master/profiles/([1-9][0-9]{0,17})", parsed.path)
@@ -84,7 +107,7 @@ class MasterApiMixin:
                 self.auth_json({"ok": True, "id": profile_id})
                 return True
             if not match:
-                user_fields(data, ("nome", "login", "password", "status", "clinic_keys", "permissions"))
+                user_fields(data, ("nome", "login", "password", "status", "clinic_keys", "permissions", "crm_scope"))
                 name, login = validate_identity(data)
                 password = validate_password(data)
                 status = data.get("status", "active")
@@ -94,7 +117,8 @@ class MasterApiMixin:
                 if "permissions" in data and not isinstance(data["permissions"], dict):
                     raise ValueError("Permissões inválidas.")
                 permissions = permission_map(keys, data.get("permissions", {key: [] for key in keys}))
-                user_id = store.create_user(name, login, password, status=status, clinic_keys=keys, permissions=permissions, actor_id=actor_id)
+                scope = crm_scope_fields(store, data)
+                user_id = store.create_user(name, login, password, status=status, clinic_keys=keys, permissions=permissions, actor_id=actor_id, **scope)
                 self.auth_json({"ok": True, "user": store.get_public_user(user_id)}, 201)
                 return True
             user_id, action = int(match[1]), match[2]
@@ -102,13 +126,14 @@ class MasterApiMixin:
                 self.auth_json({"ok": False, "error": "Usuário não encontrado."}, 404)
                 return True
             if action == "edit":
-                user_fields(data, ("nome", "login", "clinic_keys", "permissions"))
+                user_fields(data, ("nome", "login", "clinic_keys", "permissions", "crm_scope"))
                 name, login = validate_identity(data)
                 if "clinic_keys" in data and not isinstance(data["clinic_keys"], list):
                     raise ValueError("Clínicas inválidas.")
                 if "permissions" in data and not isinstance(data["permissions"], dict):
                     raise ValueError("Permissões inválidas.")
-                store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"), actor_id=actor_id)
+                scope = crm_scope_fields(store, data)
+                store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"), actor_id=actor_id, **scope)
             elif action == "status":
                 user_fields(data, ("active",))
                 if not isinstance(data.get("active"), bool):

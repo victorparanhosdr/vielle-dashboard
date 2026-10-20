@@ -24,6 +24,9 @@ def handle(handler, crm, action, query, user):
     p = json.loads(read_body(handler, 256*1024))
     if not isinstance(p, dict):
         raise ValueError("Solicitacao invalida.")
+    from crm_access import CRM_SCOPE
+    if CRM_SCOPE.get() is not None and p.get("doctor_id") != doctor:
+        raise PermissionError("O profissional da solicitacao nao corresponde ao CRM aberto.")
     doctor, ident = p.get("doctor_id"), p.get("id")
     if action == "bots/save":
         result = {"bot": bots.save(p, user["id"])}

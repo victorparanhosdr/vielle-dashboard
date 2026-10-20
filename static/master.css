@@ -66,6 +66,16 @@ dialog::backdrop { background:rgba(7,28,24,.5); } dialog form { display:flex; fl
 .auditList p { color:var(--muted); font-size:13px; }.auditList pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
 @media(max-width:480px) { .permissionGrid, #profilePermissions, .permissionTools { grid-template-columns:minmax(0,1fr); }.sectionHeading { flex-wrap:wrap; } }
 .formError { color:#923e3e; margin:0; font-size:14px; overflow-wrap:anywhere; }.formError:empty { display:none; }
+.crmUserAccess { border-top:1px solid var(--line); margin-top:20px; padding-top:16px; }
+.crmUserAccess h3 { font-size:15px; margin:0 0 14px; }
+#crmAccessDoctors { margin-top:14px; }
+#crmAccessDoctors details { border-bottom:1px solid var(--line); padding:8px 0; }
+#crmAccessDoctors summary { margin:4px 0; }
+#crmAccessDoctors summary .checkboxLabel { display:inline-flex; max-width:calc(100% - 24px); vertical-align:middle; overflow-wrap:anywhere; }
+.crmDoctorPipelines { padding:10px 0 4px 28px; }
+.crmPipelineChoices { padding:8px 0 0 28px; display:grid; gap:10px; }
+.crmPipelineChoices label { font-weight:400; }
+.crmPipelineChoices p { color:var(--muted); font-size:12px; }
 @media(max-width:1000px) { .masterMain{padding:24px 16px;} .masterHeader{padding:12px 16px;} .rowActions{gap:2px;} th,td{padding:12px 8px;} }
 @media(max-width:800px) {
  .masterHeader{align-items:flex-start;} .brand img{width:116px;height:54px;} .accountActions{gap:10px;font-size:12px;} .masterBadge{display:none;}

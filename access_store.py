@@ -1,9 +1,28 @@
 """Central permission, profile and administrative audit persistence."""
 
 import json
+import re
 from datetime import datetime, timezone
 
 from access_policy import clinic_permissions, permission_map, profile_defaults, validate_permissions
+
+CRM_SCOPE_UNCHANGED = object()
+
+
+def validate_crm_scope(value):
+    if value is None:
+        return None
+    if not isinstance(value, dict) or len(value) > 100:
+        raise ValueError("Selecione os profissionais e funis permitidos no CRM.")
+    result = {}
+    for doctor, pipelines in value.items():
+        if not isinstance(doctor, str) or not re.fullmatch(r"[a-f0-9]{32}", doctor):
+            raise ValueError("Profissional do CRM invalido.")
+        if pipelines is not None and (not isinstance(pipelines, list) or not 1 <= len(pipelines) <= 100
+                or any(not isinstance(p, str) or not re.fullmatch(r"[a-f0-9]{32}", p) for p in pipelines)):
+            raise ValueError("Selecione ao menos um funil para cada profissional marcado.")
+        result[doctor] = None if pipelines is None else sorted(set(pipelines))
+    return result
 
 
 def timestamp():
@@ -11,6 +30,10 @@ def timestamp():
 
 
 def initialize_access_schema(conn, old_version):
+    conn.execute("""CREATE TABLE IF NOT EXISTS user_crm_scope (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        scope_json TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""")
     conn.execute("""CREATE TABLE IF NOT EXISTS user_clinic_permissions (
         user_id INTEGER NOT NULL, clinic_key TEXT NOT NULL, permission_key TEXT NOT NULL,
         PRIMARY KEY(user_id, clinic_key, permission_key),
@@ -38,6 +61,21 @@ def initialize_access_schema(conn, old_version):
 
 
 class AccessStoreMixin:
+    def _crm_scope(self, conn, user_id):
+        row = conn.execute("SELECT scope_json FROM user_crm_scope WHERE user_id=?", (user_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def _save_crm_scope(self, conn, user_id, value, actor_id=None):
+        value = validate_crm_scope(value)
+        old = self._crm_scope(conn, user_id)
+        if value is None:
+            conn.execute("DELETE FROM user_crm_scope WHERE user_id=?", (user_id,))
+        else:
+            conn.execute("INSERT INTO user_crm_scope VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET scope_json=excluded.scope_json,updated_at=excluded.updated_at",
+                         (user_id, json.dumps(value, sort_keys=True), timestamp()))
+        if value != old:
+            self._audit(conn, "crm_access_changed", actor_id, user_id, {"before": old, "after": value})
+
     def _audit(self, conn, action, actor_id=None, target_id=None, details=None):
         actor = conn.execute("SELECT nome FROM users WHERE id = ?", (actor_id,)).fetchone()
         target = conn.execute("SELECT nome FROM users WHERE id = ?", (target_id,)).fetchone()

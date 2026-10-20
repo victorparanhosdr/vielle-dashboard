@@ -9,6 +9,7 @@ from urllib.parse import parse_qs
 
 from crm_gateway import EvolutionGateway, campaigns_enabled, sends_enabled
 from crm_store import Conflict, CrmStore
+from crm_access import CRM_SCOPE
 from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
@@ -63,10 +64,13 @@ def handle_request(handler, parsed):
     if action in MASTER_ACTIONS and not user.get("is_master"):
         return handler.auth_json({"ok": False, "code": "master_required", "error": "Configuracao exclusiva do Master."}, 403)
     store = store_for(handler.server.auth_store)
-    from crm_access import institute_access
+    from crm_access import institute_access, crm_access
     keys = store.course_source.store.allowed(user) if store.course_source is not None else []
-    with institute_access(keys):
-        return _dispatch(handler, parsed, store, query, user, action)
+    try:
+        with institute_access(keys), crm_access(None if user.get("is_master") else user.get("crm_scope"), query.get("doctor", [""])[0]):
+            return _dispatch(handler, parsed, store, query, user, action)
+    except PermissionError as exc:
+        return handler.auth_json({"ok": False, "code": "permission_denied", "error": str(exc)}, 403)
 
 
 def _dispatch(handler, parsed, store, query, user, action):
@@ -104,6 +108,8 @@ def _dispatch(handler, parsed, store, query, user, action):
                                           "sends_enabled": sends_enabled() and store.worker_online(),
                                           "campaigns_enabled": sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online(),
                                           "can_enable_campaigns": bool(user.get("is_master")) and sends_enabled() and store.worker_online(),
+                                          "can_search_patients": CRM_SCOPE.get() is None,
+                                          "can_view_clinic_history": CRM_SCOPE.get() is None,
                                           "can_manage": bool(user.get("is_master"))})
             if action == "kanban-page":
                 return handler.auth_json({"ok": True, **store.kanban_page(doctor, query.get("pipeline", [""])[0],
@@ -128,6 +134,8 @@ def _dispatch(handler, parsed, store, query, user, action):
                 detail = store.detail(query.get("id", [""])[0], doctor)
                 return handler.auth_json({**job, "lead": detail["lead"]})
             if action in {"patients", "patient-directory-refresh"}:
+                if CRM_SCOPE.get() is not None:
+                    raise PermissionError("A busca geral de pacientes exige acesso completo ao CRM. Use as fichas dos funis permitidos.")
                 with store.db() as c:
                     store.row(c, "doctors", doctor)
                 if action == "patient-directory-refresh":
@@ -167,6 +175,8 @@ def _dispatch(handler, parsed, store, query, user, action):
         p = json.loads(read_body(handler, limit))
         if not isinstance(p, dict):
             raise ValueError("Solicitacao invalida.")
+        if CRM_SCOPE.get() is not None and p.get("doctor_id") and p["doctor_id"] != doctor:
+            raise PermissionError("O profissional da solicitacao nao corresponde ao CRM aberto.")
         actor = handler.current_user["nome"]
         result = {}
         if action == "bootstrap":
@@ -219,6 +229,8 @@ def _dispatch(handler, parsed, store, query, user, action):
                 store.owned(c, "leads", p.get("id"), p.get("doctor_id"))
             result.update(start_refresh(store))
         elif action == "patient-directory-refresh":
+            if CRM_SCOPE.get() is not None:
+                raise PermissionError("A busca geral de pacientes exige acesso completo ao CRM.")
             from crm_patient_refresh import start_refresh
             with store.db() as c:
                 store.row(c, "doctors", p.get("doctor_id"))

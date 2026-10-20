@@ -13,11 +13,12 @@ from zoneinfo import ZoneInfo
 from crm_filters import appointment_active, appointment_ready, financial_ready, fold, matches, ordered, parse_filters
 from crm_metrics import THREADS_CTE
 from crm_patients import match_patient_name
-from crm_access import check_row, contact_visible, pipeline_visible
+from crm_access import check_row, contact_visible, pipeline_visible, doctor_visible, CRM_SCOPE
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FOOTER = "\n\nPara não receber mais mensagens, responda SAIR."
 CAMPAIGN_DAILY_LIMIT = 200
+DEFAULT_DOCTOR_NAME = "Victor Paranhos de Andrade"
 SERVICE_LOCATIONS = {"capelinha": "Capelinha", "belo-horizonte": "Belo Horizonte", "sao-paulo": "São Paulo"}
 LOCATION_DDDS = {"33": "capelinha", "38": "capelinha", "31": "belo-horizonte", "11": "sao-paulo"}
 THREAD_VISIBLE = "(direction='in' OR status IN ('sent','sending','unknown') OR (campaign_id IS NULL AND status='queued'))"
@@ -635,6 +636,8 @@ class CrmStore:
                 lead["_experts_search"] = data.get("search_text", "")
 
     def appointments(self, key, doctor, scope="doctor", period="all", page=1):
+        if scope == "clinic" and CRM_SCOPE.get() is not None:
+            raise PermissionError("Historico de toda a clinica indisponivel para um acesso restrito do CRM.")
         if scope not in {"doctor", "clinic"} or period not in {"all", "upcoming", "past"}:
             raise ValueError("Filtro invalido.")
         page = integer(page, 1, 100000)
@@ -650,6 +653,8 @@ class CrmStore:
         return self.appointment_source.history(lead["experts_uuid"], name, scope, period, page)
 
     def commercial(self, key, doctor, scope="doctor", kind="sales", page=1):
+        if scope == "clinic" and CRM_SCOPE.get() is not None:
+            raise PermissionError("Historico de toda a clinica indisponivel para um acesso restrito do CRM.")
         if scope not in {"doctor", "clinic"} or kind not in {"sales", "quotes"}:
             raise ValueError("Filtro invalido.")
         page = integer(page, 1, 100000)
@@ -699,10 +704,11 @@ class CrmStore:
         filters = parse_filters(filters)
         self.reconcile_patients()
         with self.db() as c:
-            doctors = [dict(r) for r in c.execute("SELECT * FROM doctors ORDER BY name")]
+            doctors = [dict(r) for r in c.execute("SELECT * FROM doctors ORDER BY name") if doctor_visible(r["id"])]
             if doctor:
                 self.row(c, "doctors", doctor)
-            doctor = doctor or (doctors[0]["id"] if doctors else "")
+            doctor = doctor or next((d["id"] for d in doctors if fold(" ".join(d["name"].split())) == fold(DEFAULT_DOCTOR_NAME)),
+                                    doctors[0]["id"] if doctors else "")
             pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name", (doctor,)) if pipeline_visible(dict(r))]
             for p in pipelines:
                 p["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (p["id"],))]
@@ -734,8 +740,14 @@ class CrmStore:
                 campaign["counts"] = {r[0]: r[1] for r in c.execute("SELECT status,count(*) FROM messages WHERE campaign_id=? GROUP BY status", (campaign["id"],))}
             today = datetime.now(TZ).date().isoformat()
             daily = datetime.combine(datetime.now(TZ).date(), datetime.min.time(), TZ).timestamp()
-            xp = c.execute("SELECT coalesce(sum(points),0) FROM xp WHERE doctor_id=?", (doctor,)).fetchone()[0]
-            team = [dict(r) for r in c.execute("SELECT actor,sum(points) points FROM xp WHERE doctor_id=? GROUP BY actor ORDER BY points DESC LIMIT 10", (doctor,))]
+            visible_pipelines = {p["id"] for p in pipelines}
+            visible_leads = {r["id"] for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=?", (doctor,)) if r["pipeline_id"] in visible_pipelines}
+            points = [dict(r) for r in c.execute("SELECT * FROM xp WHERE doctor_id=?", (doctor,)) if r["lead_id"] in visible_leads]
+            xp = sum(r["points"] for r in points)
+            totals = {}
+            for point in points:
+                totals[point["actor"]] = totals.get(point["actor"], 0) + point["points"]
+            team = [{"actor": actor, "points": value} for actor, value in sorted(totals.items(), key=lambda item: -item[1])[:10]]
             return {"doctors": doctors, "doctor_id": doctor, "pipelines": pipelines, "leads": leads,
                     **({"kanban": kanban} if kanban is not None else {}),
                     "customer_tier_rules": self.customer_tier_rules(c),
@@ -744,9 +756,9 @@ class CrmStore:
                     "total_leads": sum(c.execute("SELECT count(*) FROM leads WHERE pipeline_id=?", (p["id"],)).fetchone()[0] for p in pipelines),
                     "channels": [dict(r) for r in c.execute("SELECT * FROM channels WHERE doctor_id=? ORDER BY name", (doctor,))],
                     "campaigns": campaigns, "game": {"xp": xp, "level": xp // 100 + 1, "progress": xp % 100, "team": team,
-                    "followups": c.execute("SELECT count(*) FROM xp WHERE doctor_id=? AND label='Follow-up registrado' AND created_at>=?", (doctor, daily)).fetchone()[0],
-                    "advances": c.execute("SELECT count(*) FROM xp WHERE doctor_id=? AND label='Avanco no funil' AND created_at>=?", (doctor, daily)).fetchone()[0],
-                    "wins": c.execute("SELECT count(*) FROM xp WHERE doctor_id=? AND label='Fechamento' AND created_at>=?", (doctor, daily)).fetchone()[0]}, "today": today}
+                    "followups": sum(r["label"] == "Follow-up registrado" and r["created_at"] >= daily for r in points),
+                    "advances": sum(r["label"] == "Avanco no funil" and r["created_at"] >= daily for r in points),
+                    "wins": sum(r["label"] == "Fechamento" and r["created_at"] >= daily for r in points)}, "today": today}
 
     @staticmethod
     def conversation_contact(c, doctor, channel, contact):
@@ -780,7 +792,7 @@ class CrmStore:
                 (SELECT id FROM leads WHERE doctor_id=? AND contact_id=ct.id ORDER BY updated_at DESC LIMIT 1) lead_id
                 FROM threads t JOIN visible m ON m.seq=t.latest JOIN contacts ct ON ct.id=t.contact_id
                 JOIN channels ch ON ch.id=t.channel_id ORDER BY m.created_at DESC,m.seq DESC""", (doctor, channel, channel, doctor)).fetchall()
-            items = [dict(r) for r in rows if contact_visible(c, r["contact_id"])]
+            items = [dict(r) for r in rows if contact_visible(c, r["contact_id"], doctor)]
             catalog = {r["id"]: dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=?", (doctor,))}
             for item in items:
                 opportunities = [dict(r) for r in c.execute("SELECT id,pipeline_id FROM leads WHERE doctor_id=? AND contact_id=? ORDER BY updated_at DESC,id", (doctor, item["contact_id"]))
@@ -792,7 +804,7 @@ class CrmStore:
             self.attach_customer_values(c, items, doc["name"], bool(filters["search"]))
             if appointment_active(filters):
                 self.attach_appointment_filters(items, doc["name"], filters)
-            titles = {r["contact_id"]: r["title"] for r in c.execute("SELECT contact_id,title FROM leads WHERE doctor_id=? ORDER BY updated_at,id", (doctor,))}
+            titles = {r["contact_id"]: r["title"] for r in c.execute("SELECT contact_id,title,pipeline_id FROM leads WHERE doctor_id=? ORDER BY updated_at,id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])}
             for item in items:
                 item["title"] = titles.get(item["contact_id"], "")
             incomplete = len({r["contact_id"] for r in items if not financial_ready(r, filters) or not appointment_ready(r, filters)})
@@ -810,7 +822,7 @@ class CrmStore:
         with self.db() as c:
             self.row(c, "doctors", doctor)
             self.row(c, "contacts", contact)
-            rows = c.execute("SELECT l.id,l.title,l.stage_id,p.id pipeline_id,p.name pipeline_name,p.institute_key,p.course_key,s.name stage_name FROM leads l JOIN pipelines p ON p.id=l.pipeline_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.contact_id=? ORDER BY l.updated_at DESC,l.id", (doctor, contact)).fetchall()
+            rows = c.execute("SELECT l.id,l.title,l.stage_id,p.id pipeline_id,p.doctor_id,p.name pipeline_name,p.institute_key,p.course_key,s.name stage_name FROM leads l JOIN pipelines p ON p.id=l.pipeline_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.contact_id=? ORDER BY l.updated_at DESC,l.id", (doctor, contact)).fetchall()
             return {"opportunities": [dict(r) for r in rows if pipeline_visible(dict(r))]}
 
     @staticmethod

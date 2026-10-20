@@ -3,7 +3,7 @@ import json
 import time
 import uuid
 
-from crm_access import pipeline_visible
+from crm_access import activity_visible
 from institute_report import email
 
 
@@ -20,7 +20,7 @@ def owned(forms,c,ident,doctor=None):
     if not row or doctor is not None and row['doctor_id']!=doctor:
         raise LookupError('Conexao Google nao encontrada.')
     row=dict(row)
-    if not pipeline_visible(row):
+    if not activity_visible(row):
         raise PermissionError('Conexao indisponivel para esta atividade.')
     return row
 
@@ -38,7 +38,7 @@ def listing(forms,doctor=None):
         if doctor is not None:
             forms.crm.row(c,'doctors',doctor)
         return [metadata(dict(row)) for row in c.execute('SELECT * FROM form_google_accounts ORDER BY updated_at DESC')
-                if (doctor is None or row['doctor_id']==doctor) and pipeline_visible(dict(row))]
+                if (doctor is None or row['doctor_id']==doctor) and activity_visible(dict(row))]
 
 
 def prepare(forms,doctor,pipeline,recipients):

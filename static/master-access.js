@@ -36,17 +36,20 @@ function renderClinicPermissions(user) {
     const copyLabel=document.createElement("label"),copy=document.createElement("select");copy.setAttribute("aria-label",`Copiar permissões para ${clinic.name}`);copy.append(choiceOption("","Selecionar clínica"));clinicCatalog.filter(item=>item.key!==clinic.key).forEach(item=>copy.append(choiceOption(item.key,item.name)));copyLabel.textContent="Copiar de";copyLabel.append(copy);toolbar.append(copyLabel);
     const all=document.createElement("button"),none=document.createElement("button");all.type=none.type="button";all.className=none.className="secondary";all.textContent="Selecionar tudo";none.textContent="Remover tudo";toolbar.append(all,none);details.append(toolbar);
     const grid=document.createElement("div");grid.className="permissionGrid";permissionGrid(grid,user?.permissions?.[clinic.key]||[],clinic.key);details.append(grid);section.append(details);$("clinicChoices").append(section);
-    toggle.addEventListener("change",()=>{details.hidden=!toggle.checked;details.open=toggle.checked;});
-    profile.addEventListener("change",()=>{const selected=accessProfiles.find(item=>String(item.id)===profile.value);if(selected)setGridValues(grid,selected.permissions);});
-    copy.addEventListener("change",()=>{const source=document.querySelector(`.clinicPermissions[data-clinic="${copy.value}"] .permissionGrid`);if(source)setGridValues(grid,gridValues(source));profile.value="";copy.value="";});
-    all.addEventListener("click",()=>{grid.querySelectorAll("input").forEach(input=>{input.checked=true;});profile.value="";});
-    none.addEventListener("click",()=>{setGridValues(grid,[]);profile.value="";});
-    grid.addEventListener("change",()=>{profile.value="";});
+    const crm=clinic.key==="vielle"?renderCrmAccess(user):null;if(crm)details.append(crm);
+    const syncCrm=()=>{if(crm)crm.hidden=!toggle.checked || !grid.querySelector('[data-permission="crm.view"]')?.checked;};syncCrm();
+    toggle.addEventListener("change",()=>{details.hidden=!toggle.checked;details.open=toggle.checked;syncCrm();});
+    profile.addEventListener("change",()=>{const selected=accessProfiles.find(item=>String(item.id)===profile.value);if(selected)setGridValues(grid,selected.permissions);syncCrm();});
+    copy.addEventListener("change",()=>{const source=document.querySelector(`.clinicPermissions[data-clinic="${copy.value}"] .permissionGrid`);if(source)setGridValues(grid,gridValues(source));profile.value="";copy.value="";syncCrm();});
+    all.addEventListener("click",()=>{grid.querySelectorAll("input").forEach(input=>{input.checked=true;});profile.value="";syncCrm();});
+    none.addEventListener("click",()=>{setGridValues(grid,[]);profile.value="";syncCrm();});
+    grid.addEventListener("change",()=>{profile.value="";syncCrm();});
   });
 }
 function collectClinicPermissions(keys) { return Object.fromEntries(keys.map(key=>[key,gridValues(document.querySelector(`.clinicPermissions[data-clinic="${key}"] .permissionGrid`))])); }
 
 const auditLabels={login:"Login realizado",login_denied:"Login negado",logout:"Logout",user_created:"Usuário criado",user_updated:"Usuário editado",user_activated:"Usuário ativado",user_deactivated:"Usuário desativado",password_reset:"Senha redefinida",clinics_changed:"Clínicas alteradas",permissions_changed:"Permissões alteradas",profile_saved:"Perfil salvo"};
+auditLabels.crm_access_changed="Acessos do CRM alterados";
 Object.entries(auditLabels).forEach(([key,label])=>$("auditAction").append(choiceOption(key,label)));
 let auditPage=1,auditRequest=0,editingProfile=null;
 async function loadAudit() {

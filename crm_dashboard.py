@@ -21,7 +21,7 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
     daily = {(first + timedelta(days=i)).isoformat(): {"received": 0, "replies": 0} for i in range(days)}
     with store.db() as c:
         store.row(c, "doctors", doctor)
-        pending = [r for r in c.execute(THREADS_CTE + "SELECT contact_id,waiting_since FROM threads WHERE unread>0", (doctor, "", "")) if contact_visible(c, r["contact_id"])]
+        pending = [r for r in c.execute(THREADS_CTE + "SELECT contact_id,waiting_since FROM threads WHERE unread>0", (doctor, "", "")) if contact_visible(c, r["contact_id"], doctor)]
         clients = {}
         for row in pending:
             clients[row["contact_id"]] = min(clients.get(row["contact_id"], now), row["waiting_since"] or now)
@@ -32,7 +32,7 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
             AND coalesce(nullif(m.provider_timestamp,0),m.created_at)>=?
             AND coalesce(nullif(m.provider_timestamp,0),m.created_at)<=? GROUP BY m.contact_id,hour""", (doctor, start, now)).fetchall()
         for row in hours:
-            if not contact_visible(c, row["contact_id"]):
+            if not contact_visible(c, row["contact_id"], doctor):
                 continue
             key = datetime.fromtimestamp(row["hour"] * 3600, TZ).date().isoformat()
             if key in daily:
@@ -41,7 +41,7 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
         replies = [r for r in c.execute("""SELECT DISTINCT m.id,r.user_id,m.sender_name,m.contact_id,m.sent_at
             FROM reply_requests r JOIN messages m ON m.id=r.message_id JOIN channels ch ON ch.id=m.channel_id
             WHERE ch.doctor_id=? AND m.direction='out' AND m.status='sent' AND m.campaign_id IS NULL
-            AND m.sent_at>=? AND m.sent_at<=?""", (doctor, start, now)) if contact_visible(c, r["contact_id"])]
+            AND m.sent_at>=? AND m.sent_at<=?""", (doctor, start, now)) if contact_visible(c, r["contact_id"], doctor)]
         operators = defaultdict(lambda: {"name": "Operador", "replies": 0, "contacts": set(), "last_reply_at": 0})
         for row in replies:
             key = datetime.fromtimestamp(row["sent_at"], TZ).date().isoformat()
@@ -52,7 +52,7 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
             op["replies"] += 1
             op["contacts"].add(row["contact_id"])
             op["last_reply_at"] = max(op["last_reply_at"], row["sent_at"])
-        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,p.institute_key,count(l.id) total,
+        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,p.doctor_id,p.institute_key,count(l.id) total,
             sum(CASE WHEN s.kind='won' THEN 1 ELSE 0 END) won,
             sum(CASE WHEN s.kind='lost' THEN 1 ELSE 0 END) lost
             FROM pipelines p LEFT JOIN leads l ON l.pipeline_id=p.id LEFT JOIN stages s ON s.id=l.stage_id

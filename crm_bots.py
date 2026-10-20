@@ -305,7 +305,7 @@ class BotStore:
     def history(self, ident, doctor):
         with self.crm.db() as c:
             self.owned(c, ident, doctor)
-            rows = [dict(r) for r in c.execute("SELECT r.*,ct.name FROM bot_runs r JOIN leads l ON l.id=r.lead_id JOIN contacts ct ON ct.id=l.contact_id WHERE r.bot_id=? ORDER BY r.created_at DESC LIMIT 100", (ident,))]
+            rows = [dict(r) for r in c.execute("SELECT r.*,ct.name,l.pipeline_id,l.doctor_id,p.institute_key FROM bot_runs r JOIN leads l ON l.id=r.lead_id JOIN contacts ct ON ct.id=l.contact_id JOIN pipelines p ON p.id=l.pipeline_id WHERE r.bot_id=? ORDER BY r.created_at DESC", (ident,)) if pipeline_visible(dict(r))][:100]
             for row in rows:
                 row.pop("definition")
                 row["steps_log"] = [dict(r) for r in c.execute("SELECT * FROM bot_steps WHERE run_id=? ORDER BY id", (row["id"],))]

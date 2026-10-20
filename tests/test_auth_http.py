@@ -501,6 +501,75 @@ class HttpAuthTests(unittest.TestCase):
                         {"X-DOC4DOCS-Request": "1"})[0], 400)
             save.assert_not_called()
 
+    def test_master_assigns_crm_doctors_and_funnels_on_user_account(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Marcela": ["Clinica"], "Victor Paranhos de Andrade": ["Permitido", "Restrito"]})
+        victor = crm.listing()["doctor_id"]
+        allowed, hidden = crm.listing(victor)["pipelines"]
+        other = next(d["id"] for d in crm.listing()["doctors"] if d["id"] != victor)
+        self.limit_permissions(["crm.view"])
+        staff, _ = self.login()
+        master = self.master_cookie()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        path = f"/api/master/users/{self.user_id}/edit"
+        scope = {victor: [allowed["id"]]}
+        payload = {"nome": "Usuario Local", "login": "teste", "crm_scope": scope}
+        self.assertEqual(self.request("POST", path, payload, staff, headers)[0], 403)
+        self.assertEqual(self.request("POST", path, payload, master)[0], 403)
+        status, _, raw = self.request("POST", path, payload, master, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["user"]["crm_scope"], scope)
+        status, _, raw = self.request("GET", "/api/auth/me", cookie=staff)
+        self.assertEqual(json.loads(raw)["user"]["crm_scope"], scope)
+        status, _, raw = self.request("GET", "/api/crm?clinic=vielle&view=kanban", cookie=staff)
+        self.assertEqual(status, 200, raw)
+        data = json.loads(raw)
+        self.assertEqual([d["id"] for d in data["doctors"]], [victor])
+        self.assertEqual([p["id"] for p in data["pipelines"]], [allowed["id"]])
+        self.assertEqual(self.request("GET", f"/api/crm?clinic=vielle&doctor={other}", cookie=staff)[0], 403)
+        self.assertEqual(self.request("GET", f"/api/crm?clinic=vielle&doctor={victor}&view=kanban&pipeline={hidden['id']}", cookie=staff)[0], 400)
+        bad = {"nome": "Nao salvar", "login": "teste", "crm_scope": {other: [allowed["id"]]}}
+        self.assertEqual(self.request("POST", path, bad, master, headers)[0], 400)
+        self.assertEqual(self.store.get_public_user(self.user_id)["nome"], "Usuario Local")
+        self.assertEqual(self.store.get_public_user(self.user_id)["crm_scope"], scope)
+        status, _, raw = self.request("GET", "/api/master/users", cookie=master)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(len(json.loads(raw)["crm_catalog"]["doctors"]), 2)
+        self.assertEqual(len(json.loads(raw)["crm_catalog"]["pipelines"]), 3)
+        self.assertEqual(self.request("POST", path, {**payload, "crm_scope": {}}, master, headers)[0], 200)
+        status, _, raw = self.request("GET", "/api/crm?clinic=vielle", cookie=staff)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["doctors"], [])
+        self.assertEqual(self.request("POST", path, {**payload, "crm_scope": None}, master, headers)[0], 200)
+        status, _, raw = self.request("GET", "/api/crm?clinic=vielle", cookie=staff)
+        self.assertEqual(len(json.loads(raw)["doctors"]), 2)
+
+    def test_crm_scope_blocks_hidden_read_write_media_and_mismatched_doctor_payload(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Permitido", "Restrito"]})
+        doctor = crm.listing()["doctor_id"]
+        allowed, hidden = crm.listing(doctor)["pipelines"]
+        lead = crm.lead({"doctor_id": doctor, "pipeline_id": hidden["id"], "stage_id": hidden["stages"][0]["id"],
+                         "name": "Contato sintetico", "phone": "5500000000002", "title": "Restrito"}, "Master")
+        contact = crm.detail(lead, doctor)["lead"]["contact_id"]
+        channel = crm.channel({"doctor_id": doctor, "name": "Numero", "phone": "5500000000001"})
+        self.limit_permissions(["crm.view"])
+        cookie, _ = self.login()
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope={doctor: [allowed["id"]]})
+        base = f"clinic=vielle&doctor={doctor}"
+        for path in (f"/api/crm/lead?{base}&id={lead}", f"/api/crm/conversation?{base}&channel={channel}&contact={contact}",
+                     f"/api/crm/patients?{base}", f"/api/crm/voice/history?{base}&lead={lead}"):
+            self.assertEqual(self.request("GET", path, cookie=cookie)[0], 403, path)
+        payload = {"doctor_id": doctor, "pipeline_id": hidden["id"], "stage_id": hidden["stages"][0]["id"],
+                   "name": "Nao criar", "phone": "5500000000003", "title": "Restrito"}
+        self.assertEqual(self.request("POST", f"/api/crm/lead?{base}", payload, cookie, {"X-DOC4DOCS-Request": "1"})[0], 403)
+        payload.update(pipeline_id=allowed["id"], stage_id=allowed["stages"][0]["id"])
+        self.assertEqual(self.request("POST", "/api/crm/lead?clinic=vielle", payload, cookie, {"X-DOC4DOCS-Request": "1"})[0], 403)
+        status, _, raw = self.request("POST", f"/api/crm/lead?{base}", payload, cookie, {"X-DOC4DOCS-Request": "1"})
+        self.assertEqual(status, 200, raw)
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

@@ -177,6 +177,11 @@ def handle(handler, crm, action, query, user):
         result=forms.upload(ident,"",unquote(handler.headers.get("X-File-Name","")),read_body(handler,10*1024*1024),"asset")
         return handler.auth_json({"ok":True,"file":result})
     payload=json.loads(read_body(handler,512*1024))
+    if not isinstance(payload,dict):
+        raise ValueError("Solicitacao invalida.")
+    from crm_access import CRM_SCOPE
+    if CRM_SCOPE.get() is not None and payload.get("doctor_id",doctor)!=doctor:
+        raise PermissionError("O profissional da solicitacao nao corresponde ao CRM aberto.")
     doctor=payload.get("doctor_id",doctor);ident=payload.get("id",ident)
     if action=='forms/google-account':
         if not user.get('is_master'):

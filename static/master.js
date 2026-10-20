@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let users = [], page = 1, requestNumber = 0, editing = null, passwordUser = null, statusUser = null;
 let currentUser = null, clinicCatalog = [], moduleCatalog = {}, actionLabels = {}, accessProfiles = [];
+let crmCatalog = {doctors:[],pipelines:[]};
 
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -52,7 +53,7 @@ async function loadUsers() {
     const query=new URLSearchParams({search:$("searchUsers").value,status:$("statusFilter").value,page});
     const data=await api(`/api/master/users?${query}`);if(number!==requestNumber)return;
     const pages=Math.max(1,Math.ceil(data.total/data.page_size));if(page>pages){page=pages;return loadUsers();}
-    clinicCatalog=data.clinics||[];moduleCatalog=data.modules||{};actionLabels=data.actions||{};accessProfiles=data.profiles||[];users=data.users;renderRows();$("newUser").disabled=false;$("userCount").textContent=`${data.total} ${data.total===1?"usuário":"usuários"}`;
+    clinicCatalog=data.clinics||[];moduleCatalog=data.modules||{};actionLabels=data.actions||{};accessProfiles=data.profiles||[];crmCatalog=data.crm_catalog||{doctors:[],pipelines:[]};users=data.users;renderRows();$("newUser").disabled=false;$("userCount").textContent=`${data.total} ${data.total===1?"usuário":"usuários"}`;
     $("pageLabel").textContent=`Página ${page} de ${pages}`;$("prevPage").disabled=page<=1;$("nextPage").disabled=page>=pages;
   }catch(error){if(number===requestNumber){notice(error.message,true);if(!users.length){$("userRows").replaceChildren();const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=7;cell.className="emptyRow";cell.textContent="Não foi possível carregar a lista.";row.append(cell);$("userRows").append(row);}}}
   finally{if(number===requestNumber)$("userRows").removeAttribute("aria-busy");}
@@ -73,7 +74,7 @@ function formSubmit(formId, buttonId, errorId, run) {
 }
 formSubmit("userForm","saveUser","userFormError",async()=>{
   const body={nome:$("userName").value,login:$("userLogin").value};const user=editing;
-  if(!user?.is_master){body.clinic_keys=Array.from($("clinicChoices").querySelectorAll('input[name="clinic_key"]:checked'),input=>input.value);body.permissions=collectClinicPermissions(body.clinic_keys);}
+  if(!user?.is_master){body.clinic_keys=Array.from($("clinicChoices").querySelectorAll('input[name="clinic_key"]:checked'),input=>input.value);body.permissions=collectClinicPermissions(body.clinic_keys);body.crm_scope=collectCrmScope();}
   if(!user){body.password=$("initialPassword").value;body.status=$("initialActive").checked?"active":"inactive";}
   const result=await api(user?`/api/master/users/${user.id}/edit`:"/api/master/users",body);
   $("userDialog").close();notice(user?"Usuário atualizado.":"Usuário criado.");

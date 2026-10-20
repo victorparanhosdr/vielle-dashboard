@@ -205,8 +205,11 @@ class VoiceService:
             now = time.time()
             self.expire(c, now)
             params = (doctor, lead["contact_id"])
-            total = c.execute("SELECT count(*) FROM voice_calls WHERE doctor_id=? AND contact_id=?", params).fetchone()[0]
-            rows = c.execute("SELECT * FROM voice_calls WHERE doctor_id=? AND contact_id=? ORDER BY created_at DESC,id LIMIT 20 OFFSET ?", (*params, (page-1)*20)).fetchall()
+            from crm_access import pipeline_visible
+            visible = [r for r in c.execute("""SELECT v.*,l.pipeline_id,p.institute_key FROM voice_calls v
+                JOIN leads l ON l.id=v.lead_id JOIN pipelines p ON p.id=l.pipeline_id
+                WHERE v.doctor_id=? AND v.contact_id=? ORDER BY v.created_at DESC,v.id""", params) if pipeline_visible(dict(r))]
+            total, rows = len(visible), visible[(page-1)*20:page*20]
         return {"calls": [self.public(dict(r)) for r in rows], "total": total, "page": page,
                 "has_more": page*20 < total, "config": self.config.status(doctor)}
 
