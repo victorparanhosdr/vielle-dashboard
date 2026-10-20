@@ -1,0 +1,17 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),vm=require('node:vm');
+const read=file=>fs.readFileSync(path.join(__dirname,'../static',file),'utf8');
+const source=read('crm-channel-settings.js');
+for(const file of ['crm.js','crm-channel-settings.js','crm-inbox.js','crm-bots.js','crm-campaigns.js'])new vm.Script(read(file));
+assert.match(source,/channel-remove",undefined,\{doctor,id:channel.id\}/);
+assert.match(source,/Nenhum lead, oportunidade, contato, mensagem ou anexo será excluído/);
+assert.match(source,/submit.disabled=saving \|\| blocked \|\| !form.elements.confirm.checked/);
+assert.match(source,/config_revision:source.config_revision,confirm:true/);
+assert.match(source,/channel-restore/);
+assert.match(source,/if\(canManage && restoreButton\)/);
+assert.match(source,/if\(!canManage\)continue/);
+assert.match(read('crm.js'),/details class="removedConnections"/);
+assert.match(read('crm-inbox.js'),/removido \(histórico\)/);
+assert.match(read('crm-inbox.js'),/Número removido · histórico disponível para consulta/);
+assert.match(read('crm-campaigns.js'),/channels=state.data.channels.filter\(c=>!c.archived_at\)/);
+assert.match(read('crm-bots.js'),/!c.archived_at \|\| c.id===data.channel_id/);
+console.log('WhatsApp removal UI: explicit confirmation, history retention, restoration and send restrictions OK');

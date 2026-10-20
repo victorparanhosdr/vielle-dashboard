@@ -64,7 +64,7 @@ window.createCrmCampaigns=function({state,api,esc,icon,icons,modal,error,load,au
     }catch(e){error(e.message);}
   }
   function create(initial=null) {
-    const doc=state.doctor,doctor=state.data.doctors.find(d=>d.id===doc),channels=[...state.data.channels],pipelines=[...state.data.pipelines];
+    const doc=state.doctor,doctor=state.data.doctors.find(d=>d.id===doc),channels=state.data.channels.filter(c=>!c.archived_at),pipelines=[...state.data.pipelines];
     const draft={name:"",body:"",channel_id:channels.find(c=>c.state==="open")?.id || channels[0]?.id || "",hours:0,minutes:1,seconds:0,
       weekdays:[0,1,2,3,4],from:"09:00",to:"18:00",start_at:"",tag:"",pipeline_id:state.pipeline,stage_ids:[],search:"",useFilters:true,exclude_ids:[]};
     let step=1,preview=null,picker=null,audiencePayload=initial || {pipeline_id:state.pipeline,filters:{...state.filters,search:state.search}},audienceCount=0;

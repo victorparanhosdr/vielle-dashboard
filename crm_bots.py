@@ -178,7 +178,10 @@ class BotStore:
             if data.get("stage_id") and data["stage_id"] not in stages:
                 raise ValueError("A fase de destino nao pertence a este funil.")
             if data.get("channel_id"):
-                self.crm.owned(c, "channels", data["channel_id"], doctor)
+                channel = self.crm.owned(c, "channels", data["channel_id"], doctor)
+                if publish:
+                    from crm_channels import require_active
+                    require_active(channel)
             if data.get("form_id"):
                 form = self.form(c, data["form_id"], doctor, pipeline)
                 if publish and form["status"] != "published":

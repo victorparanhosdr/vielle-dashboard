@@ -54,6 +54,29 @@ cannot restart on the moved channel. Unsent personal uploads stay with their own
 The previous/new routing, actor and impact are retained in `channel_transfers` and
 the authentication audit. Existing doctor/funnel/institute permissions still apply.
 
+## WhatsApp Connection Removal
+
+Numbers has a Master-only, confirmed remove action. This is a reversible CRM
+archive, not a provider logout, phone release or WhatsApp account deletion. Channel
+IDs, pairing instances, contacts, opportunities, messages, media files and their
+ownership remain intact. Keeping the provider instance also preserves the path
+for retrieving historical attachments that have not been cached locally.
+
+Removal rejects in-flight/unconfirmed sends, cancels related queued messages,
+pauses associated campaigns and explicitly bound bots, cancels related bot runs
+and consumes pending channel events. Archived channels ignore all new webhook
+events, including connection updates, and cannot send, upload, reconnect, transfer
+or be used to publish a bot. Lead and opportunity records are never deleted.
+
+The normal inbox and operational waiting counts exclude removed channels. Their
+history remains readable through the labelled number filter and contact record,
+under the same permissions; existing attachments remain accessible. Removed
+numbers are grouped in a collapsed section with Restore. Restoration reuses the
+same ID in disconnected state without resuming campaigns, bots or cancelled sends.
+Duplicate registration of an archived phone directs the Master to restore it.
+Both actions are transactional, revision-checked and retained in `channel_lifecycle`
+and the authentication audit. No production number is removed by deployment.
+
 ## Patient commercial history
 
 The client record includes closed sales and pending-quote tabs and shortcuts from

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock
 
-from crm_channels import transfer, transfer_options, update
+from crm_channels import lifecycle, removal_options, transfer, transfer_options, update
 from crm_access import crm_access
 from crm_store import CrmStore, Conflict
 
@@ -106,6 +106,161 @@ class ChannelRoutingTests(unittest.TestCase):
         return {"id": self.channel, "doctor_id": self.doc, "target_doctor_id": other,
                 "config_revision": self.channel_row()["config_revision"], "confirm": True,
                 "inbound_pipeline_id": pipeline["id"], "inbound_stage_id": pipeline["stages"][1]["id"], **changes}
+
+    def remove_payload(self, **changes):
+        return {"id": self.channel, "doctor_id": self.doc, "config_revision": self.channel_row()["config_revision"],
+                "confirm": True, **changes}
+
+    def test_removal_preserves_all_records_attachments_and_history_access(self):
+        from crm_media import path_for
+        self.incoming()
+        lead = self.store.listing(self.doc)["leads"][0]
+        media_id = "f" * 32
+        file = path_for(self.store, media_id)
+        file.parent.mkdir(exist_ok=True)
+        file.write_bytes(b"historical attachment")
+        tables = ("contacts", "leads", "messages", "message_media", "events", "conversation_reads", "conversation_resolutions")
+        with self.store.db() as c:
+            message = c.execute("SELECT id FROM messages LIMIT 1").fetchone()[0]
+            c.execute("""INSERT INTO message_media(id,doctor_id,source_channel_id,contact_id,user_id,upload_request,name,mime,kind,size,sha256,created_at,message_id)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", (media_id, self.doc, self.channel, lead["contact_id"], "operator", "upload", "teste.pdf", "application/pdf", "document", 21, "hash", 1, message))
+            c.execute("UPDATE messages SET media_id=? WHERE id=?", (media_id, message))
+            c.execute("INSERT INTO conversation_reads VALUES(?,?,?,?)", (self.channel, lead["contact_id"], "operator", 1))
+            snapshot = {table: [tuple(r) for r in c.execute("SELECT * FROM " + table)] for table in tables}
+        before = self.channel_row()
+        self.assertEqual(removal_options(self.store, self.channel, self.doc)["impact"]["messages"], 1)
+        result = lifecycle(self.store, self.remove_payload(), "master", "Master")
+        after = self.channel_row()
+        self.assertTrue(after["archived_at"])
+        self.assertEqual((after["state"], after["archived_by"]), ("archived", "master"))
+        for key in ("id", "phone", "instance", "doctor_id", "inbound_pipeline_id", "inbound_stage_id"):
+            self.assertEqual(before[key], after[key])
+        with self.store.db() as c:
+            self.assertEqual({table: [tuple(r) for r in c.execute("SELECT * FROM " + table)] for table in tables}, snapshot)
+            audit = dict(c.execute("SELECT * FROM channel_lifecycle").fetchone())
+            self.assertEqual((audit["id"], audit["action"], audit["actor_id"]), (result["event_id"], "remove", "master"))
+            self.assertEqual(c.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual(file.read_bytes(), b"historical attachment")
+        self.assertEqual(self.store.inbox(self.doc, "operator")["conversations"], [])
+        self.assertEqual(len(self.store.inbox(self.doc, "operator", self.channel)["conversations"]), 1)
+        conversation = self.store.conversation(self.doc, self.channel, lead["contact_id"])
+        self.assertFalse(conversation["reply_allowed"])
+        self.assertEqual(conversation["messages"][0]["media"]["id"], media_id)
+        self.assertEqual(self.store.detail(lead["id"], self.doc)["messages"][0]["id"], message)
+        self.assertEqual(len(self.store.listing(self.doc)["leads"]), 1)
+        self.assertEqual(self.store.listing(self.doc)["channels"][0]["id"], self.channel)
+
+    def test_removed_connection_ignores_webhooks_and_cannot_be_reactivated_by_provider(self):
+        self.incoming()
+        lifecycle(self.store, self.remove_payload(), "master", "Master")
+        self.assertFalse(self.incoming(number="5500000000003", ident="ignored"))
+        self.assertFalse(self.store.receive(self.channel_row()["instance"], {"state": "open"}, "connection.update"))
+        self.assertEqual(self.channel_row()["state"], "archived")
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM contacts").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM leads").fetchone()[0], 1)
+
+    def test_removal_cancels_pending_sends_and_restore_does_not_restart_them(self):
+        self.incoming()
+        lead = self.store.listing(self.doc)["leads"][0]
+        campaign = self.store.campaign({"doctor_id": self.doc, "channel_id": self.channel, "name": "Pendente",
+            "body": "Teste", "lead_ids": [lead["id"]]}, "Master")
+        lifecycle(self.store, self.remove_payload(), "master", "Master")
+        with self.store.db() as c:
+            self.assertEqual(self.store.row(c, "campaigns", campaign)["status"], "paused")
+            self.assertEqual(c.execute("SELECT status FROM messages WHERE campaign_id=?", (campaign,)).fetchone()[0], "cancelled")
+        lifecycle(self.store, self.remove_payload(), "master", "Master", restore=True)
+        self.assertEqual((self.channel_row()["archived_at"], self.channel_row()["state"]), (0, "close"))
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT action FROM channel_lifecycle ORDER BY created_at").fetchall()[1][0], "restore")
+            self.assertEqual(self.store.row(c, "campaigns", campaign)["status"], "paused")
+            self.assertEqual(c.execute("SELECT status FROM messages WHERE campaign_id=?", (campaign,)).fetchone()[0], "cancelled")
+        self.assertIsNone(self.store.claim())
+        self.incoming(ident="restored")
+        self.assertEqual(len(self.store.listing(self.doc)["leads"]), 1)
+
+    def test_remove_requires_confirmation_current_revision_and_matching_owner(self):
+        other = next(d["id"] for d in self.store.listing()["doctors"] if d["id"] != self.doc)
+        for change in ({"confirm": False}, {"confirm": "true"}, {"config_revision": 0}, {"config_revision": True}, {"doctor_id": other}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                lifecycle(self.store, self.remove_payload(**change), "master", "Master")
+            self.assertFalse(self.channel_row()["archived_at"])
+        with self.assertRaises(ValueError):
+            lifecycle(self.store, self.remove_payload(), "master", "Master", restore=True)
+        stale = self.remove_payload()
+        lifecycle(self.store, stale, "master", "Master")
+        with self.assertRaises(Conflict):
+            lifecycle(self.store, stale, "master", "Master", restore=True)
+
+    def test_sending_and_unknown_cross_channel_replies_block_removal(self):
+        self.incoming()
+        other = self.store.channel({"doctor_id": self.doc, "phone": "5500000000004", "name": "Outro"})
+        with self.store.db() as c:
+            message = c.execute("SELECT id FROM messages").fetchone()[0]
+            c.execute("UPDATE messages SET channel_id=? WHERE id=?", (other, message))
+            c.execute("INSERT INTO reply_requests(request_id,message_id,user_id,source_channel_id) VALUES(?,?,?,?)", ("cross", message, "operator", self.channel))
+        for status in ("sending", "unknown"):
+            with self.store.db() as c:
+                c.execute("UPDATE messages SET status=? WHERE id=?", (status, message))
+            with self.subTest(status=status), self.assertRaises(Conflict):
+                lifecycle(self.store, self.remove_payload(), "master", "Master")
+            self.assertFalse(self.channel_row()["archived_at"])
+
+    def test_removed_connection_rejects_edits_transfer_new_sends_uploads_and_duplicates(self):
+        from crm_media import upload
+        self.incoming()
+        lead = self.store.listing(self.doc)["leads"][0]
+        lifecycle(self.store, self.remove_payload(), "master", "Master")
+        for operation in (
+            lambda: self.configure(),
+            lambda: transfer(self.store, self.transfer_payload(), "master", "Master"),
+            lambda: self.store.channel({"doctor_id": self.doc, "name": "Duplicado", "phone": self.channel_row()["phone"]}),
+            lambda: self.store.reply({"doctor_id": self.doc, "channel_id": self.channel, "contact_id": lead["contact_id"], "body": "Ola", "request_id": "no"}, "operator", True, sender_name="Master"),
+            lambda: self.store.campaign({"doctor_id": self.doc, "channel_id": self.channel, "name": "Teste", "body": "Ola", "lead_ids": [lead["id"]]}, "Master"),
+            lambda: upload(self.store, self.doc, self.channel, lead["contact_id"], "operator", "no", "teste.pdf", "document", b"%PDF-1.4\n%%EOF"),
+        ):
+            with self.subTest(operation=operation), self.assertRaises(ValueError):
+                operation()
+
+    def test_archived_source_cannot_send_via_another_number_and_cross_replies_are_cancelled(self):
+        self.incoming()
+        lead = self.store.listing(self.doc)["leads"][0]
+        other = self.store.channel({"doctor_id": self.doc, "phone": "5500000000004", "name": "Outro"})
+        with self.store.db() as c:
+            c.execute("UPDATE channels SET state='open'")
+        payload = {"doctor_id": self.doc, "channel_id": other, "source_channel_id": self.channel,
+                   "contact_id": lead["contact_id"], "body": "Teste", "request_id": "cross"}
+        pending = self.store.reply(payload, "operator", True, sender_name="Master")
+        lifecycle(self.store, self.remove_payload(), "master", "Master")
+        with self.store.db() as c:
+            self.assertEqual(self.store.row(c, "messages", pending)["status"], "cancelled")
+            self.assertEqual(self.store.row(c, "channels", other)["state"], "open")
+        with self.assertRaisesRegex(ValueError, "removido"):
+            self.store.reply({**payload, "request_id": "blocked"}, "operator", True, sender_name="Master")
+        with crm_access({self.doc: {self.b["id"]}}), self.assertRaises(PermissionError):
+            self.store.conversation(self.doc, self.channel, lead["contact_id"])
+
+    def test_removal_pauses_related_bot_and_blocks_republishing_until_restored(self):
+        from crm_bots import BotStore
+        self.incoming()
+        lead = self.store.listing(self.doc)["leads"][0]
+        bots = BotStore(self.store)
+        definition = {"trigger": {"kind": "manual"}, "nodes": [
+            {"id": "start", "kind": "start", "next": {"next": "send"}},
+            {"id": "send", "kind": "message", "data": {"body": "Ola", "channel_id": self.channel}, "next": {"next": "end"}},
+            {"id": "end", "kind": "end"}]}
+        bot = bots.save({"doctor_id": self.doc, "pipeline_id": lead["pipeline_id"], "name": "Relacionado", "definition": definition}, "master")
+        bots.publish(bot["id"], self.doc, bot["revision"], True, "master")
+        run = bots.start(bot["id"], self.doc, lead["id"], "test")
+        lifecycle(self.store, self.remove_payload(), "master", "Master")
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT status FROM crm_bots WHERE id=?", (bot["id"],)).fetchone()[0], "paused")
+            self.assertEqual(c.execute("SELECT status FROM bot_runs WHERE id=?", (run,)).fetchone()[0], "cancelled")
+            self.assertFalse(c.execute("SELECT 1 FROM bot_events WHERE channel_id=? AND processed=0", (self.channel,)).fetchone())
+            revision = c.execute("SELECT revision FROM crm_bots WHERE id=?", (bot["id"],)).fetchone()[0]
+        with self.assertRaises(ValueError):
+            bots.publish(bot["id"], self.doc, revision, True, "master")
 
     def test_transfer_preserves_session_history_identity_and_old_opportunities(self):
         self.configure()

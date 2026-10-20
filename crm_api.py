@@ -14,7 +14,7 @@ from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
 MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "channel-update", "channel-transfer", "connect", "customer-tiers", "campaign-enable",
-                  "kommo-import", "kommo-import-preview", "kommo-import-commit"}
+                  "channel-remove", "channel-restore", "kommo-import", "kommo-import-preview", "kommo-import-commit"}
 
 
 def store_for(auth):
@@ -86,6 +86,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             return handle_voice(handler, store, action, query)
         doctor = query.get("doctor", [""])[0]
         if handler.command == "GET":
+            if action == "channel-remove":
+                from crm_channels import removal_options
+                return handler.auth_json({"ok": True, **removal_options(store, query.get("id", [""])[0], doctor)})
             if action == "channel-transfer":
                 from crm_channels import transfer_options
                 return handler.auth_json({"ok": True, **transfer_options(store, query.get("id", [""])[0], doctor)})
@@ -220,9 +223,16 @@ def _dispatch(handler, parsed, store, query, user, action):
             if p.get("doctor_id") != doctor:
                 raise ValueError("O profissional da conexao nao corresponde ao CRM aberto.")
             result.update(transfer(store, p, user["id"], actor))
+        elif action in {"channel-remove", "channel-restore"}:
+            from crm_channels import lifecycle
+            if p.get("doctor_id") != doctor:
+                raise ValueError("O profissional da conexao nao corresponde ao CRM aberto.")
+            result.update(lifecycle(store, p, user["id"], actor, restore=action == "channel-restore"))
         elif action in {"connect", "channel-state"}:
             with store.db() as c:
                 ch = store.owned(c, "channels", p.get("id"), p.get("doctor_id"))
+                from crm_channels import require_active
+                require_active(ch)
             gateway = EvolutionGateway()
             if action == "connect":
                 result.update(gateway.connect(ch))

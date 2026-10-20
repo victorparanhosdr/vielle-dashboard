@@ -646,6 +646,42 @@ class HttpAuthTests(unittest.TestCase):
         status, _, raw = self.request("GET", f"/api/crm?clinic=vielle&doctor={doctor}", cookie=master)
         self.assertEqual(json.loads(raw)["channels"], [])
 
+    def test_crm_channel_removal_restore_master_only_csrf_and_preserved_history(self):
+        from crm_api import store_for
+        crm = store_for(self.store)
+        crm.bootstrap({"Victor Paranhos de Andrade": ["Organico"], "Outra doutora": ["Outro"]})
+        doctor = crm.listing()["doctor_id"]
+        channel = crm.channel({"doctor_id": doctor, "name": "Atendimento", "phone": "5500000000001"})
+        with crm.db() as c:
+            instance = crm.row(c, "channels", channel)["instance"]
+        crm.receive(instance, {"key": {"remoteJid": "5500000000002@s.whatsapp.net", "id": "preserved"},
+            "pushName": "Contato sintetico", "message": {"conversation": "Historico preservado"}}, "messages.upsert")
+        self.limit_permissions(["crm.view"])
+        staff, _ = self.login()
+        master = self.master_cookie()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        path = f"/api/crm/channel-remove?clinic=vielle&doctor={doctor}"
+        restore = path.replace("channel-remove", "channel-restore")
+        payload = {"doctor_id": doctor, "id": channel, "config_revision": 1, "confirm": True}
+        for action in (path, restore):
+            self.assertEqual(self.request("POST", action, payload, staff, headers)[0], 403)
+        self.assertEqual(self.request("GET", path + f"&id={channel}", cookie=staff)[0], 403)
+        self.assertEqual(self.request("POST", path, payload, master)[0], 403)
+        self.assertEqual(self.request("POST", path, {**payload, "confirm": False}, master, headers)[0], 400)
+        self.assertEqual(self.request("GET", path + f"&id={channel}", cookie=master)[0], 200)
+        status, _, raw = self.request("POST", path, payload, master, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["state"], "archived")
+        for action in ("connect", "channel-state"):
+            self.assertEqual(self.request("POST", path.replace("channel-remove", action), payload, master, headers)[0], 400)
+        self.assertEqual(len(crm.listing(doctor)["leads"]), 1)
+        self.assertEqual(len(crm.inbox(doctor, "master", channel)["conversations"]), 1)
+        status, _, raw = self.request("POST", restore, {**payload, "config_revision": 2}, master, headers)
+        self.assertEqual(status, 200, raw)
+        self.assertEqual(json.loads(raw)["state"], "close")
+        self.assertEqual(len(self.store.list_audit(action="crm_channel-remove")["events"]), 1)
+        self.assertEqual(len(self.store.list_audit(action="crm_channel-restore")["events"]), 1)
+
     def master_cookie(self):
         self.store.create_first_master("Master", "master", "Master-test-password!")
         return "doc4docs_session=" + self.store.login("master", "Master-test-password!")

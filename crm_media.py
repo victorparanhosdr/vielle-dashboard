@@ -89,7 +89,9 @@ def upload(store, doctor, channel, contact, user, request, name, kind, data):
     digest = hashlib.sha256(data).hexdigest()
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
-        _, ct = store.conversation_contact(c, doctor, channel, contact)
+        ch, ct = store.conversation_contact(c, doctor, channel, contact)
+        from crm_channels import require_active
+        require_active(ch)
         if ct["opted_out"]:
             raise ValueError("Contato descadastrado. Envio bloqueado.")
         old = c.execute("SELECT * FROM message_media WHERE user_id=? AND upload_request=?", (str(user), request)).fetchone()

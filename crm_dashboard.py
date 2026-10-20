@@ -59,7 +59,7 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
             WHERE p.doctor_id=? GROUP BY p.id ORDER BY p.name""", (doctor,)) if pipeline_visible(dict(r))]
         overdue = sum(r[0] in {p["id"] for p in funnels} for r in c.execute("""SELECT l.pipeline_id FROM leads l JOIN stages s ON s.id=l.stage_id
             WHERE l.doctor_id=? AND l.deleted_at=0 AND s.kind='open' AND l.next_action<>'' AND l.next_action<?""", (doctor, today.isoformat())))
-        channels = c.execute("SELECT count(*),coalesce(sum(state='open'),0) FROM channels WHERE doctor_id=?", (doctor,)).fetchone()
+        channels = c.execute("SELECT count(*),coalesce(sum(state='open'),0) FROM channels WHERE doctor_id=? AND archived_at=0", (doctor,)).fetchone()
     return {"server_time": now, "days": days, "from": first.isoformat(), "to": today.isoformat(),
             "pending_clients": len(clients), "pending_conversations": len(pending), "waiting_buckets": buckets,
             "longest_wait_seconds": max(waits, default=0), "average_wait_seconds": int(sum(waits) / len(waits)) if waits else 0,

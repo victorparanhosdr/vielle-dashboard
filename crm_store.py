@@ -430,10 +430,13 @@ class CrmStore:
         key = uuid.uuid4().hex
         with self.db() as c:
             self.row(c, "doctors", p.get("doctor_id"))
+            number = phone(p.get("phone"))
+            if c.execute("SELECT 1 FROM channels WHERE phone=? AND archived_at>0", (number,)).fetchone():
+                raise Conflict("Este numero foi removido. Restaure a conexao em Numeros para manter o historico, sem criar outra.")
             from crm_channels import validate_target
             incoming = validate_target(self, c, p["doctor_id"], p.get("inbound_pipeline_id", ""), p.get("inbound_stage_id", ""))
             c.execute("INSERT INTO channels(id,doctor_id,name,phone,instance,daily_limit) VALUES(?,?,?,?,?,?)",
-                      (key, p["doctor_id"], text(p.get("name")), phone(p.get("phone")), "doc4docs-vielle-" + key,
+                      (key, p["doctor_id"], text(p.get("name")), number, "doc4docs-vielle-" + key,
                        integer(p.get("daily_limit", CAMPAIGN_DAILY_LIMIT), 1, CAMPAIGN_DAILY_LIMIT)))
             c.execute("UPDATE channels SET inbound_pipeline_id=?,inbound_stage_id=? WHERE id=?", (*incoming, key))
         return key
@@ -930,7 +933,7 @@ class CrmStore:
             attach(c, messages, legacy=True)
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
-            allowed = not ct["opted_out"]
+            allowed = not ct["opted_out"] and not ch["archived_at"]
             return {"contact": ct, "channel": ch, "messages": messages, "has_older": has_older,
                     "inbound_cursor": max((m["seq"] for m in messages if m["direction"] == "in"), default=0),
                     **self.conversation_status(c, channel, contact),
@@ -982,7 +985,10 @@ class CrmStore:
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
             ch, ct = self.conversation_contact(c, doctor, channel, contact)
-            self.conversation_contact(c, doctor, source, contact)
+            source_channel, _ = self.conversation_contact(c, doctor, source, contact)
+            from crm_channels import require_active
+            require_active(ch)
+            require_active(source_channel)
             media = self.row(c, "message_media", media_id) if media_id else None
             if media:
                 if (media["doctor_id"], media["source_channel_id"], media["contact_id"], media["user_id"]) != (doctor, source, contact, str(user)):
@@ -1059,7 +1065,8 @@ class CrmStore:
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
             doc = self.row(c, "doctors", doctor)
-            self.owned(c, "channels", channel, doctor)
+            from crm_channels import require_active
+            require_active(self.owned(c, "channels", channel, doctor))
             snapshot = None
             if p.get("_audience_id"):
                 from crm_campaigns import fingerprint
@@ -1112,6 +1119,8 @@ class CrmStore:
                 if not enabled:
                     raise ValueError("Envios desativados no piloto. Configure a conexao e habilite o worker primeiro.")
                 channel = self.owned(c, "channels", campaign["channel_id"], doctor)
+                from crm_channels import require_active
+                require_active(channel)
                 if channel["state"] != "open":
                     raise ValueError("Conecte o numero antes de iniciar.")
                 if c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status IN ('sending','unknown')", (key,)).fetchone():
@@ -1166,7 +1175,7 @@ class CrmStore:
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
-                AND ch.state='open' AND ((m.campaign_id IS NULL AND m.bot_run_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
+                AND ch.state='open' AND ch.archived_at=0 AND ((m.campaign_id IS NULL AND m.bot_run_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
                 AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id AND pending.status IN ('sending','unknown'))
@@ -1223,6 +1232,8 @@ class CrmStore:
             ch = c.execute("SELECT * FROM channels WHERE instance=?", (instance,)).fetchone()
             if not ch:
                 raise LookupError("Instancia desconhecida.")
+            if ch["archived_at"]:
+                return False
             if event == "connection.update":
                 state = data.get("state")
                 if state not in {"open", "close", "connecting"}:

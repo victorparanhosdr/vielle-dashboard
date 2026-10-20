@@ -51,6 +51,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
+    for(const option of $("inboxChannel").options){if(state.data.channels.find(c=>c.id===option.value)?.archived_at)option.textContent+=" · removido (histórico)";}
     $("inboxNewContact").onclick=()=>document.getElementById("newLead")?.click();
     $("inboxChannel").parentElement.insertAdjacentHTML("beforebegin",`<label class="channelFilter">Atividade<select id="inboxBusiness"><option value="all">Todas as atividades</option><option value="clinic">Clínica</option><option value="course">Cursos</option></select></label>`);
     $("inboxBusiness").value=state.business || "all";
@@ -134,8 +135,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function drawSenderOptions() {
     if(!$("replyChannel"))return;
-    if(!state.data.channels.some(c=>c.id===replyChannel))replyChannel=selected.channel_id;
-    $("replyChannel").innerHTML=state.data.channels.map(c=>`<option value="${esc(c.id)}" ${c.id===replyChannel?"selected":""}>${esc(c.name)} · +${esc(c.phone)}${c.id===selected.channel_id?" · conversa atual":""}${c.state!=="open"?" · desconectado":""}</option>`).join("");
+    const channels=state.data.channels.filter(c=>!c.archived_at);
+    if(!channels.some(c=>c.id===replyChannel))replyChannel=channels[0]?.id || "";
+    $("replyChannel").innerHTML=channels.map(c=>`<option value="${esc(c.id)}" ${c.id===replyChannel?"selected":""}>${esc(c.name)} · +${esc(c.phone)}${c.id===selected.channel_id?" · conversa atual":""}${c.state!=="open"?" · desconectado":""}</option>`).join("") || '<option value="">Nenhum número ativo</option>';
   }
   function drawInfo() {
     if(!root || !selected)return;
@@ -190,20 +192,22 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function syncSend() {
     if(!$("sendReply"))return;
     const ch=state.data.channels.find(c=>c.id===replyChannel);
+    const archived=Boolean(threadData?.channel?.archived_at);
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
     $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
     media.availability(available && !sending);
-    templates.availability(!sending);
+    templates.availability(!sending && !archived);
+    $("replyBody").disabled=archived;
     $("replyBody").maxLength=media.value() && media.value().kind!=="audio"?Math.min(1000,1024-senderName().length-4):3000;
     $("replyBody").placeholder=media.hasDraft()?"Legenda opcional…":"Escreva uma mensagem…";
-    $("replyChannel").disabled=sending;
-    $("replyState").textContent=!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"";
+    $("replyChannel").disabled=sending || archived;
+    $("replyState").textContent=archived?"Número removido · histórico disponível para consulta":!state.data.sends_enabled?"Respostas manuais indisponíveis no servidor":ch?.state!=="open"?"Número desconectado":!threadData?"Carregando conversa…":!threadData.reply_allowed?"Envio bloqueado · contato descadastrado":"";
     syncResolution();
   }
   function syncResolution() {
     if(!$("closeConversation"))return;
     const pending=threadData?.unread || 0;
-    $("closeConversation").disabled=sending || closing===key(selected) || !pending || !threadData?.inbound_cursor;
+    $("closeConversation").disabled=sending || closing===key(selected) || !pending || !threadData?.inbound_cursor || Boolean(threadData?.channel?.archived_at);
     $("conversationStatus").textContent=!threadData?"Carregando…":pending?`${pending} ${pending===1?"mensagem não lida":"mensagens não lidas"}`:threadData.resolution==="closed"?"Conversa fechada":threadData.resolution==="replied"?"Respondida":"Sem mensagens pendentes";
     $("conversationStatus").classList.toggle("pending",pending>0);
   }

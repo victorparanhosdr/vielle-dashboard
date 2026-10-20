@@ -1,6 +1,34 @@
 (() => {
   "use strict";
   window.createCrmChannelSettings=({api,esc,icon,icons,modal,error,onDone,onTransferred})=>{
+    async function remove(channel,doctor){
+      modal("Remover número do CRM",'<div id="crmChannelRemoval"><p class="connectionNote" role="status">Conferindo histórico…</p></div>');
+      const host=document.getElementById("crmChannelRemoval");
+      try{
+        const data=await api("channel-remove",undefined,{doctor,id:channel.id});
+        if(!host.isConnected || !document.getElementById("crmDialog").open)return;
+        const {impact,channel:source}=data,blocked=Boolean(impact.sending || impact.unknown);
+        host.innerHTML=`<form id="crmChannelRemovalForm"><p class="connectionNote"><strong>${esc(source.name)}</strong> · +${esc(source.phone)}</p><div class="channelPreserved">${icon("shield-check")}<div><strong>Seu histórico fica preservado</strong><p>Nenhum lead, oportunidade, contato, mensagem ou anexo será excluído.</p></div></div><dl class="channelTransferImpact"><div><dt>Conversas preservadas</dt><dd>${impact.conversations}</dd></div><div><dt>Mensagens no histórico</dt><dd>${impact.messages}</dd></div><div><dt>Envios pendentes a cancelar</dt><dd>${impact.queued}</dd></div><div><dt>Campanhas a pausar</dt><dd>${impact.campaigns}</dd></div></dl><p class="connectionNote">O número sai da lista ativa e deixa de enviar e importar mensagens neste CRM. A conta do WhatsApp não é apagada. As conversas continuam no filtro deste número no Atendimento e na ficha dos contatos.</p><p class="inlineWarning">Campanhas serão pausadas, robôs vinculados interrompidos e envios pendentes cancelados. Você poderá restaurar a conexão em Números removidos.</p>${blocked?'<p class="inlineWarning" role="alert">Há mensagem em envio ou sem confirmação. Confira os envios antes de remover este número.</p>':""}<label class="channelTransferConfirm"><input type="checkbox" name="confirm" required ${blocked?"disabled":""}><span>Remover este número do CRM, mantendo todos os dados e o histórico.</span></label><div class="formActions"><button type="submit" class="channelRemoveAction" disabled>${icon("trash-2")} Remover número</button></div></form>`;
+        const form=document.getElementById("crmChannelRemovalForm"),submit=form.querySelector('[type="submit"]');
+        let saving=false;
+        const ready=()=>{submit.disabled=saving || blocked || !form.elements.confirm.checked;};
+        form.elements.confirm.onchange=ready;
+        form.onsubmit=async e=>{
+          e.preventDefault();if(submit.disabled || saving)return;saving=true;ready();
+          try{await api("channel-remove",{id:source.id,doctor_id:doctor,config_revision:source.config_revision,confirm:true},{doctor});document.getElementById("crmDialog").close();await onDone();}
+          catch(err){error(err.message);saving=false;ready();}
+        };icons();
+      }catch(err){if(host.isConnected)error(err.message);}
+    }
+    function restore(channel,doctor){
+      modal("Restaurar número",`<form id="crmChannelRestoreForm"><p class="connectionNote"><strong>${esc(channel.name)}</strong> · +${esc(channel.phone)}</p><p class="connectionNote">A mesma conexão volta à lista ativa, com todo o histórico. Confira a conexão antes de usar. Campanhas, robôs e mensagens canceladas não serão reiniciados.</p><div class="formActions"><button type="submit" class="primary">${icon("rotate-ccw")} Restaurar número</button></div></form>`);
+      const form=document.getElementById("crmChannelRestoreForm"),submit=form.querySelector('[type="submit"]');
+      form.onsubmit=async e=>{
+        e.preventDefault();if(submit.disabled)return;submit.disabled=true;
+        try{await api("channel-restore",{id:channel.id,doctor_id:doctor,config_revision:channel.config_revision,confirm:true},{doctor});document.getElementById("crmDialog").close();await onDone();}
+        catch(err){error(err.message);if(submit.isConnected)submit.disabled=false;}
+      };
+    }
     async function transfer(channel,doctor){
       modal("Transferir conexão WhatsApp",'<div id="crmChannelTransfer"><p class="connectionNote" role="status">Conferindo conexão…</p></div>');
       const host=document.getElementById("crmChannelTransfer");
@@ -52,6 +80,11 @@
     }
     function mount(host,channels,pipelines,doctor,canManage){
       for(const channel of channels){
+        if(channel.archived_at){
+          const restoreButton=host.querySelector(`[data-channel-restore="${CSS.escape(channel.id)}"]`);
+          if(canManage && restoreButton)restoreButton.onclick=()=>restore(channel,doctor);
+          continue;
+        }
         const commands=host.querySelector(`[data-channel-state="${CSS.escape(channel.id)}"]`)?.parentElement;if(!commands)continue;
         const p=pipelines.find(p=>p.id===channel.inbound_pipeline_id),s=p?.stages.find(s=>s.id===channel.inbound_stage_id);
         const route=document.createElement("p");route.className="connectionNote";
@@ -64,6 +97,9 @@
         const move=document.createElement("button");move.className="icon-button";move.type="button";
         move.title="Transferir conexão para outro profissional";move.setAttribute("aria-label",`Transferir conexão ${channel.name}`);move.innerHTML=icon("arrow-right-left");
         move.onclick=()=>transfer(channel,doctor);commands.prepend(move);
+        const removeButton=document.createElement("button");removeButton.className="icon-button channelRemoveAction";removeButton.type="button";
+        removeButton.title="Remover número sem apagar o histórico";removeButton.setAttribute("aria-label",`Remover número ${channel.name}`);removeButton.innerHTML=icon("trash-2");
+        removeButton.onclick=()=>remove(channel,doctor);commands.append(removeButton);
       }icons();
     }
     return {mount};

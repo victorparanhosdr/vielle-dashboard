@@ -14,5 +14,5 @@ assert.match(source,/form.elements.confirm.checked=false/);
 assert.match(source,/data.pipelines.filter\(p=>p.doctor_id===target.value && p.stages.length\)/);
 assert.match(source,/await onTransferred\(result\)/);
 assert.match(read('crm.js'),/state.doctor=result.doctor_id;state.pipeline=result.inbound_pipeline_id/);
-assert.match(read('crm.html'),/crm-channel-settings.js\?v=2/);
+assert.match(read('crm.html'),/crm-channel-settings.js\?v=3/);
 console.log('WhatsApp transfer UI: Master-only, scoped destinations, confirmation, stale-modal guard and new-doctor navigation OK');
