@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Comercial DOC4DOCS</title><link rel="icon" href="/doc4docs-favicon.png">
+  <link rel="stylesheet" href="/master.css?v=crm-scope-1"><link rel="stylesheet" href="/master/commercial.css?v=1"><link rel="stylesheet" href="/design-system.css?v=crm-release1">
+  <script src="/session.js"></script><script src="/body-icons.js" defer></script><script src="/master/commercial.js?v=1" defer></script><script src="/app-shell.js?v=crm-release1" defer></script>
+</head>
+<body data-app-page="master-sales">
+  <header class="masterHeader"><a class="brand" href="/" aria-label="DOC4DOCS, voltar ao sistema"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="148" height="68"></a><div class="accountActions"><span class="masterBadge">Master</span><span data-session-user></span><a href="/master">Gerenciar usuários</a><a href="/inicio" target="_blank" rel="noopener">Ver site</a><a href="/">Voltar ao sistema</a><button type="button" data-logout>Sair</button></div></header>
+  <main class="masterMain salesMain">
+    <div class="pageHeading"><div><p class="eyebrow">Administração · Comercial da plataforma</p><h1>Comercial DOC4DOCS</h1></div><a class="buttonLink secondary" href="/inicio" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Ver site</a></div>
+    <p id="sessionStatus" role="status"></p><p id="salesNotice" class="notice" role="status" hidden></p>
+    <div class="salesStats" id="salesStats" aria-label="Pedidos por etapa"></div>
+    <form class="salesFilters" id="salesFilters" role="search"><label>Buscar interessado<input id="salesSearch" type="search" maxlength="160" placeholder="Nome, clínica, e-mail ou telefone"></label><label>Etapa<select id="salesStatus"><option value="">Todas as etapas</option></select></label><span id="salesTotal" aria-live="polite"></span><button class="secondary iconButton" type="submit" title="Atualizar pedidos" aria-label="Atualizar pedidos"><i data-lucide="refresh-cw"></i></button></form>
+    <section class="salesTable" aria-label="Pedidos de demonstração e propostas"><table><thead><tr><th>Interessado</th><th>Organização</th><th>Interesse</th><th>Etapa</th><th>Origem</th><th>Recebido</th><th><span class="salesSrOnly">Ações</span></th></tr></thead><tbody id="salesRows"><tr><td colspan="7">Carregando pedidos...</td></tr></tbody></table></section>
+    <div class="pagination"><span id="salesPageLabel"></span><button class="secondary iconButton" id="salesPrev" aria-label="Página anterior" disabled><i data-lucide="chevron-left"></i></button><button class="secondary iconButton" id="salesNext" aria-label="Próxima página" disabled><i data-lucide="chevron-right"></i></button></div>
+  </main>
+  <dialog id="salesDialog" aria-labelledby="salesLeadTitle"><form id="salesLeadForm"><div class="dialogHeading"><h2 id="salesLeadTitle">Interessado</h2><button class="secondary iconButton" id="salesClose" type="button" aria-label="Fechar pedido"><i data-lucide="x"></i></button></div><p id="salesLeadOrganization" class="dialogTarget"></p><div class="salesContactLinks" id="salesContactLinks"></div><dl class="salesDetail" id="salesDetails"></dl><blockquote id="salesMessage"></blockquote><label>Etapa<select id="salesLeadStatus"></select></label><label>Anotações internas<textarea id="salesNotes" maxlength="4000" rows="4"></textarea></label><p class="formError" id="salesError" role="alert"></p><div class="dialogFooter"><button class="secondary" id="salesCancel" type="button">Cancelar</button><button id="salesSave" type="submit">Salvar acompanhamento</button></div></form></dialog>
+</body>
+</html>

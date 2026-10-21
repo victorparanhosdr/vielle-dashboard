@@ -64,6 +64,9 @@ class MasterApiMixin:
             return False
         if not self.require_master_auth():
             return True
+        from marketing_leads import master_request
+        if master_request(self, parsed):
+            return True
         store = self.server.auth_store
         actor_id = self.current_user["id"]
         try:

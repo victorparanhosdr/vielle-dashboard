@@ -80,7 +80,7 @@
   };
   const publicPage = page === "pricing";
   const institutePage = page === "institutes";
-  const adminPage = page === "master" || page === "brain";
+  const adminPage = page === "master" || page === "brain" || page === "master-sales";
   let shellSession;
   const attendance = !publicPage ? link("Atendimento", "/crm.html?clinic=vielle&mode=inbox", "messages-square") : null;
   if (attendance) {
@@ -406,8 +406,8 @@
     navObserver = new MutationObserver(decorateNav);
     decorateNav();
   } else if (adminPage && nav) {
-    nav.append(link("Usuários e acessos", "/master", "users"), link("Cérebro do sistema", "/master/brain.html", "network"), link("Voltar ao sistema", "/", "layout-dashboard"));
-    nav.children[page === "master" ? 0 : 1].setAttribute("aria-current", "page");
+    nav.append(link("Usuários e acessos", "/master", "users"), link("Comercial DOC4DOCS", "/master/commercial.html", "contact-round"), link("Cérebro do sistema", "/master/brain.html", "network"), link("Voltar ao sistema", "/", "layout-dashboard"));
+    nav.children[page === "master" ? 0 : page === "master-sales" ? 1 : 2].setAttribute("aria-current", "page");
   }
   function applySession(data) {
     shellSession = data;

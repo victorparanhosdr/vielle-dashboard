@@ -7083,9 +7083,19 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         from crm_forms_api import public_request as public_form_request
         if public_form_request(self):
             return
+        from marketing_leads import public_request as public_marketing_request
+        if public_marketing_request(self):
+            return
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        from auth_http import PUBLIC_PAGE_ROUTES, is_public_home_entry
+        if parsed.path in PUBLIC_PAGE_ROUTES:
+            self.path = PUBLIC_PAGE_ROUTES[parsed.path]
+            return super().do_GET()
+        if is_public_home_entry(parsed) and not getattr(self, "current_user", None):
+            self.path = "/home.html"
+            return super().do_GET()
         if parsed.path == "/api/institutes" or parsed.path.startswith("/api/institutes/"):
             from institute_api import handle_request
             return handle_request(self, parsed, institute_kommo_request)
@@ -7355,6 +7365,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
     def do_POST(self):
         from crm_forms_api import public_request as public_form_request
         if public_form_request(self):
+            return
+        from marketing_leads import public_request as public_marketing_request
+        if public_marketing_request(self):
             return
         parsed = urllib.parse.urlparse(self.path)
         if self.handle_session_post(parsed.path):

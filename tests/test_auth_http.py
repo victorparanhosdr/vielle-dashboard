@@ -82,7 +82,7 @@ class HttpAuthTests(unittest.TestCase):
         return cookie, headers
 
     def test_anonymous_pages_and_endpoints_are_blocked(self):
-        for path in ("/", "/index.html", "/static/index.html", "/settings.html", "/acompanhamento", "/kommo-widget", "/static/../index.html"):
+        for path in ("/?clinic=vielle", "/index.html", "/static/index.html", "/settings.html", "/acompanhamento", "/kommo-widget", "/static/../index.html"):
             status, headers, body = self.request("GET", path)
             self.assertEqual(status, 303, path)
             self.assertTrue(dict(headers)["Location"].startswith("/login"))
@@ -93,6 +93,64 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", path, {})[0], 401, path)
         self.assertEqual(self.request("HEAD", "/index.html")[0], 303)
         self.report.assert_not_called()
+
+    def test_marketing_home_preserves_anonymous_and_authenticated_boundaries(self):
+        for path in ("/", "/?utm_source=campanha", "/inicio", "/inicio/", "/home.html", "/static/home.html", "/planos", "/planos/", "/plans.html", "/marketing.css", "/marketing.js"):
+            with self.subTest(path=path):
+                self.assertEqual(self.request("GET", path)[0], 200)
+                self.assertEqual(self.request("HEAD", path)[0], 200)
+        _, _, body = self.request("GET", "/")
+        self.assertIn(b"Sua cl", body)
+        self.assertNotIn(b"id=\"viewTabs\"", body)
+        for path in ("/?clinic=vielle", "/?view=financialView", "/inicio/../index.html", "/static/home.html/../index.html", "/master/commercial.html"):
+            self.assertEqual(self.request("GET", path)[0], 303, path)
+        cookie, _ = self.login()
+        _, _, body = self.request("GET", "/", cookie=cookie)
+        self.assertIn(b"id=\"viewTabs\"", body)
+        self.report.assert_not_called()
+
+    def test_website_requests_are_stored_privately_and_only_master_can_manage(self):
+        payload = {"request_id": "a" * 32, "name": "Visitante Exemplo", "organization": "Clínica Exemplo",
+                   "email": "visitante@example.test", "phone": "+5511999990000", "plan": "Conectado", "privacy": True,
+                   "attribution": {"utm_source": "google", "utm_campaign": "demonstracao"}, "source_path": "/planos"}
+        headers = {"X-DOC4DOCS-Request": "1"}
+        status, _, raw = self.request("POST", "/api/public/demo", payload, headers=headers)
+        self.assertEqual(status, 201, raw)
+        self.assertEqual(json.loads(raw), {"ok": True})
+        self.assertEqual(self.request("POST", "/api/public/demo", payload, headers=headers)[0], 201)
+        self.assertEqual(self.request("GET", "/api/public/demo")[0], 405)
+        self.assertEqual(self.request("GET", "/api/master/marketing-leads")[0], 401)
+        cookie, _ = self.login()
+        self.assertEqual(self.request("GET", "/api/master/marketing-leads", cookie=cookie)[0], 403)
+        self.assertEqual(self.request("GET", "/master/commercial.html", cookie=cookie)[0], 403)
+        master_id = self.store.create_user("Master Comercial", "master-sales", "Temporary-test-password!", is_master=True)
+        token = self.store.login("master-sales", "Temporary-test-password!")
+        master_cookie = "doc4docs_session=" + token
+        status, _, raw = self.request("GET", "/api/master/marketing-leads", cookie=master_cookie)
+        self.assertEqual(status, 200, raw)
+        data = json.loads(raw)
+        self.assertEqual(data["total"], 1)
+        lead = data["leads"][0]
+        self.assertNotIn("request_hash", lead)
+        self.assertEqual(lead["attribution"]["utm_campaign"], "demonstracao")
+        self.assertEqual(self.request("GET", "/master/commercial.html", cookie=master_cookie)[0], 200)
+        update = {"revision": lead["revision"], "status": "contacted", "notes": "Retorno combinado."}
+        self.assertEqual(self.request("POST", "/api/master/marketing-leads/" + lead["id"], update, cookie=master_cookie, headers=headers)[0], 200)
+        self.assertEqual(self.request("POST", "/api/master/marketing-leads/" + lead["id"], update, cookie=master_cookie, headers=headers)[0], 400)
+        with self.store.connection() as c:
+            event = c.execute("SELECT actor_id FROM audit_log WHERE action='marketing_lead_updated'").fetchone()
+            self.assertEqual(event[0], master_id)
+        self.report.assert_not_called()
+
+    def test_website_submission_rejects_cross_origin_and_private_fields(self):
+        payload = {"request_id": "b" * 32, "name": "Exemplo", "organization": "Exemplo", "email": "e@example.test",
+                   "phone": "+5511999990000", "plan": "Essencial", "privacy": True}
+        self.assertEqual(self.request("POST", "/api/public/demo", payload)[0], 403)
+        headers = {"X-DOC4DOCS-Request": "1", "Origin": "https://evil.example"}
+        self.assertEqual(self.request("POST", "/api/public/demo", payload, headers=headers)[0], 403)
+        for extra in ({"status": "won"}, {"notes": "override"}, {"doctor_id": "private"}, {"website": "robot"}, {"privacy": False}, {"phone": "+38997357320"}, {"email": "invalid"}):
+            status, _, raw = self.request("POST", "/api/public/demo", {**payload, **extra}, headers={"X-DOC4DOCS-Request": "1"})
+            self.assertEqual(status, 400, raw)
 
     def test_public_login_and_assets(self):
         for path in ("/login", "/login.html", "/static/login.html", "/login.css", "/login.js", "/doc4docs-logo-white.png"):
@@ -158,7 +216,8 @@ class HttpAuthTests(unittest.TestCase):
         self.store.set_user_active(self.user_id, True)
         cookie, _ = self.login()
         self.store.set_password(self.user_id, "Replaced-test-password!")
-        self.assertEqual(self.request("GET", "/", cookie=cookie)[0], 303)
+        self.assertEqual(self.request("GET", "/index.html", cookie=cookie)[0], 303)
+        self.assertEqual(self.request("GET", "/", cookie=cookie)[0], 200)
 
     def test_csrf_and_bad_login(self):
         data = {"login": "teste", "password": "Temporary-test-password!"}

@@ -23,8 +23,17 @@ PUBLIC_FILES.update({"/crm-form.css", "/crm-form.js", "/crm-form-renderer.js", "
 PUBLIC_FILES.add("/crm-attribution.js")
 PUBLIC_FILES.update({'/crm-form-phone.js','/crm-form-phone.css','/vendor/libphonenumber-max-1.13.15.js'})
 PUBLIC_FILES.update({'/privacidade.html','/sobre.html','/legal.css'})
+PUBLIC_FILES.update({"/home.html", "/plans.html", "/marketing.css", "/marketing.js",
+                     "/marketing-inbox.png", "/marketing-kanban.png", "/marketing-dashboard.png"})
+PUBLIC_PAGE_ROUTES = {"/inicio": "/home.html", "/inicio/": "/home.html",
+                      "/planos": "/plans.html", "/planos/": "/plans.html"}
+MARKETING_QUERY_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid"}
 INTEGRATION_CALLBACKS = {"/auth/callback", "/webhooks/revoked"}
 ADMIN_API_PATHS = {"/api/settings", "/api/sync-all", "/api/clear-data", "/api/reset-kommo", "/api/sync", "/api/sync-clinica", "/auth/start"}
+
+
+def is_public_home_entry(parsed):
+    return parsed.path == "/" and not (set(parse_qs(parsed.query, keep_blank_values=True)) - MARKETING_QUERY_KEYS)
 
 
 def is_admin_path(path):
@@ -107,7 +116,13 @@ class SessionAuthMixin:
         parsed = urlsplit(self.path)
         path = parsed.path
         public_path = path.removeprefix("/static") if path.startswith("/static/") else path
+        if self.command in ("GET", "HEAD") and is_public_home_entry(parsed):
+            self.current_user = self.server.auth_store.session_user(self.session_token())
+            if not self.current_user:
+                return True
         if self.command in ("GET", "HEAD") and (public_path in PUBLIC_FILES or path in {"/login", "/precificacao", "/precificacao/"}):
+            return True
+        if self.command in ("GET", "HEAD") and path in PUBLIC_PAGE_ROUTES:
             return True
         if self.command == "GET" and path in INTEGRATION_CALLBACKS:
             return True
@@ -360,7 +375,11 @@ class SessionAuthMixin:
         if not self.require_dashboard_auth():
             return
         parsed = urlsplit(self.path)
-        if parsed.path == "/login":
+        if parsed.path in PUBLIC_PAGE_ROUTES:
+            self.path = PUBLIC_PAGE_ROUTES[parsed.path]
+        elif is_public_home_entry(parsed) and not getattr(self, "current_user", None):
+            self.path = "/home.html"
+        elif parsed.path == "/login":
             self.path = "/login.html"
         elif parsed.path in ("/precificacao", "/precificacao/"):
             self.path = "/pricing.html"
