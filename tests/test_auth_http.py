@@ -337,6 +337,28 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"wrong"})[0], 401)
             self.assertEqual(self.request("POST", "/api/crm-webhook", {}, headers={"X-DOC4DOCS-Webhook":"x"*40})[0], 400)
 
+    def test_crm_master_can_create_and_edit_more_than_twelve_pipeline_stages(self):
+        from crm_api import store_for
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Teste"]})
+        doctor = store.listing()["doctor_id"]
+        cookie = self.master_cookie()
+        headers = {"X-DOC4DOCS-Request": "1"}
+        url = f"/api/crm/pipeline?clinic=vielle&doctor={doctor}"
+        payload = {"doctor_id": doctor, "name": "Funil grande", "stages": [
+            {"name": f"Fase {i + 1}", "kind": "open"} for i in range(20)]}
+        status, _, raw = self.request("POST", url, payload, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        key = json.loads(raw)["id"]
+        pipeline = next(p for p in store.listing(doctor)["pipelines"] if p["id"] == key)
+        self.assertEqual(len(pipeline["stages"]), 20)
+        status, _, raw = self.request("POST", url, {**pipeline, "name": "Funil renomeado"}, cookie, headers)
+        self.assertEqual(status, 200, raw)
+        saved = next(p for p in store.listing(doctor)["pipelines"] if p["id"] == key)
+        self.assertEqual(saved["name"], "Funil renomeado")
+        self.assertEqual(saved["stages"], pipeline["stages"])
+        self.assertEqual(self.request("POST", url, pipeline, cookie, headers)[0], 409)
+
     def test_crm_dashboard_permission_and_operator_visibility(self):
         from crm_api import store_for
         store = store_for(self.store)

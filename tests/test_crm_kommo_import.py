@@ -81,6 +81,22 @@ class KommoMigrationTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT COUNT(*) FROM kommo_import_refs").fetchone()[0], 1)
         self.assertTrue(list((self.store.path.parent / "backups").glob("*.sqlite3")))
 
+    def test_imported_pipeline_with_more_than_twelve_stages_remains_editable(self):
+        records = [self.record(i + 1, [f"55119876{i:05d}"],
+                               stage={"name": f"Etapa Kommo {i + 1}", "kind": "open"}) for i in range(16)]
+        self.apply(self.preview(records))
+        pipeline = next(p for p in self.store.listing(self.doctor)["pipelines"] if p["id"] == self.pipe["id"])
+        self.assertEqual(len(pipeline["stages"]), 22)
+        with self.store.db() as db:
+            before = [tuple(r) for r in db.execute("SELECT id,stage_id,contact_id,revision FROM leads ORDER BY id")]
+            refs = [tuple(r) for r in db.execute("SELECT * FROM kommo_import_refs ORDER BY source_pipeline,source_lead")]
+        self.store.pipeline({**pipeline, "name": "Organico atualizado", "stages": list(reversed(pipeline["stages"]))})
+        saved = next(p for p in self.store.listing(self.doctor)["pipelines"] if p["id"] == self.pipe["id"])
+        self.assertEqual([s["id"] for s in saved["stages"]], [s["id"] for s in reversed(pipeline["stages"])])
+        with self.store.db() as db:
+            self.assertEqual([tuple(r) for r in db.execute("SELECT id,stage_id,contact_id,revision FROM leads ORDER BY id")], before)
+            self.assertEqual([tuple(r) for r in db.execute("SELECT * FROM kommo_import_refs ORDER BY source_pipeline,source_lead")], refs)
+
     def test_duplicate_phone_patient_other_number_and_rerun_never_duplicate(self):
         key = self.preview([self.record(3, updated_at=1700000003), self.record(2, ["5533999992222"]), self.record(1)])
         result = self.apply(key)["report"]

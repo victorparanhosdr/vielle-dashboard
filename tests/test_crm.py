@@ -107,6 +107,33 @@ class CrmTests(unittest.TestCase):
         with self.assertRaises(Conflict): self.store.pipeline(p)
         with self.assertRaises(ValueError): self.store.pipeline({**saved, "stages": saved["stages"][:-1]})
 
+    def test_large_pipeline_can_be_created_edited_and_extended_without_losing_leads(self):
+        stages = [{"name": f"Fase {i + 1}", "kind": "open"} for i in range(30)]
+        key = self.store.pipeline({"doctor_id": self.a, "name": "Funil grande", "stages": stages})
+        pipeline = next(p for p in self.store.listing(self.a)["pipelines"] if p["id"] == key)
+        lead = self.lead(pipeline=pipeline)
+        before = self.store.detail(lead, self.a)
+        with self.store.db() as db:
+            original_lead = tuple(db.execute("SELECT * FROM leads WHERE id=?", (lead,)).fetchone())
+        reordered = list(reversed(pipeline["stages"]))
+        reordered[0] = {**reordered[0], "name": "Fase renomeada"}
+        self.store.pipeline({**pipeline, "name": "Funil atualizado", "stages": [*reordered, {"name": "Nova fase", "kind": "open"}]})
+        saved = next(p for p in self.store.listing(self.a)["pipelines"] if p["id"] == key)
+        self.assertEqual(saved["name"], "Funil atualizado")
+        self.assertEqual(len(saved["stages"]), 31)
+        self.assertEqual([s["id"] for s in saved["stages"][:-1]], [s["id"] for s in reordered])
+        self.assertEqual(saved["stages"][0]["name"], "Fase renomeada")
+        with self.store.db() as db:
+            self.assertEqual(tuple(db.execute("SELECT * FROM leads WHERE id=?", (lead,)).fetchone()), original_lead)
+        self.assertEqual(self.store.detail(lead, self.a)["events"], before["events"])
+        with self.assertRaisesRegex(ValueError, "fase em uso"):
+            self.store.pipeline({**saved, "stages": [s for s in saved["stages"] if s["id"] != before["lead"]["stage_id"]]})
+
+    def test_pipeline_requires_at_least_two_stages(self):
+        for stages in (None, {}, [], [{"name": "So uma fase", "kind": "open"}]):
+            with self.subTest(stages=stages), self.assertRaisesRegex(ValueError, "pelo menos 2 fases"):
+                self.store.pipeline({"doctor_id": self.a, "name": "Invalido", "stages": stages})
+
     def test_game_does_not_reward_repeating_stages_or_broadcasts(self):
         key = self.lead()
         first, second = [s["id"] for s in self.p["stages"][:2]]

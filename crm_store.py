@@ -401,8 +401,8 @@ class CrmStore:
     def pipeline(self, p):
         doctor, key = p.get("doctor_id"), p.get("id") or uuid.uuid4().hex
         stages = p.get("stages")
-        if not isinstance(stages, list) or not 2 <= len(stages) <= 12:
-            raise ValueError("Defina de 2 a 12 fases.")
+        if not isinstance(stages, list) or len(stages) < 2:
+            raise ValueError("Defina pelo menos 2 fases.")
         cleaned = [(s.get("id") or uuid.uuid4().hex, text(s.get("name"), 60), s.get("kind")) for s in stages if isinstance(s, dict)]
         if len(cleaned) != len(stages) or len({s[0] for s in cleaned}) != len(cleaned) or any(s[2] not in {"open", "won", "lost"} for s in cleaned):
             raise ValueError("Fases invalidas.")
