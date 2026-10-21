@@ -21,6 +21,18 @@ assert.match(read("crm-shell.js"),/aria-expanded/);
 assert.doesNotMatch(read("crm-shell.js"),/brand\.textContent/);
 assert.match(html,/class="crmRailBrand"[^>]*><img src="\/doc4docs-favicon\.png"/);
 assert.match(read("app-shell.js"),/logo\.src = "\/doc4docs-logo-white\.png"/);
+const initialCode=crm.slice(crm.indexOf('  const requestedMode='),crm.indexOf('  const inboxPreference='));
+for(const [search,expected] of [['','inbox'],['?clinic=vielle','inbox'],['?mode=invalid','inbox'],['?mode=','inbox'],
+  ...['dashboard','board','inbox','tasks','campaigns','channels','templates','forms','bots'].map(mode=>[`?mode=${mode}`,mode])]){
+  const initial={location:{search},URLSearchParams};vm.createContext(initial);
+  vm.runInContext(initialCode+';initialMode=state.mode;',initial);
+  assert.equal(initial.initialMode,expected,`CRM entry ${search} must open ${expected}`);
+}
+assert.match(html,/<body[^>]+data-crm-mode="inbox"/);
+assert.match(html,/<h1 id="crmModeTitle">Atendimento<\/h1>/);
+const initiallySelected=[...html.matchAll(/<button\b[^>]*role="tab"[^>]*aria-selected="true"[^>]*>/g)];
+assert.equal(initiallySelected.length,3);
+assert.ok(initiallySelected.every(([tag])=>tag.includes('data-mode="inbox"')),'Desktop, mobile and legacy navigation start in Atendimento');
 const stored=new Map(),attrs={},classes=new Map();
 const panel={hidden:false,closest:()=>({classList:{toggle:(name,value)=>classes.set(name,value)}})};
 const toggle={setAttribute:(name,value)=>attrs[name]=value};

@@ -7,7 +7,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots"].includes(requestedMode)?requestedMode:"board",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots"].includes(requestedMode)?requestedMode:"inbox",seq:0,search:"",filters:{},sort:"updated",session:null};
   const inboxPreference=()=>`doc4docs.crm.inboxDoctors.${state.session?.user.id}`;
   const inboxScope=window.createCrmInboxScope({esc,icon,icons,onChange:ids=>{
     state.inboxDoctors=ids;
