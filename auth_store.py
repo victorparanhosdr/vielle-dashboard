@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from clinic_catalog import SUPPORTED_CLINICS, validate_clinic_keys
 from access_store import AccessStoreMixin, initialize_access_schema, validate_crm_scope, CRM_SCOPE_UNCHANGED
 from access_policy import permission_map
+from team_presence import initialize_schema as initialize_team_schema, close_sessions as close_team_sessions
 
 
 DATABASE_NAME = "doc4docs_auth.sqlite3"
@@ -138,6 +139,7 @@ class AuthStore(AccessStoreMixin):
                 )
             """)
             initialize_access_schema(conn, version)
+            initialize_team_schema(conn)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, actor_id=None):
@@ -259,7 +261,10 @@ class AuthStore(AccessStoreMixin):
                     self._audit(conn, "permissions_changed", actor_id, user_id, {"before": old_permissions, "after": next_permissions})
             conn.execute("UPDATE users SET nome = ?, login = ?, updated_at = ? WHERE id = ?", (nome.strip(), login, utc_now(), user_id))
             if old["login"] != login:
+                close_team_sessions(conn, time.time(), user_id=user_id)
                 conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            elif keys is not None and set(old_keys) != set(keys):
+                close_team_sessions(conn, time.time(), user_id=user_id)
             self._audit(conn, "user_updated", actor_id, user_id)
             return True
 
@@ -292,6 +297,7 @@ class AuthStore(AccessStoreMixin):
             result = conn.execute("UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
                                   ("active" if active else "inactive", utc_now(), user_id))
             if not active:
+                close_team_sessions(conn, time.time(), user_id=user_id)
                 conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             if result.rowcount:
                 self._audit(conn, "user_activated" if active else "user_deactivated", actor_id, user_id)
@@ -302,6 +308,7 @@ class AuthStore(AccessStoreMixin):
         with self.connection() as conn:
             result = conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
                                   (encoded, utc_now(), user_id))
+            close_team_sessions(conn, time.time(), user_id=user_id)
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             if result.rowcount:
                 self._audit(conn, "password_reset", actor_id, user_id)
@@ -329,6 +336,7 @@ class AuthStore(AccessStoreMixin):
                 return None
             conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
             if previous_token:
+                close_team_sessions(conn, time.time(), session_hash=self.token_hash(previous_token))
                 conn.execute("DELETE FROM sessions WHERE token_hash = ?", (self.token_hash(previous_token),))
             conn.execute("INSERT INTO sessions VALUES (?, ?, ?, ?)",
                          (self.token_hash(token), user["id"], now, now + SESSION_TTL_SECONDS))
@@ -356,7 +364,9 @@ class AuthStore(AccessStoreMixin):
 
     def logout(self, token):
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT user_id FROM sessions WHERE token_hash = ?", (self.token_hash(token),)).fetchone()
+            close_team_sessions(conn, time.time(), session_hash=self.token_hash(token))
             conn.execute("DELETE FROM sessions WHERE token_hash = ?", (self.token_hash(token),))
             if row:
                 self._audit(conn, "logout", row[0], row[0])

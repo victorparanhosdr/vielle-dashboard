@@ -81,6 +81,14 @@
   const publicPage = page === "pricing";
   const institutePage = page === "institutes";
   const adminPage = page === "master" || page === "brain" || page === "master-sales";
+  if (!publicPage && !institutePage && !adminPage) {
+    if (!document.querySelector('link[href^="/team-presence.css"]')) {
+      const style = document.createElement("link"); style.rel="stylesheet";style.href="/team-presence.css?v=1";document.head.append(style);
+    }
+    if (!document.querySelector('script[src^="/team-presence.js"]')) {
+      const script = document.createElement("script");script.src="/team-presence.js?v=1";document.head.append(script);
+    }
+  }
   let shellSession;
   const attendance = !publicPage ? link("Atendimento", "/crm.html?clinic=vielle&mode=inbox", "messages-square") : null;
   if (attendance) {
@@ -294,6 +302,10 @@
       if (changed) renderNotifications();
     };
     const observer = new MutationObserver(captureNotifications);
+    window.addEventListener("doc4docs-team-notification", event => {
+      const detail = event.detail;
+      if (detail?.id && detail?.message && notificationHistory.add(`team:${detail.id}`, detail.message, {scope:detail.clinic,label:"Pedido de ajuda"})) renderNotifications();
+    });
     sources.forEach(source => observer.observe(source, {childList:true, characterData:true, subtree:true, attributes:true, attributeFilter:["class", "data-phase"]}));
     renderNotifications();
   }
@@ -376,7 +388,7 @@
     financialView:["Financeiro", "wallet"], patientFollowupView:["Pacientes", "users"],
     quoteFollowupView:["Orçamentos", "file-text"], whatsappAuditView:["WhatsApp", "message-circle"],
     trafficView:["Tráfego pago", "chart-column-increasing"], bodyEvolutionView:["Evolução corporal", "activity"],
-    tasksView:["Tarefas", "square-check"], birthdaysView:["Aniversários", "gift"], crmView:["CRM", "workflow"]
+    tasksView:["Tarefas", "square-check"], birthdaysView:["Aniversários", "gift"], crmView:["CRM", "workflow"], teamView:["Equipe", "users-round"]
   };
   let navObserver;
   let lastActive;
@@ -429,11 +441,12 @@
       if (!data.permissions?.[clinic]?.includes(`${key}.view`)) return;
       const model = navModels[module.view];
       if (!model) return;
-      const path = {tasks:"/tasks.html", birthdays:"/birthdays.html", body_evolution:"/body-evolution.html", crm:"/crm.html"}[key];
+      const path = {tasks:"/tasks.html", birthdays:"/birthdays.html", body_evolution:"/body-evolution.html", crm:"/crm.html", team:"/team.html"}[key];
       const href = path ? `${path}?clinic=${encodeURIComponent(clinic)}` : `/?clinic=${encodeURIComponent(clinic)}&view=${encodeURIComponent(module.view)}`;
       const item = link(model[0], href, model[1]);
       if (page === "body" && key === "body_evolution") item.setAttribute("aria-current", "page");
       if (page === "crm" && key === "crm") item.setAttribute("aria-current", "page");
+      if (page === "team" && key === "team") item.setAttribute("aria-current", "page");
       nav.append(item);
     });
     decorateNav();

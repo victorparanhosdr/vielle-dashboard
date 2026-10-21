@@ -384,6 +384,10 @@ function applyActiveViewState() {
     window.location.replace(`/crm.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;
   }
+  if (state.activeView === "teamView") {
+    window.location.replace(`/team.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
+    return;
+  }
   if (state.activeView === "birthdaysView") {
     window.location.replace(`/birthdays.html?clinic=${encodeURIComponent(state.selectedClinic)}`);
     return;

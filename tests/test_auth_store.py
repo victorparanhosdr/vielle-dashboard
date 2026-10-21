@@ -26,7 +26,7 @@ class AuthStoreTests(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 0)
             self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            self.assertEqual(tables, {"users", "sessions", "user_clinics", "user_clinic_permissions", "access_profiles", "audit_log", "sqlite_sequence", "user_crm_scope"})
+        self.assertEqual(tables, {"users", "sessions", "user_clinics", "user_clinic_permissions", "access_profiles", "audit_log", "sqlite_sequence", "user_crm_scope", "team_clients", "team_presence", "team_intervals", "team_help"})
         self.create()
         self.store.initialize()
         self.assertTrue(self.store.validate_password("tester", PASSWORD))

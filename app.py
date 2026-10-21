@@ -7102,6 +7102,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if parsed.path == "/institutos":
             self.path = "/institutes.html" + ("?" + parsed.query if parsed.query else "")
             return super().do_GET()
+        if parsed.path.startswith("/api/team/"):
+            from team_api import handle_request
+            return handle_request(self, parsed)
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)
@@ -7424,6 +7427,9 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
             return handle_request(self, parsed, globals())
         if self.handle_master_api(parsed):
             return
+        if parsed.path.startswith("/api/team/"):
+            from team_api import handle_request
+            return handle_request(self, parsed)
         if parsed.path == "/api/tasks" or parsed.path.startswith("/api/tasks/"):
             from task_api import handle_request
             return handle_request(self, parsed)

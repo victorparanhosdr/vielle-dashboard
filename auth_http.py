@@ -138,7 +138,7 @@ class SessionAuthMixin:
                 self.send_response(303)
                 destination = "/login?next=/master" if is_admin_path(path) else "/login"
                 page = posixpath.normpath(unquote(path)).removeprefix("/static")
-                if page in {"/body-evolution.html", "/tasks.html", "/birthdays.html", "/crm.html", "/institutes.html", "/institutos"}:
+                if page in {"/body-evolution.html", "/tasks.html", "/birthdays.html", "/crm.html", "/team.html", "/institutes.html", "/institutos"}:
                     destination = "/login?next=" + quote(page + "?" + parsed.query, safe="")
                 self.send_header("Location", destination)
                 self.send_header("Set-Cookie", self.session_cookie())
@@ -197,6 +197,13 @@ class SessionAuthMixin:
         if is_admin_path(path) or path.startswith("/api/auth/") or path == "/api/clinic-access":
             return True
         normalized = posixpath.normpath(unquote(path)).removeprefix("/static")
+        if path.startswith("/api/team/") or normalized == "/team.html":
+            if len(query.get("clinic", [])) != 1:
+                self.auth_json({"ok": False, "error": "Informe uma clínica."}, 400)
+                return False
+            if normalized == "/team.html" or path == "/api/team/report":
+                return self.require_permission(clinic, "team.view")
+            return True
         if path == "/api/crm" or path.startswith("/api/crm/") or normalized == "/crm.html":
             if query.get("clinic") != ["vielle"]:
                 self.auth_json({"ok": False, "error": "Piloto disponivel apenas na Vielle."}, 403)
@@ -336,7 +343,7 @@ class SessionAuthMixin:
             from institute_api import guard
             if not guard(self, urlsplit(self.path)):
                 return None
-        if target.name in {"body-evolution.html", "tasks.html", "birthdays.html", "crm.html"} and not self.require_request_permission(urlsplit(self.path)):
+        if target.name in {"body-evolution.html", "tasks.html", "birthdays.html", "crm.html", "team.html"} and not self.require_request_permission(urlsplit(self.path)):
             return None
         return super().send_head()
 
