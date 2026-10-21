@@ -11,10 +11,12 @@
   <script src="/crm-contact-phone.js?v=1" defer></script><link rel="stylesheet" href="/crm-contact-phone.css?v=1">
   <script src="/crm-channel-settings.js?v=3" defer></script>
   <link rel="stylesheet" href="/crm-inbox-scope.css?v=1">
+  <link rel="stylesheet" href="/crm-reminders.css?v=1">
+  <script src="/crm-sounds.js?v=1" defer></script><script src="/crm-reminders.js?v=1" defer></script><script src="/crm-engagement.js?v=1" defer></script>
   <link rel="stylesheet" href="/crm-form.css?v=1"><link rel="stylesheet" href="/crm-form-phone.css?v=2"><link rel="stylesheet" href="/crm-forms.css?v=1"><link rel="stylesheet" href="/vendor/drawflow/drawflow.min.css"><link rel="stylesheet" href="/crm-bots.css?v=1"><link rel="stylesheet" href="/crm-attribution.css?v=1"><link rel="stylesheet" href="/crm-shell.css?v=3">
   <script src="/vendor/libphonenumber-max-1.13.15.js" defer></script><script src="/crm-form-phone.js?v=1" defer></script><script src="/crm-form-renderer.js?v=3" defer></script><script src="/crm-attribution.js?v=1" defer></script><script src="/crm-forms.js?v=3" defer></script>
   <script src="/vendor/drawflow/drawflow.min.js" defer></script><script src="/crm-bots.js?v=3" defer></script>
-  <script src="/session.js?v=crm1" defer></script><script src="/body-icons.js" defer></script><script src="/crm-voice.js?v=4" defer></script><script src="/crm-courses.js?v=1" defer></script><script src="/crm-audience.js?v=6" defer></script><script src="/crm-campaigns.js?v=4" defer></script><script src="/crm-media.js?v=1" defer></script><script src="/crm-chat-search.js?v=2" defer></script><script src="/crm-message-templates.js?v=3" defer></script><script src="/crm-inbox.js?v=28" defer></script><script src="/crm-import.js?v=5" defer></script><script src="/crm-avatars.js?v=1" defer></script><script src="/crm-kanban.js?v=2" defer></script><script src="/crm-dashboard.js?v=1" defer></script><script src="/crm.js?v=40" defer></script>
+  <script src="/session.js?v=crm1" defer></script><script src="/body-icons.js" defer></script><script src="/crm-voice.js?v=4" defer></script><script src="/crm-courses.js?v=1" defer></script><script src="/crm-audience.js?v=6" defer></script><script src="/crm-campaigns.js?v=4" defer></script><script src="/crm-media.js?v=1" defer></script><script src="/crm-chat-search.js?v=2" defer></script><script src="/crm-message-templates.js?v=3" defer></script><script src="/crm-inbox.js?v=29" defer></script><script src="/crm-import.js?v=5" defer></script><script src="/crm-avatars.js?v=1" defer></script><script src="/crm-kanban.js?v=2" defer></script><script src="/crm-dashboard.js?v=1" defer></script><script src="/crm.js?v=41" defer></script>
 </head>
 <body class="crmPage crmDesktop" data-app-page="crm" data-crm-mode="board">
   <nav class="crmRail" aria-label="Navegação do CRM">
@@ -23,6 +25,7 @@
       <button role="tab" data-mode="dashboard" aria-selected="false" aria-label="Dashboard" data-tooltip="Dashboard"><i data-lucide="chart-no-axes-combined"></i></button>
       <button role="tab" data-mode="board" aria-selected="true" aria-label="Funis" data-tooltip="Funis"><i data-lucide="columns-3"></i></button>
       <button role="tab" data-mode="inbox" aria-selected="false" aria-label="Atendimento" data-tooltip="Atendimento"><i data-lucide="message-circle"></i></button>
+      <button role="tab" data-mode="tasks" aria-selected="false" aria-label="Tarefas" data-tooltip="Tarefas"><i data-lucide="alarm-clock"></i></button>
       <button role="tab" data-mode="campaigns" aria-selected="false" aria-label="Campanhas" data-tooltip="Campanhas"><i data-lucide="send"></i></button>
       <button role="tab" data-mode="channels" aria-selected="false" aria-label="Números" data-tooltip="Números"><i data-lucide="smartphone"></i></button>
       <button role="tab" data-mode="templates" aria-selected="false" aria-label="Modelos de mensagens" data-tooltip="Modelos"><i data-lucide="text-cursor-input"></i></button>
@@ -42,6 +45,7 @@
   <dialog id="crmMobileMenu" class="crmMobileMenu" aria-labelledby="crmMobileMenuTitle">
     <header><h2 id="crmMobileMenuTitle">Seu CRM</h2><button type="button" class="icon-button" data-mobile-menu-close aria-label="Fechar menu"><i data-lucide="x"></i></button></header>
     <nav aria-label="Mais áreas do CRM">
+      <button data-mode="tasks"><i data-lucide="alarm-clock"></i><span>Tarefas e lembretes</span><i data-lucide="chevron-right"></i></button>
       <button data-mode="campaigns"><i data-lucide="send"></i><span>Campanhas</span><i data-lucide="chevron-right"></i></button>
       <button data-mode="channels"><i data-lucide="smartphone"></i><span>Números de WhatsApp</span><i data-lucide="chevron-right"></i></button>
       <button data-mode="templates"><i data-lucide="text-cursor-input"></i><span>Modelos de mensagens</span><i data-lucide="chevron-right"></i></button>
@@ -78,5 +82,5 @@
   <div id="stageFeedback" role="status" aria-live="polite" hidden></div>
   <div id="stageTransition" class="stageTransition" aria-hidden="true" hidden></div>
   <dialog id="crmDialog" aria-labelledby="modalTitle"><header><h2 id="modalTitle"></h2><button class="icon-button" type="button" id="closeDialog" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></header><div id="modalBody"></div><p id="formError" role="alert" hidden></p></dialog>
-  <script src="/app-shell.js?v=crm-release1"></script><script src="/crm-shell.js?v=2" defer></script><script src="/crm-mobile.js?v=1" defer></script>
+  <script src="/app-shell.js?v=crm-release1"></script><script src="/crm-shell.js?v=3" defer></script><script src="/crm-mobile.js?v=1" defer></script>
 </body></html>

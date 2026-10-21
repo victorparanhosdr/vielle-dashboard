@@ -9,7 +9,8 @@
   const heading=document.querySelector(".crmHeading"),viewActions=document.getElementById("viewActions");
   heading.insertBefore(document.getElementById("pipelineField"),heading.querySelector(".commands"));heading.append(viewActions);
   const journey=document.querySelector(".journey"),toggle=document.getElementById("crmJourneyToggle");
-  toggle.onclick=()=>{const open=!document.body.classList.contains("crmJourneyOpen");document.body.classList.toggle("crmJourneyOpen",open);journey.hidden=!open;toggle.setAttribute("aria-expanded",String(open));};
+  toggle.setAttribute("aria-haspopup","dialog");
+  toggle.onclick=()=>document.dispatchEvent(new Event("crm-open-journey"));
   document.addEventListener("keydown",event=>{if(event.key==="Escape"){document.body.classList.remove("crmJourneyOpen");toggle.setAttribute("aria-expanded","false");}});
   const size=()=>document.body.style.setProperty("--crm-header-height",`${Math.ceil(document.querySelector(".appChrome").getBoundingClientRect().height)}px`);
   new ResizeObserver(size).observe(bar);size();

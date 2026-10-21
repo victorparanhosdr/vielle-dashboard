@@ -75,6 +75,12 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action == "reminders" or action.startswith("reminders/"):
+            from crm_reminders import handle as reminders_handle
+            return reminders_handle(handler, store, action, query, user)
+        if action == "engagement" and handler.command == "GET":
+            from crm_engagement import snapshot
+            return handler.auth_json({"ok": True, **snapshot(store, user, query)})
         if action=="bots" or action.startswith("bots/"):
             from crm_bots_api import handle as bots_handle
             return bots_handle(handler,store,action,query,user)

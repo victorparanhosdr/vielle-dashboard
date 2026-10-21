@@ -245,6 +245,8 @@ class CrmStore:
                     location = location_from_phone(contact["phone"])
                     c.execute("UPDATE contacts SET service_location=?,service_location_source=? WHERE id=?",
                               (location, "ddd" if location else "pending", contact["id"]))
+            from crm_reminders import schema as reminder_schema
+            reminder_schema(c)
         from crm_contact_phone import schema as phone_schema
         with self.db() as c:
             phone_schema(c)

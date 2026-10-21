@@ -1,0 +1,36 @@
+"use strict";
+const assert=require("node:assert/strict"),fs=require("node:fs");
+const {preferences,create}=require("../static/crm-sounds.js");
+assert.equal(preferences().enabled,false);
+assert.equal(preferences({enabled:true,volume:900}).volume,100);
+assert.equal(preferences({volume:-2}).volume,0);
+assert.equal(preferences({enabled:"true"}).enabled,false);
+assert.equal(preferences({volume:NaN}).volume,35);
+const html=fs.readFileSync("static/crm.html","utf8"),reminders=fs.readFileSync("static/crm-reminders.js","utf8"),engagement=fs.readFileSync("static/crm-engagement.js","utf8"),sounds=fs.readFileSync("static/crm-sounds.js","utf8"),inbox=fs.readFileSync("static/crm-inbox.js","utf8");
+assert.match(html,/data-mode="tasks"/);
+assert.match(reminders,/type="datetime-local"/);
+assert.match(reminders,/request_id:requestId/);
+assert.match(reminders,/America\/Sao_Paulo/);
+assert.match(inbox,/data-mobile-chat="createChatReminder"/);
+assert.match(engagement,/role="switch"/);
+assert.match(engagement,/cursors\?\{watch:"1"/);
+assert.match(sounds,/navigator\.locks\.request/);
+assert.doesNotMatch(engagement,/Notification\.requestPermission|new Notification/);
+assert.ok(html.indexOf("crm-reminders.js")<html.indexOf("crm.js?v="));
+console.log("CRM reminders, opt-in audio and notification integration checks passed");
+async function audioTests(){
+  const saved=new Map();global.localStorage={getItem:key=>saved.get(key),setItem:(key,value)=>saved.set(key,value)};
+  let notes=0;
+  global.AudioContext=class{constructor(){this.state="suspended";this.currentTime=1;this.destination={};}async resume(){this.state="running";}createOscillator(){notes++;return{frequency:{setValueAtTime(){}},connect(){},start(){},stop(){},disconnect(){}};}createGain(){return{gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}};}};
+  let user=1;const audio=create({getUser:()=>user});audio.reset();
+  assert.equal(await audio.play("message"),false);
+  await audio.unlock();audio.save({enabled:true});
+  assert.equal(await audio.once("message:1","message"),true);assert.equal(notes,2);
+  assert.equal(await audio.once("message:1","message"),false);assert.equal(notes,2);
+  audio.save({enabled:false});assert.equal(await audio.play("win"),false);
+  assert.equal(await audio.play("win",{test:true}),true);assert.equal(notes,6);
+  user=2;audio.reset();assert.equal(audio.settings().enabled,false);
+  user=1;audio.reset();assert.equal(audio.settings().enabled,false);assert.equal(audio.settings().volume,35);
+  console.log("Audio synthesis, mute, preview, per-user preferences and event deduplication passed");
+}
+audioTests().catch(error=>{console.error(error);process.exitCode=1;});

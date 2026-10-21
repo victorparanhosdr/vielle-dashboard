@@ -342,6 +342,19 @@ if "--staff-fixture" in sys.argv:
     token = auth.login("preview-staff", password)
 
 
+if "--reminders-fixture" in sys.argv:
+    from crm_reminders import save as save_reminder
+    import uuid
+    current_user = auth.get_public_user(1)
+    preview_data = store.listing()
+    leads = preview_data["leads"]
+    for index, (title, days, hour) in enumerate((("Retomar proposta combinada", -1, 9), ("Confirmar disponibilidade", 0, 9), ("Retorno solicitado pelo cliente", 1, 9), ("Acompanhar plano de cuidado", 30, 14))):
+        lead = leads[index % len(leads)]
+        due = (datetime.now(TZ) + timedelta(days=days)).replace(hour=hour, minute=0, second=0)
+        save_reminder(store, auth, current_user, {"lead_id": lead["id"], "title": title, "note": "Lembrete sintético para validar a agenda. Nenhuma mensagem será enviada.",
+            "due_local": due.strftime("%Y-%m-%dT%H:%M"), "assignee_id": "1", "request_id": str(uuid.uuid4())})
+
+
 class Preview(app.Handler):
     def preview_session(self):
         # Loopback synthetic fixture only: other preview tabs share 127.0.0.1 cookies.

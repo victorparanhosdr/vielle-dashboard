@@ -1,6 +1,6 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
@@ -83,6 +83,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.id==="closeConversation")closeConversation();
       if(b.id==="syncMessages")syncExternalMessages(true);
       if(b.id==="voiceCall"){const l=leadFor();if(l)voice.open(l);}
+      if(b.id==="createChatReminder"){const l=leadFor();if(l)openReminder(l);}
       if(b.dataset.loadMedia)loadMedia(b);
     };
     refreshList();if(selected)select(selected);icons();focus();
@@ -133,6 +134,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     try {
       const data=await api("lead",undefined,{doctor:doc,id:l.id});
       if(!root || !doctors().includes(doc) || request!==openSeq)return;
+      if(!catalog.channels.some(c=>c.doctor_id===doc)){await refreshList();if(!root || request!==openSeq)return;}
       const available=catalog.channels.filter(c=>c.doctor_id===doc);
       const sender=data.preferred_channel_id || data.messages[0]?.channel_id || available.find(c=>c.state==="open")?.id || available[0]?.id;
       if(!sender){$("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Nenhum número cadastrado</h2><p>Cadastre um número em Números para abrir o atendimento.</p></div>';$("inboxWorkspace").classList.add("chatActive");return;}
@@ -185,6 +187,10 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function drawInfo() {
     if(!root || !selected)return;
     const l=leadFor(), p=catalog.pipelines.find(p=>p.id===l?.pipeline_id), panel=$("contactPanel");
+    if(l && !$("createChatReminder")){
+      $("toggleContact").insertAdjacentHTML("beforebegin",`<button id="createChatReminder" class="icon-button" aria-label="Criar lembrete para este cliente" title="Criar lembrete">${icon("alarm-clock-plus")}</button>`);
+      $("mobileChatMore")?.querySelector(".mobileChatMenu").insertAdjacentHTML("afterbegin",`<button type="button" data-mobile-chat="createChatReminder">${icon("alarm-clock-plus")} Criar lembrete</button>`);
+    }
     if(!$("inboxWorkspace").querySelector(".mobileContactClose"))panel.insertAdjacentHTML("beforebegin",`<h2 class="mobileContactTitle crmMobileOnly">Ficha do cliente</h2><button type="button" class="mobileContactClose crmMobileOnly icon-button" aria-label="Fechar ficha comercial" title="Fechar ficha comercial" data-mobile-chat="toggleContact">${icon("x")}</button>`);
     if(l && !$("voiceCall"))$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);
     $("chatPane").querySelector(".chatCustomerTier")?.remove();
