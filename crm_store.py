@@ -1372,6 +1372,9 @@ class CrmStore:
                     from crm_bots import emit
                     emit(c, lead_id, "created", now, channel=ch["id"])
             if not from_me and not history:
+                from crm_whatsapp_attribution import record as record_ad_referral
+                record_ad_referral(c, {"id": message_id, "contact_id": contact["id"], "created_at": stamp or now},
+                                   ch, first, data.get("message"))
                 from crm_bots import emit
                 for opportunity in c.execute("SELECT id FROM leads WHERE doctor_id=? AND contact_id=?", (ch["doctor_id"], contact["id"])).fetchall():
                     emit(c, opportunity["id"], "incoming", now, channel=ch["id"], message=message_id)

@@ -6,4 +6,11 @@ assert.equal(data.utm.utm_source,'instagram');assert.equal(data.utm.utm_campaign
 assert.equal(api.collect({},'https://doc4docs.com.br/f/test?gclid=click','').click_ids.gclid,undefined);
 assert.equal(Object.keys(api.collect({enabled:false},'https://doc4docs.com.br/f/test?utm_source=x','')).length,0);
 const url=api.link('https://doc4docs.com.br/f/test',{utm_campaign:'Curso & Aula',utm_source:'Instagram'});assert.equal(new URL(url).searchParams.get('utm_campaign'),'Curso & Aula');
+const esc=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+const native={kind:'whatsapp_ad',meta:{status:'resolved',campaign_name:'Campanha <A>',campaign_id:'123',adset_name:'Conjunto',ad_name:'Video',ad_id:'456'},utm:{utm_source:'instagram'}};
+assert.equal(api.summary(native),'Meta Ads · Campanha <A>');
+assert.ok(api.fields(native,esc).includes('Campanha &lt;A>'));
+assert.ok(api.fields(native,esc).includes('Conjunto de anúncios'));
+assert.ok(!api.fields(native,esc).includes('ainda não identificada'));
+assert.ok(api.fields({kind:'whatsapp_ad',meta:{status:'pending',headline:'Título do criativo'}},esc).includes('campanha ainda não identificada'));
 console.log('UTM capture and campaign link tests passed');

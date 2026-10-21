@@ -79,6 +79,8 @@ def schema(c):
         form_name TEXT NOT NULL,created_at REAL NOT NULL,data TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS lead_attributions_history ON lead_attributions(lead_id,created_at,id);
     """)
+    from crm_whatsapp_attribution import schema as whatsapp_schema
+    whatsapp_schema(c)
 
 
 def lead_history(c, lead):

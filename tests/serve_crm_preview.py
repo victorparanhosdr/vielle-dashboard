@@ -144,6 +144,29 @@ for n, doctor in enumerate(store.listing()["doctors"]):
                 store.receive(channels[cid]["instance"],{"key":{"id":f"preview-external-{n}","fromMe":True,"remoteJid":lead["phone"]+"@s.whatsapp.net"},
                     "messageTimestamp":int(time.time())+1,"message":{"conversation":"Confirmado! Vamos combinar seu retorno para quinta-feira."}},"messages.upsert")
 
+if "--attribution-fixture" in sys.argv:
+    from crm_whatsapp_attribution import tick as attribute_ads, sync_campaigns
+    original_config_value = app.config_value
+    app.config_value = lambda key, default="": {"META_AD_ACCOUNT_ID": "800", "META_ACCESS_TOKEN": "synthetic-preview"}.get(key, original_config_value(key, default))
+
+    def synthetic_meta(path, params):
+        if path == "act_800/campaigns":
+            return {"data": [{"id": "456", "name": "Avaliacoes - Sao Paulo", "effective_status": "ACTIVE"},
+                             {"id": "789", "name": "Retornos - Capelinha", "effective_status": "PAUSED"}]}
+        return {"id": path, "account_id": "800", "name": "Video - Atendimento personalizado",
+                "campaign": {"id": "456", "name": "Avaliacoes - Sao Paulo"}, "adset": {"id": "321", "name": "Sao Paulo - Interesse em avaliacao"}}
+
+    app.meta_request = synthetic_meta
+    for doc in store.listing()["doctors"]:
+        leads = store.listing(doc["id"])["leads"]
+        lead = next(row for row in leads if row["name"] == "Ana Exemplo")
+        channel = store.listing(doc["id"])["channels"][0]
+        store.receive(channel["instance"], {"key": {"id": "ad-preview-" + doc["id"], "remoteJid": lead["phone"] + "@s.whatsapp.net"},
+            "message": {"extendedTextMessage": {"text": "Vi o anuncio e gostaria de saber mais.", "contextInfo": {"externalAdReply": {
+                "sourceType": "ad", "sourceId": "123456", "ctwaClid": "synthetic-click", "title": "Conheca a Vielle"}}}}}, "messages.upsert")
+    attribute_ads(store, "800", synthetic_meta)
+    sync_campaigns(store, "800", synthetic_meta)
+
 if "--forms-fixture" in sys.argv:
     from crm_forms_api import store_for as forms_for
     from io import BytesIO

@@ -14,7 +14,7 @@ from task_api import read_body
 
 STORES, LOCK = {}, threading.Lock()
 MASTER_ACTIONS = {"bootstrap", "doctor", "pipeline", "channel", "channel-update", "channel-transfer", "connect", "customer-tiers", "campaign-enable",
-                  "channel-remove", "channel-restore", "kommo-import", "kommo-import-preview", "kommo-import-commit"}
+                  "channel-remove", "channel-restore", "kommo-import", "kommo-import-preview", "kommo-import-commit", "facebook", "facebook-sync"}
 
 
 def store_for(auth):
@@ -75,6 +75,9 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action in {"facebook", "facebook-sync"}:
+            from crm_whatsapp_attribution import handle as facebook_handle
+            return facebook_handle(handler, store, action, query)
         if action == "reminders" or action.startswith("reminders/"):
             from crm_reminders import handle as reminders_handle
             return reminders_handle(handler, store, action, query, user)

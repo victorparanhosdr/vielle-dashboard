@@ -7681,6 +7681,8 @@ if __name__ == "__main__":
     start_forms_worker(forms_for_worker(crm_for_forms(auth_store)))
     from crm_bots import run_worker as run_bot_worker
     threading.Thread(target=run_bot_worker, args=(auth_store, threading.Event()), daemon=True).start()
+    from crm_whatsapp_attribution import run as run_ad_attribution
+    threading.Thread(target=run_ad_attribution, args=(auth_store, threading.Event()), daemon=True).start()
     if sends_enabled():
         from crm_worker import run as run_crm_worker
         threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()

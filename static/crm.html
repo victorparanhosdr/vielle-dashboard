@@ -12,11 +12,12 @@
   <script src="/crm-channel-settings.js?v=3" defer></script>
   <link rel="stylesheet" href="/crm-inbox-scope.css?v=1">
   <link rel="stylesheet" href="/crm-reminders.css?v=2">
+  <link rel="stylesheet" href="/crm-facebook.css?v=1"><script src="/crm-facebook.js?v=1" defer></script>
   <script src="/crm-sounds.js?v=2" defer></script><script src="/crm-reminders.js?v=1" defer></script><script src="/crm-engagement.js?v=2" defer></script>
   <link rel="stylesheet" href="/crm-form.css?v=1"><link rel="stylesheet" href="/crm-form-phone.css?v=2"><link rel="stylesheet" href="/crm-forms.css?v=1"><link rel="stylesheet" href="/vendor/drawflow/drawflow.min.css"><link rel="stylesheet" href="/crm-bots.css?v=1"><link rel="stylesheet" href="/crm-attribution.css?v=1"><link rel="stylesheet" href="/crm-shell.css?v=3">
-  <script src="/vendor/libphonenumber-max-1.13.15.js" defer></script><script src="/crm-form-phone.js?v=1" defer></script><script src="/crm-form-renderer.js?v=3" defer></script><script src="/crm-attribution.js?v=1" defer></script><script src="/crm-forms.js?v=3" defer></script>
+  <script src="/vendor/libphonenumber-max-1.13.15.js" defer></script><script src="/crm-form-phone.js?v=1" defer></script><script src="/crm-form-renderer.js?v=3" defer></script><script src="/crm-attribution.js?v=2" defer></script><script src="/crm-forms.js?v=3" defer></script>
   <script src="/vendor/drawflow/drawflow.min.js" defer></script><script src="/crm-bots.js?v=3" defer></script>
-  <script src="/session.js?v=crm1" defer></script><script src="/body-icons.js" defer></script><script src="/crm-voice.js?v=4" defer></script><script src="/crm-courses.js?v=1" defer></script><script src="/crm-audience.js?v=6" defer></script><script src="/crm-campaigns.js?v=4" defer></script><script src="/crm-media.js?v=1" defer></script><script src="/crm-chat-search.js?v=2" defer></script><script src="/crm-message-templates.js?v=3" defer></script><script src="/crm-inbox.js?v=30" defer></script><script src="/crm-import.js?v=5" defer></script><script src="/crm-avatars.js?v=1" defer></script><script src="/crm-kanban.js?v=2" defer></script><script src="/crm-dashboard.js?v=1" defer></script><script src="/crm.js?v=44" defer></script>
+  <script src="/session.js?v=crm1" defer></script><script src="/body-icons.js" defer></script><script src="/crm-voice.js?v=4" defer></script><script src="/crm-courses.js?v=1" defer></script><script src="/crm-audience.js?v=6" defer></script><script src="/crm-campaigns.js?v=4" defer></script><script src="/crm-media.js?v=1" defer></script><script src="/crm-chat-search.js?v=2" defer></script><script src="/crm-message-templates.js?v=3" defer></script><script src="/crm-inbox.js?v=30" defer></script><script src="/crm-import.js?v=5" defer></script><script src="/crm-avatars.js?v=1" defer></script><script src="/crm-kanban.js?v=2" defer></script><script src="/crm-dashboard.js?v=1" defer></script><script src="/crm.js?v=45" defer></script>
 </head>
 <body class="crmPage crmDesktop" data-app-page="crm" data-crm-mode="inbox">
   <nav class="crmRail" aria-label="Navegação do CRM">
@@ -31,6 +32,7 @@
       <button role="tab" data-mode="templates" aria-selected="false" aria-label="Modelos de mensagens" data-tooltip="Modelos"><i data-lucide="text-cursor-input"></i></button>
       <button role="tab" data-mode="forms" aria-selected="false" aria-label="Formulários" data-tooltip="Formulários"><i data-lucide="clipboard-list"></i></button>
       <button role="tab" data-mode="bots" aria-selected="false" aria-label="Automações" data-tooltip="Automações"><i data-lucide="workflow"></i></button>
+      <button role="tab" data-mode="facebook" aria-selected="false" aria-label="Integração Facebook" data-tooltip="Integração Facebook" hidden><i data-lucide="plug-zap"></i></button>
     </div>
     <div class="crmRailBottom"><button id="crmJourneyToggle" aria-label="Jornada da equipe" data-tooltip="Jornada da equipe" aria-expanded="false"><i data-lucide="trophy"></i></button><a id="crmSettings" href="/settings.html?clinic=vielle" aria-label="Configurações" data-tooltip="Configurações" hidden><i data-lucide="settings-2"></i></a><a href="/?clinic=vielle" aria-label="Voltar ao sistema" data-tooltip="Voltar ao sistema"><i data-lucide="arrow-left"></i></a></div>
   </nav>
@@ -51,6 +53,7 @@
       <button data-mode="templates"><i data-lucide="text-cursor-input"></i><span>Modelos de mensagens</span><i data-lucide="chevron-right"></i></button>
       <button data-mode="forms"><i data-lucide="clipboard-list"></i><span>Formulários</span><i data-lucide="chevron-right"></i></button>
       <button data-mode="bots"><i data-lucide="workflow"></i><span>Automações</span><i data-lucide="chevron-right"></i></button>
+      <button data-mode="facebook" hidden><i data-lucide="plug-zap"></i><span>Integração Facebook</span><i data-lucide="chevron-right"></i></button>
       <button id="crmMobileJourney"><i data-lucide="trophy"></i><span>Jornada da equipe</span><i data-lucide="chevron-right"></i></button>
       <a id="crmMobileSettings" href="/settings.html?clinic=vielle" hidden><i data-lucide="settings-2"></i><span>Configurações</span><i data-lucide="chevron-right"></i></a>
       <a href="/?clinic=vielle"><i data-lucide="arrow-left"></i><span>Voltar ao DOC4DOCS</span><i data-lucide="chevron-right"></i></a>
