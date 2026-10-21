@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   const previews = {
-    inbox: {number:"01 / ATENDIMENTO", title:"Cada conversa tem uma história.", description:"Visualize quem aguarda resposta, por qual número a pessoa chamou e o histórico comercial, sem sair do atendimento.", alt:"Atendimento DOC4DOCS: conversas, identificação do número e ficha comercial. Dados fictícios."},
+    inbox: {number:"01 / ATENDIMENTO", title:"Para o cliente, cuidado. Para a equipe, contexto.", description:"Identifique quem aguarda resposta, reconheça o número de origem e consulte o histórico comercial sem sair da conversa.", alt:"Atendimento DOC4DOCS: conversas, identificação do número e ficha comercial. Dados fictícios."},
     kanban: {number:"02 / FUNIS", title:"O próximo passo fica à vista.", description:"Organize oportunidades por etapa e profissional. Filtre, selecione e acompanhe o caminho de cada contato com mais clareza.", alt:"Funil de oportunidades DOC4DOCS, organizado por etapas. Dados fictícios."},
     dashboard: {number:"03 / DASHBOARD", title:"Decida com uma visão da operação.", description:"Acompanhe oportunidades, clientes sem resposta e indicadores da equipe para entender onde sua atenção faz diferença.", alt:"Dashboard DOC4DOCS com indicadores de atendimento e oportunidades. Dados fictícios."}
   };
@@ -24,6 +24,27 @@
       if(event.key==="ArrowLeft")target=tabs[(index+tabs.length-1)%tabs.length];
       if(event.key==="Home")target=tabs[0];if(event.key==="End")target=tabs.at(-1);
       if(target){event.preventDefault();selectPreview(target);target.focus();}
+    });
+  });
+  const aiExamples = {
+    personal:{quote:"“Olá, Ana. Vi que você prefere o período da tarde. Vamos encontrar o melhor horário para sua avaliação?”",reading:"A conversa reconhece o contexto e a preferência da cliente, em vez de oferecer uma resposta genérica.",action:"Reforce esse padrão com a equipe: consultar o histórico e adaptar a abordagem antes de responder."},
+    clarity:{quote:"“Sua avaliação ficou para quinta-feira, às 15h. Vou enviar o endereço e as orientações para sua chegada.”",reading:"A mensagem apresenta o combinado e os próximos passos com clareza. A gestão pode verificar se a orientação é completa.",action:"Oriente a equipe a confirmar data, horário, local e informações necessárias sem deixar dúvidas em aberto."},
+    followup:{quote:"“Ana, combinamos que eu retomaria seu orçamento hoje. Ficou alguma dúvida sobre o plano que conversamos?”",reading:"O retorno mantém a continuidade do combinado e abre espaço para entender a necessidade da cliente, sem presumir uma decisão.",action:"Organize o próximo contato e registre o que foi alinhado para que o acompanhamento tenha contexto."}
+  };
+  const aiTabs=[...document.querySelectorAll("[data-ai-example]")];
+  function selectAi(button){
+    const example=aiExamples[button.dataset.aiExample];if(!example)return;
+    aiTabs.forEach(tab=>{const selected=tab===button;tab.setAttribute("aria-selected",String(selected));tab.tabIndex=selected?0:-1;});
+    document.getElementById("aiExamplePanel").setAttribute("aria-labelledby",button.id);
+    document.getElementById("aiQuote").textContent=example.quote;
+    document.getElementById("aiReading").textContent=example.reading;
+    document.getElementById("aiAction").textContent=example.action;
+  }
+  aiTabs.forEach((tab,index)=>{
+    tab.addEventListener("click",()=>selectAi(tab));
+    tab.addEventListener("keydown",event=>{
+      let target;if(event.key==="ArrowRight")target=aiTabs[(index+1)%aiTabs.length];if(event.key==="ArrowLeft")target=aiTabs[(index+aiTabs.length-1)%aiTabs.length];if(event.key==="Home")target=aiTabs[0];if(event.key==="End")target=aiTabs.at(-1);
+      if(target){event.preventDefault();selectAi(target);target.focus();}
     });
   });
   const menu=document.querySelector(".navMenu"),nav=document.getElementById("siteNav");

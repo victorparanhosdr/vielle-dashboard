@@ -25,6 +25,7 @@ PUBLIC_FILES.update({'/crm-form-phone.js','/crm-form-phone.css','/vendor/libphon
 PUBLIC_FILES.update({'/privacidade.html','/sobre.html','/legal.css'})
 PUBLIC_FILES.update({"/home.html", "/plans.html", "/marketing.css", "/marketing.js",
                      "/marketing-inbox.png", "/marketing-kanban.png", "/marketing-dashboard.png"})
+PUBLIC_FILES.update({"/marketing-hero-panorama-v2.png", "/marketing-palm-general-v2.png"})
 PUBLIC_PAGE_ROUTES = {"/inicio": "/home.html", "/inicio/": "/home.html",
                       "/planos": "/plans.html", "/planos/": "/plans.html"}
 MARKETING_QUERY_KEYS = {"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid"}

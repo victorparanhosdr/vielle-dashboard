@@ -1,5 +1,18 @@
 # Site comercial DOC4DOCS
 
+## Campanha visual de outubro
+
+A apresentacao prioriza controle da operacao, tranquilidade para o gestor,
+atendimento personalizado e desenvolvimento da equipe. As composicoes de produto
+foram criadas com o gerador de imagens integrado, usando telas reais e dados
+sinteticos. O celular mostra o Painel Geral, nao o dashboard do CRM.
+Os arquivos selecionados e os prompts estao em `MARKETING_VISUALS.md`.
+
+A secao de IA reflete `auto_whatsapp_audit_review`: avaliacao sob demanda do
+historico textual sincronizado, nota pela regua, evidencias e recomendacoes.
+Nao promete vigilancia em tempo real ou analise de todas as mensagens.
+Os exemplos interativos sao ilustrativos e nao fazem chamadas ao provedor de IA.
+
 ## Entradas
 
 - `/inicio`: apresentacao publica da plataforma, sempre disponivel.

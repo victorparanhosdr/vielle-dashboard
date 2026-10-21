@@ -102,6 +102,12 @@ class HttpAuthTests(unittest.TestCase):
         _, _, body = self.request("GET", "/")
         self.assertIn(b"Sua cl", body)
         self.assertNotIn(b"id=\"viewTabs\"", body)
+        for path in ("/marketing-hero-panorama-v2.png", "/marketing-palm-general-v2.png"):
+            status, headers, raw = self.request("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertEqual({key.lower(): value for key, value in headers}["content-type"], "image/png")
+            self.assertTrue(raw.startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(self.request("HEAD", path)[0], 200)
         for path in ("/?clinic=vielle", "/?view=financialView", "/inicio/../index.html", "/static/home.html/../index.html", "/master/commercial.html"):
             self.assertEqual(self.request("GET", path)[0], 303, path)
         cookie, _ = self.login()
