@@ -35,6 +35,7 @@ for(const filename of ['home.html','plans.html']){
 }
 assert.equal((fs.readFileSync('static/plans.html','utf8').match(/Sob consulta/g)||[]).length,3);
 const home=fs.readFileSync('static/home.html','utf8');assert.match(home,/marketing-palm-general-v2.png/);assert.match(home,/marketing-hero-panorama-v2.png/);assert.match(home,/Avaliações sob demanda/);assert.match(home,/EXEMPLO ILUSTRATIVO/);
+const css=fs.readFileSync('static/marketing.css','utf8');assert.match(css,/\.palmVisual img\{[^}]*height:auto/);assert.match(css,/\.palmVisual\{[^}]*max-width:420px/);
 const commercial=fs.readFileSync('static/master/commercial.js','utf8');
 assert.doesNotMatch(commercial,/\.innerHTML\s*=/);assert.match(commercial,/revision:editing.revision/);
 console.log('Marketing UI: attribution, tabs, keyboard, menu, brand/login, consultative plans and safe commercial rendering OK');
