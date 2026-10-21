@@ -93,6 +93,8 @@ class WhatsAppAttributionTests(unittest.TestCase):
         self.assertEqual(data["meta"]["campaign_name"], "Campanha Exemplo")
         self.assertEqual(data["utm"]["utm_campaign"], "visitas")
         self.assertNotIn("phone", json.dumps(request.call_args_list))
+        tick(self.store, "800", request, now=20000)
+        self.assertEqual(request.call_count, 1)
 
     def test_wrong_account_or_inaccessible_ad_is_not_guessed_and_retries_are_bounded(self):
         self.receive(self.message())

@@ -1,4 +1,4 @@
-"""Keep bounded ad referrals; resolve public ad metadata without exporting CRM data."""
+"""Keep bounded ad referrals; resolve ad metadata without exporting CRM data."""
 import json
 import logging
 import re
@@ -124,8 +124,10 @@ def tick(store, account_id, request, now=None):
                            (account_id, now - 3600)).fetchall()
         count = sum(enrich(c, row["source_id"], json.loads(row["data"])) for row in cached)
         sources = [row[0] for row in c.execute("""SELECT DISTINCT r.source_id FROM whatsapp_ad_receipts r
+            JOIN lead_attributions a ON a.id='wa:'||r.message_id
             LEFT JOIN meta_ad_lookups m ON m.source_id=r.source_id AND m.account_id=?
-            WHERE m.checked_at IS NULL OR m.checked_at<? ORDER BY r.source_id LIMIT 5""", (account_id, now - 3600))]
+            WHERE json_extract(a.data,'$.meta.status')='pending' AND (m.checked_at IS NULL OR m.checked_at<?)
+            ORDER BY r.source_id LIMIT 5""", (account_id, now - 3600))]
     for source_id in sources:
         if not re.fullmatch(r"[0-9]{1,30}", source_id):
             result = {}
