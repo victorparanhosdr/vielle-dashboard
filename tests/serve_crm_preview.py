@@ -348,6 +348,17 @@ if "--communications-fixture" in sys.argv:
                     c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=?",(now-86400,now-86400,key))
 
 
+if "--campaigns-fixture" in sys.argv:
+    import crm_api
+    crm_api.sends_enabled = lambda: True
+    store.worker_online = lambda: True
+    store.enable_campaigns()
+    with store.db() as c:
+        c.execute("UPDATE channels SET state='open'")
+        c.execute("UPDATE campaigns SET last_error='Numero reconectado; revisao pendente.' WHERE status='paused'")
+        c.execute("""UPDATE messages SET status='unknown',claimed_at=? WHERE id IN
+            (SELECT min(m.id) FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id WHERE ca.status='paused' AND m.status='queued' GROUP BY ca.id)""",(time.time()-600,))
+
 if "--bots-fixture" in sys.argv:
     from crm_bots import BotStore
     bots = BotStore(store)

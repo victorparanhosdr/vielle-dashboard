@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from tests import test_crm as base
-from crm_campaigns import audience, candidates, create, dashboard, detail
+from crm_campaigns import audience, candidates, create, dashboard, detail, template
+from crm_access import crm_access
 from crm_store import Conflict, TZ
 from crm_worker import tick
 
@@ -111,6 +112,166 @@ class CampaignTests(unittest.TestCase):
         self.store.enable_campaigns()
         self.assertTrue(self.store.campaigns_allowed())
         self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"paused")
+
+    def test_reconnected_campaign_resumes_only_remaining_recipients(self):
+        key=self.campaign([self.lead(),self.lead(number="5500000000003")])
+        self.enable(key)
+        first=self.store.claim(self.now);self.store.finish(first,"accepted-before-disconnect")
+        with self.store.db() as c:instance=self.store.row(c,"channels",self.channel)["instance"]
+        self.store.receive(instance,{"state":"close"},"connection.update")
+        with self.assertRaisesRegex(ValueError,"Conecte"):
+            self.store.campaign_status(key,self.a,"start",True)
+        self.store.receive(instance,{"state":"open"},"connection.update")
+        self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"paused")
+        self.assertEqual(dashboard(self.store,self.a,{})["campaigns"][0]["start_blocker"],"")
+        self.store.campaign_status(key,self.a,"start",True)
+        second=self.store.claim(self.now+61)
+        self.assertNotEqual(first["id"],second["id"])
+        self.store.finish(second,"accepted-after-reconnect")
+        self.assertIsNone(self.store.claim(self.now+122))
+        self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"done")
+
+    def test_unknown_is_explicitly_excluded_without_inventing_acceptance(self):
+        key=self.campaign([self.lead(),self.lead(number="5500000000003")])
+        self.enable(key)
+        first=self.store.claim(self.now);self.store.finish(first,error=True)
+        with self.assertRaises(Conflict):self.store.campaign_status(key,self.a,"start",True)
+        self.store.campaign_status(key,self.a,"start",True,exclude_unknown=True,actor_id="operator")
+        second=self.store.claim(self.now+61)
+        self.assertNotEqual(first["contact_id"],second["contact_id"])
+        self.store.finish(second,"accepted")
+        self.assertIsNone(self.store.claim(self.now+122))
+        with self.store.db() as c:
+            row=self.store.row(c,"messages",first["id"])
+            self.assertEqual((row["status"],row["provider_id"],row["automation_excluded_by"]),("unknown",None,"operator"))
+            self.assertGreater(row["automation_excluded_at"],0)
+        self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"done")
+
+    def test_resume_cannot_override_inflight_or_unrelated_unknown_sends(self):
+        key=self.campaign([self.lead(),self.lead(number="5500000000003")]);self.enable(key)
+        item=self.store.claim(self.now)
+        self.store.campaign_status(key,self.a,"pause")
+        with self.assertRaises(Conflict):self.store.campaign_status(key,self.a,"start",True,exclude_unknown=True)
+        self.store.finish(item,error=True)
+        other=self.campaign([self.lead(number="5500000000004")])
+        with self.assertRaises(Conflict):self.store.campaign_status(other,self.a,"start",True,exclude_unknown=True)
+        with self.store.db() as c:self.assertEqual(self.store.row(c,"messages",item["id"])["automation_excluded_at"],0)
+
+    def test_final_uncertain_message_can_be_closed_without_resending(self):
+        key=self.campaign();self.enable(key)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        with self.assertRaises(Conflict):self.store.campaign_status(key,self.a,"finish")
+        self.store.campaign_status(key,self.a,"finish",exclude_unknown=True,actor_id="operator")
+        data=detail(self.store,self.a,key,{})
+        self.assertEqual(data["campaign"]["status"],"done")
+        self.assertEqual(data["items"][0]["status"],"unknown")
+        self.assertGreater(data["items"][0]["automation_excluded_at"],0)
+        self.assertIsNone(self.store.claim(self.now+61))
+        other=self.campaign([self.lead(number="5500000000004")]);self.enable(other)
+        self.assertIsNotNone(self.store.claim(self.now+122))
+
+    def test_cancelled_campaign_can_exclude_unknown_without_becoming_active(self):
+        key=self.campaign();self.enable(key)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        self.store.campaign_status(key,self.a,"cancel")
+        self.store.campaign_status(key,self.a,"finish",exclude_unknown=True,actor_id="operator")
+        self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"cancelled")
+        self.assertIsNone(self.store.claim(self.now+61))
+
+    def test_excluding_unknown_never_allows_automatic_retry_in_another_campaign(self):
+        a=self.lead();b=self.lead(number="5500000000003")
+        key=self.campaign([a,b]);self.enable(key)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        self.store.campaign_status(key,self.a,"start",True,exclude_unknown=True)
+        second=self.store.claim(self.now+61);self.store.finish(second,"second")
+        repeat=self.campaign([a,b]);self.store.campaign_status(repeat,self.a,"start",True)
+        next_item=self.store.claim(self.now+122)
+        self.assertNotEqual(next_item["contact_id"],item["contact_id"])
+        self.store.finish(next_item,"other-person")
+        self.assertIsNone(self.store.claim(self.now+183))
+
+    def test_template_copies_settings_and_exact_audience_but_never_creates_or_sends(self):
+        lead=self.lead();self.lead(number="5500000000003")
+        original=create(self.store,self.payload(self.preview(lead_ids=[lead])),self.actor())
+        data=template(self.store,self.a,original)
+        self.assertEqual(data["audience"]["lead_ids"],[lead])
+        self.assertEqual(data["campaign"]["tag"],"Retorno enviado")
+        with self.assertRaises(ValueError):template(self.store,self.b,original)
+        with crm_access({self.a:[]}):
+            with self.assertRaises(PermissionError):template(self.store,self.a,original)
+        with self.store.db() as c:self.assertEqual(c.execute("SELECT count(*) FROM campaigns").fetchone()[0],1)
+        copied_preview=audience(self.store,{"doctor_id":self.a,**data["audience"]},self.actor())
+        copied=create(self.store,{**self.payload(copied_preview),"name":"Copia editada","body":"Novo texto para {nome}"},self.actor())
+        self.assertNotEqual(copied,original)
+        self.assertEqual(detail(self.store,self.a,copied,{})["campaign"]["status"],"draft")
+        self.assertIsNone(self.store.claim(self.now))
+
+    def test_copy_revalidates_optouts_and_does_not_expand_to_new_contacts(self):
+        a=self.lead();b=self.lead(number="5500000000003")
+        key=self.campaign([a,b]);self.lead(number="5500000000004")
+        data=template(self.store,self.a,key)
+        self.store.activity({"id":a,"doctor_id":self.a,"kind":"optout","body":"SAIR"},"Equipe")
+        preview=audience(self.store,{"doctor_id":self.a,**data["audience"]},self.actor())
+        self.assertEqual((preview["selected"],preview["recipients"],preview["excluded"]),(2,1,1))
+
+    def test_copy_review_excludes_uncertain_recipient_on_the_selected_number(self):
+        a=self.lead();b=self.lead(number="5500000000003")
+        key=self.campaign([a,b]);self.enable(key)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        data=template(self.store,self.a,key)
+        preview=audience(self.store,{"doctor_id":self.a,"channel_id":self.channel,**data["audience"]},self.actor())
+        self.assertEqual((preview["recipients"],preview["excluded"]),(1,1))
+        self.assertIn("sem confirmacao",next(iter(preview["reasons"])))
+        unsafe=self.preview()
+        with self.assertRaises(Conflict):create(self.store,self.payload(unsafe),self.actor())
+
+    def test_draft_edit_is_atomic_revision_checked_and_idempotent(self):
+        a=self.lead();b=self.lead(number="5500000000003")
+        key=create(self.store,self.payload(self.preview(lead_ids=[a])),self.actor())
+        original=template(self.store,self.a,key)["campaign"]
+        channel=self.store.channel({"doctor_id":self.a,"name":"Recepcao","phone":"5500000000009"})
+        payload={**self.payload(self.preview(lead_ids=[b])),"id":key,"revision":original["revision"],
+                 "name":"Rascunho editado","body":"Mensagem alterada {nome}","channel_id":channel}
+        self.assertEqual(create(self.store,payload,self.actor(),editing=True),key)
+        self.assertEqual(create(self.store,payload,self.actor(),editing=True),key)
+        with self.store.db() as c:
+            current=self.store.row(c,"campaigns",key)
+            self.assertEqual((current["status"],current["revision"],current["channel_id"]),("draft",2,channel))
+            rows=c.execute("SELECT * FROM messages WHERE campaign_id=?",(key,)).fetchall()
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0]["contact_id"],self.store.row(c,"leads",b)["contact_id"])
+            self.assertIn("Mensagem alterada",rows[0]["body"])
+            self.assertEqual(rows[0]["status"],"queued")
+        stale={**payload,"preview_id":self.preview(lead_ids=[a])["preview_id"]}
+        with self.assertRaises(Conflict):create(self.store,stale,self.actor(),editing=True)
+        self.assertIsNone(self.store.claim(self.now))
+
+    def test_started_campaign_cannot_be_edited_even_after_pause(self):
+        lead=self.lead();key=self.campaign([lead]);self.enable(key)
+        self.store.campaign_status(key,self.a,"pause")
+        payload={**self.payload(self.preview(lead_ids=[lead])),"id":key,"revision":3}
+        with self.assertRaises(Conflict):create(self.store,payload,self.actor(),editing=True)
+        with self.store.db() as c:self.assertEqual(self.store.row(c,"campaigns",key)["status"],"paused")
+
+    def test_start_rejects_the_version_open_before_another_operator_edited(self):
+        lead=self.lead();key=self.campaign([lead])
+        payload={**self.payload(self.preview()),"id":key,"revision":1,"body":"Texto atualizado"}
+        create(self.store,payload,self.actor(),editing=True)
+        with self.store.db() as c:c.execute("UPDATE channels SET state='open'")
+        with self.assertRaises(Conflict):self.store.campaign_status(key,self.a,"start",True,revision=1)
+        self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"draft")
+        self.store.campaign_status(key,self.a,"start",True,revision=2)
+
+    def test_draft_edit_rolls_back_if_contact_changed_or_wrong_doctor(self):
+        lead=self.lead();key=self.campaign([lead]);payload={**self.payload(self.preview()),"id":key,"revision":1}
+        with self.store.db() as c:
+            before=[tuple(r) for r in c.execute("SELECT * FROM messages")]
+            c.execute("UPDATE contacts SET name='Alterado'")
+        with self.assertRaises(Conflict):create(self.store,payload,self.actor(),editing=True)
+        foreign=self.lead(doctor=self.b,pipeline=self.store.listing(self.b)["pipelines"][0])
+        preview=audience(self.store,{"doctor_id":self.b,"lead_ids":[foreign]},self.actor())
+        with self.assertRaises(ValueError):create(self.store,{**payload,"doctor_id":self.b,"preview_id":preview["preview_id"]},self.actor(),editing=True)
+        with self.store.db() as c:self.assertEqual([tuple(r) for r in c.execute("SELECT * FROM messages")],before)
 
     def test_candidates_show_blocked_people_and_real_funnel_counts(self):
         self.lead()

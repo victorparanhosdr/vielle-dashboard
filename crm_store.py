@@ -196,6 +196,10 @@ class CrmStore:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
             if "independent_manual_send" not in columns:
                 c.execute("ALTER TABLE messages ADD COLUMN independent_manual_send INTEGER NOT NULL DEFAULT 0")
+            for name, definition in (("automation_excluded_at", "REAL NOT NULL DEFAULT 0"),
+                                     ("automation_excluded_by", "TEXT NOT NULL DEFAULT ''")):
+                if name not in columns:
+                    c.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
             media_columns = {r[1] for r in c.execute("PRAGMA table_info(message_media)")}
             for name, definition in (("provider_payload", "TEXT NOT NULL DEFAULT ''"), ("download_state", "TEXT NOT NULL DEFAULT 'ready'")):
                 if name not in media_columns:
@@ -213,7 +217,7 @@ class CrmStore:
                 ("minute_from", "INTEGER NOT NULL DEFAULT 0"), ("minute_to", "INTEGER NOT NULL DEFAULT 0"),
                 ("tag", "TEXT NOT NULL DEFAULT ''"), ("selected_count", "INTEGER NOT NULL DEFAULT 0"),
                 ("duplicates_count", "INTEGER NOT NULL DEFAULT 0"), ("excluded_count", "INTEGER NOT NULL DEFAULT 0"),
-                ("institute_keys", "TEXT NOT NULL DEFAULT '[]'")):
+                ("institute_keys", "TEXT NOT NULL DEFAULT '[]'"), ("revision", "INTEGER NOT NULL DEFAULT 1")):
                 if name not in columns:
                     c.execute(f"ALTER TABLE campaigns ADD COLUMN {name} {definition}")
             c.executescript("""
@@ -1099,7 +1103,8 @@ class CrmStore:
             start_at = parsed.replace(tzinfo=TZ).timestamp()
         else:
             start_at = now
-        key = uuid.uuid4().hex
+        editing = p.get("_edit_id", "")
+        key = editing or uuid.uuid4().hex
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
             doc = self.row(c, "doctors", doctor)
@@ -1112,11 +1117,19 @@ class CrmStore:
                 if snapshot["doctor_id"] != doctor or snapshot["actor_id"] != str(actor_id):
                     raise LookupError()
                 if snapshot["campaign_id"]:
+                    if editing and snapshot["campaign_id"] != editing:
+                        raise Conflict("Esta revisao pertence a outra campanha.")
                     return snapshot["campaign_id"]
                 data = json.loads(snapshot["payload"])
                 ids = data["ids"]
                 if snapshot["expires_at"] < now or fingerprint(c, doctor, ids) != snapshot["digest"]:
                     raise Conflict("A selecao mudou ou expirou. Revise os destinatarios novamente.")
+            if editing:
+                current = self.owned(c, "campaigns", editing, doctor)
+                if current["status"] != "draft" or c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND (claimed_at IS NOT NULL OR status NOT IN ('queued','skipped'))", (editing,)).fetchone():
+                    raise Conflict("Somente rascunhos sem envios iniciados podem ser editados. Duplique a campanha.")
+                if p.get("revision") != current["revision"]:
+                    raise Conflict("O rascunho mudou. Abra a edicao novamente.")
             recipients, institutes = {}, set()
             for lead_id in set(ids):
                 lead = self.owned(c, "leads", lead_id, doctor)
@@ -1126,11 +1139,19 @@ class CrmStore:
                 contact = self.row(c, "contacts", lead["contact_id"])
                 if contact["opted_out"] or contact["experts_status"] == "review" or not contact["phone"]:
                     raise ValueError("Contato descadastrado ou cadastro a conferir. Envio bloqueado.")
+                if snapshot and c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status IN ('sending','unknown') AND (contact_id=? OR recipient_phone=?)", (channel,contact["id"],contact["phone"])).fetchone():
+                    raise Conflict("Um destinatario tem envio em andamento ou sem confirmacao neste numero. Revise a selecao novamente.")
                 if scope["course_key"] and lead["source_name"]:
                     contact["name"] = lead["source_name"]
                 recipients[contact["id"]] = contact
-            c.execute("INSERT INTO campaigns(id,doctor_id,channel_id,name,body,interval_seconds,start_at,hour_from,hour_to,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                      (key, doctor, channel, text(p.get("name")), body, interval, start_at, start, end, now, actor))
+            if editing:
+                c.execute("UPDATE campaigns SET channel_id=?,name=?,body=?,interval_seconds=?,start_at=?,hour_from=?,hour_to=?,last_error='',revision=revision+1 WHERE id=?",
+                          (channel, text(p.get("name")), body, interval, start_at, start, end, key))
+                c.execute("DELETE FROM messages WHERE campaign_id=?", (key,))
+                c.execute("DELETE FROM campaign_audiences WHERE campaign_id=?", (key,))
+            else:
+                c.execute("INSERT INTO campaigns(id,doctor_id,channel_id,name,body,interval_seconds,start_at,hour_from,hour_to,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                          (key, doctor, channel, text(p.get("name")), body, interval, start_at, start, end, now, actor))
             c.execute("UPDATE campaigns SET institute_keys=? WHERE id=?", (json.dumps(sorted(institutes)), key))
             c.execute("UPDATE campaigns SET weekdays=?,minute_from=?,minute_to=?,tag=?,selected_count=?,duplicates_count=?,excluded_count=? WHERE id=?", (json.dumps(weekdays), minute_from, minute_to, tag,
                 len(ids), len(ids)-len(recipients), 0, key))
@@ -1144,16 +1165,26 @@ class CrmStore:
                           (uuid.uuid4().hex, channel, cid, key, message, now, sender, str(actor_id), contact["phone"]))
         return key
 
-    def campaign_status(self, key, doctor, action, enabled=False):
-        target = {"start": "running", "pause": "paused", "cancel": "cancelled"}.get(action)
+    def campaign_status(self, key, doctor, action, enabled=False, *, exclude_unknown=False, actor_id="", revision=None):
+        target = {"start": "running", "pause": "paused", "cancel": "cancelled", "finish": "done"}.get(action)
         if not target:
             raise ValueError("Acao invalida.")
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
             campaign = self.owned(c, "campaigns", key, doctor)
-            if campaign["status"] in {"done", "cancelled"}:
+            if campaign["status"] in {"done", "cancelled"} and action != "finish":
                 raise ValueError("Campanha encerrada.")
+            if action == "finish":
+                if campaign["status"] in {"done", "cancelled"}:
+                    target = campaign["status"]
+                if c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status IN ('queued','sending')", (key,)).fetchone():
+                    raise Conflict("A campanha ainda tem envios na fila ou em andamento.")
+                if exclude_unknown is not True:
+                    raise Conflict("Confirme que os envios sem confirmacao nao serao repetidos.")
+                c.execute("UPDATE messages SET automation_excluded_at=?,automation_excluded_by=? WHERE campaign_id=? AND status='unknown' AND automation_excluded_at=0", (time.time(), str(actor_id), key))
             if action == "start":
+                if revision is not None and revision != campaign["revision"]:
+                    raise Conflict("A campanha mudou. Atualize e revise novamente antes de iniciar.")
                 if not enabled:
                     raise ValueError("Envios desativados no piloto. Configure a conexao e habilite o worker primeiro.")
                 channel = self.owned(c, "channels", campaign["channel_id"], doctor)
@@ -1161,9 +1192,17 @@ class CrmStore:
                 require_active(channel)
                 if channel["state"] != "open":
                     raise ValueError("Conecte o numero antes de iniciar.")
-                if c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status IN ('sending','unknown')", (key,)).fetchone():
-                    raise ValueError("Ha envio sem confirmacao. Confira no WhatsApp antes de continuar; ele nao sera reenviado automaticamente.")
-            c.execute("UPDATE campaigns SET status=?,last_error='' WHERE id=?", (target, key))
+                if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='sending'", (channel["id"],)).fetchone():
+                    raise Conflict("Ha um envio em andamento neste numero. Aguarde a confirmacao e atualize a campanha.")
+                if not c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status='queued'", (key,)).fetchone():
+                    raise ValueError("Nao ha destinatarios na fila para retomar. Duplique a campanha para um novo envio.")
+                if c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status='unknown' AND automation_excluded_at=0", (key,)).fetchone():
+                    if exclude_unknown is not True:
+                        raise Conflict("Confirme que os envios sem confirmacao ficarao fora da retomada. Eles nao serao repetidos.")
+                    c.execute("UPDATE messages SET automation_excluded_at=?,automation_excluded_by=? WHERE campaign_id=? AND status='unknown' AND automation_excluded_at=0", (time.time(), str(actor_id), key))
+                if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='unknown' AND automation_excluded_at=0", (channel["id"],)).fetchone():
+                    raise Conflict("Outro envio deste numero esta sem confirmacao. Revise a campanha de origem antes de retomar.")
+            c.execute("UPDATE campaigns SET status=?,last_error='',revision=revision+1 WHERE id=?", (target, key))
             if action == "cancel":
                 c.execute("UPDATE messages SET status='cancelled' WHERE campaign_id=? AND status='queued'", (key,))
 
@@ -1210,7 +1249,12 @@ class CrmStore:
                 (SELECT id FROM contacts WHERE experts_status='review')""")
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Telefone alterado; confira o contato'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND recipient_phone<>'' AND recipient_phone<>(SELECT phone FROM contacts WHERE id=messages.contact_id)""")
-            c.execute("UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND status IN ('queued','sending','unknown'))")
+            c.execute("""UPDATE messages SET status='skipped',skip_reason='Envio anterior sem confirmacao neste numero; nao repetido'
+                WHERE status='queued' AND campaign_id IS NOT NULL AND EXISTS
+                (SELECT 1 FROM messages pending WHERE pending.channel_id=messages.channel_id AND pending.status='unknown'
+                 AND pending.automation_excluded_at>0 AND (pending.contact_id=messages.contact_id
+                     OR (pending.recipient_phone<>'' AND pending.recipient_phone=messages.recipient_phone)))""")
+            c.execute("UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND (status IN ('queued','sending') OR (status='unknown' AND automation_excluded_at=0)))")
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
@@ -1219,7 +1263,9 @@ class CrmStore:
                 AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id
                     AND (pending.status='sending' OR (pending.status='unknown'
-                        AND (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.independent_manual_send=0))))
+                        AND (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.independent_manual_send=0)
+                        AND (pending.automation_excluded_at=0 OR pending.contact_id=m.contact_id
+                            OR (pending.recipient_phone<>'' AND pending.recipient_phone=coalesce(nullif(m.recipient_phone,''),ct.phone))))))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)

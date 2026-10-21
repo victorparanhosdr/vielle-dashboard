@@ -340,6 +340,7 @@
 .conversationQuote b{font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .conversationQuote svg{width:11px;height:11px;flex:none}
 .conversationQuote.pending{color:#84978c}
+.campaignRecord footer .commands{flex-wrap:wrap;min-width:0;gap:8px}.campaignRecord footer .icon-button{flex:none}
 .conversationRow[data-tier=gold]::before,.conversationRow[data-tier=silver]::before,.conversationRow[data-tier=bronze]::before{content:"";position:absolute;left:0;top:16px;bottom:16px;width:2px;border-radius:2px;background:#c7ad61}
 .conversationRow[data-tier=silver]::before{background:#a7b9c4}
 .conversationRow[data-tier=bronze]::before{background:#c9a085}

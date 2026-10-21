@@ -149,6 +149,9 @@ def _dispatch(handler, parsed, store, query, user, action):
             if action == "campaign-detail":
                 from crm_campaigns import detail
                 return handler.auth_json({"ok": True, **detail(store, doctor, query.get("id", [""])[0], query)})
+            if action == "campaign-template":
+                from crm_campaigns import template
+                return handler.auth_json({"ok": True, **template(store, doctor, query.get("id", [""])[0])})
             if action == "patient-refresh":
                 from crm_patient_refresh import status
                 job = status(store)
@@ -197,7 +200,7 @@ def _dispatch(handler, parsed, store, query, user, action):
         if action == "media-upload":
             from crm_media import receive_upload
             return receive_upload(handler, store, doctor, query)
-        limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create","lead-bulk-preview"} else 128*1024
+        limit=512*1024 if action in {"campaign-candidates","campaign-preview","campaign-create","campaign-update","lead-bulk-preview"} else 128*1024
         p = json.loads(read_body(handler, limit))
         if not isinstance(p, dict):
             raise ValueError("Solicitacao invalida.")
@@ -332,20 +335,22 @@ def _dispatch(handler, parsed, store, query, user, action):
         elif action == "campaign-candidates":
             from crm_campaigns import candidates
             result.update(candidates(store, p))
-        elif action == "campaign-create":
+        elif action in {"campaign-create", "campaign-update"}:
             from crm_campaigns import create
-            result["id"] = create(store, p, handler.current_user)
+            result["id"] = create(store, p, handler.current_user, editing=action == "campaign-update")
         elif action == "campaign-enable":
             if p.get("confirm") is not True or not sends_enabled() or not store.worker_online():
                 raise ValueError("Confirme a ativacao com o WhatsApp conectado e o servidor de envios disponivel.")
             store.enable_campaigns()
         elif action == "campaign-status":
-            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online())
+            store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online(),
+                                  exclude_unknown=p.get("exclude_unknown") is True, actor_id=handler.current_user["id"],revision=p.get("revision"))
         else:
             raise LookupError()
         if feedback_marker:
             result["engagement"] = finish_feedback(store, user, feedback_marker)
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),
+            **({"action":p.get("action"),"exclude_unknown":p.get("exclude_unknown") is True} if action == "campaign-status" else {}),
             **({"target_doctor_id": result["doctor_id"], "transfer_id": result["transfer_id"]} if action == "channel-transfer" else {}),
             **({"channel_id": p.get("channel_id", ""), "contact_id": p.get("contact_id", "")} if action in {"conversation-close", "conversation-sync"} else {})})
         return handler.auth_json({"ok": True, **result})

@@ -3,7 +3,7 @@ import time
 import unittest
 from unittest.mock import Mock
 
-from crm_store import CrmStore
+from crm_store import CrmStore, Conflict
 from crm_worker import tick
 from tests import test_crm as base
 from tests import test_crm_media as media_fixture
@@ -188,7 +188,8 @@ class ManualUnconfirmedTests(unittest.TestCase):
     def test_campaign_does_not_resume_behind_the_manual_reply(self):
         self.unknown()
         campaign = self.campaign(ids=[self.key])
-        self.store.campaign_status(campaign, self.a, "start", True)
+        with self.assertRaisesRegex(Conflict, "Outro envio"):
+            self.store.campaign_status(campaign, self.a, "start", True)
         target = self.text("Atendimento manual", "new")
         gateway = Mock()
         gateway.send.return_value = "accepted-manual"

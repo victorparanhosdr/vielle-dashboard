@@ -46,6 +46,12 @@ def selection(store, payload):
     store.reconcile_patients()
     with store.db() as c:
         doc = store.row(c, "doctors", doctor)
+        uncertain_contacts,uncertain_phones=set(),set()
+        if payload.get("channel_id"):
+            channel=store.owned(c,"channels",payload["channel_id"],doctor)
+            for row in c.execute("SELECT contact_id,recipient_phone FROM messages WHERE channel_id=? AND status IN ('sending','unknown')",(channel["id"],)):
+                uncertain_contacts.add(row[0])
+                if row[1]:uncertain_phones.add(row[1])
         pipeline = payload.get("pipeline_id", "")
         if pipeline:
             store.owned(c, "pipelines", pipeline, doctor)
@@ -86,6 +92,8 @@ def selection(store, payload):
         reasons=Counter();selected=[];contacts=set();duplicates=0
         for l in leads:
             reason = "Removido da selecao" if l["contact_id"] in excluded else "Sem telefone" if not l["phone"] else "Descadastrado" if l["opted_out"] else "Cadastro a conferir" if l["experts_status"] == "review" else ""
+            if not reason and (l["contact_id"] in uncertain_contacts or l["phone"] in uncertain_phones):
+                reason="Envio anterior em andamento ou sem confirmacao neste numero"
             duplicate=not reason and l["contact_id"] in contacts
             if reason:
                 reasons[reason]+=1
@@ -150,13 +158,31 @@ def audience(store, payload, actor):
     return {"preview_id":key,**result,"sample":[{"id":l["id"],"contact_id":l["contact_id"],"name":l["name"],"phone":l["phone"]} for l in selected[:100]],"sample_limit":100}
 
 
-def create(store,payload,actor):
+def create(store,payload,actor,*,editing=False):
     with store.db() as c:
         snapshot=store.row(c,"campaign_audiences",payload.get("preview_id"))
         if snapshot["doctor_id"] != payload.get("doctor_id") or snapshot["actor_id"] != str(actor["id"]):
             raise LookupError()
         data=json.loads(snapshot["payload"])
-    return store.campaign({**payload,"lead_ids":data["ids"],"_audience_id":snapshot["id"]},actor["nome"],actor["id"])
+    return store.campaign({**payload,"lead_ids":data["ids"],"_audience_id":snapshot["id"],
+        "_edit_id":text(payload.get("id"),32) if editing else ""},actor["nome"],actor["id"])
+
+
+def template(store,doctor,key):
+    with store.db() as c:
+        campaign=store.owned(c,"campaigns",key,doctor)
+        contacts={r[0] for r in c.execute("SELECT contact_id FROM messages WHERE campaign_id=?",(key,))}
+        snapshot=c.execute("SELECT payload FROM campaign_audiences WHERE campaign_id=?",(key,)).fetchone()
+        original=set(json.loads(snapshot[0])["ids"]) if snapshot else None
+        ids,seen=[],set()
+        for row in c.execute("""SELECT l.id,l.contact_id,p.id pipeline_id,p.doctor_id,p.institute_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id
+            WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.created_at,l.id""",(doctor,)):
+            if row["contact_id"] in contacts and row["contact_id"] not in seen and (original is None or row["id"] in original) and pipeline_visible(dict(row)):
+                ids.append(row["id"])
+                seen.add(row["contact_id"])
+        campaign["weekdays"]=json.loads(campaign["weekdays"])
+        return {"campaign":campaign,"audience":{"lead_ids":ids,"pipeline_id":"","filters":{}},
+                "unavailable":len(contacts)-len(seen)}
 
 
 def period(query):
@@ -186,13 +212,26 @@ def dashboard(store,doctor,query):
         allowed={r["id"] for r in visible}
         counts=dict(Counter(r["status"] for r in visible))
         rows=[dict(r) for r in c.execute("""SELECT ca.*,ch.name channel_name,ch.phone channel_phone,ch.state channel_state,
-            ch.daily_limit,ch.next_send_at FROM campaigns ca JOIN channels ch ON ch.id=ca.channel_id
+            ch.daily_limit,ch.next_send_at,ch.archived_at channel_archived,ch.doctor_id channel_doctor FROM campaigns ca JOIN channels ch ON ch.id=ca.channel_id
             WHERE ca.doctor_id=? AND ca.created_at>=? AND ca.created_at<? AND (?='' OR ca.status=?)
             ORDER BY ca.created_at DESC,ca.id""",(doctor,ts,te,status,status)) if r["id"] in allowed][(page-1)*20:page*20]
         for row in rows:
             row["counts"]={r[0]:r[1] for r in c.execute("SELECT status,count(*) FROM messages WHERE campaign_id=? GROUP BY status",(row["id"],))}
             row["weekdays"]=json.loads(row["weekdays"])
             row["total"]=sum(row["counts"].values())
+            row["resume_excluded"]=c.execute("SELECT count(*) FROM messages WHERE campaign_id=? AND status='unknown' AND automation_excluded_at>0",(row["id"],)).fetchone()[0]
+            row["resume_unconfirmed"]=row["counts"].get("unknown",0)-row["resume_excluded"]
+            row["start_blocker"]=""
+            if not row["counts"].get("queued",0):
+                row["start_blocker"]="Nenhum destinatario na fila. Duplique para um novo envio."
+            elif row["channel_doctor"]!=doctor:
+                row["start_blocker"]="Numero transferido para outro profissional. Duplique e escolha outra conexao."
+            elif row["channel_archived"] or row["channel_state"]!="open":
+                row["start_blocker"]="Reconecte o numero para retomar."
+            elif c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='sending'",(row["channel_id"],)).fetchone():
+                row["start_blocker"]="Aguarde o envio em andamento e atualize."
+            elif c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='unknown' AND automation_excluded_at=0 AND (campaign_id IS NULL OR campaign_id<>?)",(row["channel_id"],row["id"])).fetchone():
+                row["start_blocker"]="Outro envio deste numero precisa de revisao na campanha de origem."
             row["progress"]=round(100*(row["total"]-row["counts"].get("queued",0)-row["counts"].get("sending",0))/row["total"]) if row["total"] else 0
             row["daily_used"]=c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND (sent_at>=? OR claimed_at>=?)",(row["channel_id"],datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp(),datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp())).fetchone()[0]
         metrics=Counter(r[0] for r in c.execute("""SELECT m.status,m.campaign_id FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id
@@ -214,6 +253,6 @@ def detail(store,doctor,key,query):
         raise ValueError("Status invalido.")
     with store.db() as c:
         campaign=store.owned(c,"campaigns",key,doctor)
-        rows=[dict(r) for r in c.execute("SELECT m.id,m.status,m.created_at,m.sent_at,m.claimed_at,m.skip_reason,m.sender_name,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,ct.name FROM messages m JOIN contacts ct ON ct.id=m.contact_id WHERE m.campaign_id=? ORDER BY m.created_at,m.id",(key,))]
+        rows=[dict(r) for r in c.execute("SELECT m.id,m.status,m.created_at,m.sent_at,m.claimed_at,m.skip_reason,m.sender_name,m.automation_excluded_at,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,ct.name FROM messages m JOIN contacts ct ON ct.id=m.contact_id WHERE m.campaign_id=? ORDER BY m.created_at,m.id",(key,))]
     rows=[r for r in rows if (not status or r["status"]==status) and (not search or search in (r["name"]+" "+r["phone"]).casefold())]
     return {"campaign":campaign,"items":rows[(page-1)*50:page*50],"total":len(rows),"page":page,"has_more":page*50<len(rows)}
