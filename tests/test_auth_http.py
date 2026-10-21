@@ -102,7 +102,7 @@ class HttpAuthTests(unittest.TestCase):
         _, _, body = self.request("GET", "/")
         self.assertIn(b"Sua cl", body)
         self.assertNotIn(b"id=\"viewTabs\"", body)
-        for path in ("/marketing-hero-panorama-v2.png", "/marketing-palm-general-v2.png"):
+        for path in ("/marketing-hero-panorama-v2.png", "/marketing-palm-general-v2.png", "/marketing-hero-owner-v3.png", "/marketing-monthly-v3.png", "/marketing-sales-v3.png", "/marketing-procedures-v3.png"):
             status, headers, raw = self.request("GET", path)
             self.assertEqual(status, 200, path)
             self.assertEqual({key.lower(): value for key, value in headers}["content-type"], "image/png")
@@ -157,6 +157,18 @@ class HttpAuthTests(unittest.TestCase):
         for extra in ({"status": "won"}, {"notes": "override"}, {"doctor_id": "private"}, {"website": "robot"}, {"privacy": False}, {"phone": "+38997357320"}, {"email": "invalid"}):
             status, _, raw = self.request("POST", "/api/public/demo", {**payload, **extra}, headers={"X-DOC4DOCS-Request": "1"})
             self.assertEqual(status, 400, raw)
+
+    def test_minimal_website_request_and_contact_limit_use_phone(self):
+        payload = {"request_id": "c" * 32, "name": "Gestor demonstrativo", "phone": "+5511987654321",
+                   "plan": "Demonstração", "privacy": True, "attribution": {"utm_source": "teste"}}
+        headers = {"X-DOC4DOCS-Request": "1"}
+        for i in range(8):
+            status, _, raw = self.request("POST", "/api/public/demo", {**payload, "email": "" if i == 0 else f"test-{i}@example.test"}, headers=headers)
+            self.assertEqual(status, 201 if i == 0 else 400, raw)
+        self.assertEqual(self.request("POST", "/api/public/demo", payload, headers=headers)[0], 429)
+        with self.store.connection() as c:
+            row = c.execute("SELECT phone, organization FROM marketing_leads WHERE request_id=?", (payload["request_id"],)).fetchone()
+            self.assertEqual(tuple(row), ("+5511987654321", ""))
 
     def test_public_login_and_assets(self):
         for path in ("/login", "/login.html", "/static/login.html", "/login.css", "/login.js", "/doc4docs-logo-white.png"):

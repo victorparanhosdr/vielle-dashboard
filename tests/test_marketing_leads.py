@@ -42,6 +42,19 @@ class MarketingLeadTests(unittest.TestCase):
             self.store.submit({**self.payload, "name": "Outra pessoa"})
         self.assertEqual(self.store.listing()["total"], 1)
 
+    def test_minimal_request_only_requires_name_phone_and_privacy(self):
+        payload = {key: value for key, value in self.payload.items() if key not in {"email", "organization", "message"}}
+        key = self.store.submit(payload)
+        self.assertEqual(self.store.submit(payload), key)
+        row = self.store.listing()["leads"][0]
+        self.assertEqual(row["email"], "")
+        self.assertEqual(row["organization"], "")
+        self.assertEqual(row["phone"], "+5511999990000")
+        self.assertEqual(row["attribution"]["utm_source"], "campanha")
+        with self.assertRaises(ValueError):
+            self.store.submit({**payload, "name": "Outra pessoa"})
+        self.assertEqual(self.store.listing()["total"], 1)
+
     def test_status_notes_and_optimistic_revision_audited(self):
         key = self.store.submit(self.payload)
         self.store.update(key, {"status": "proposal", "notes": "Enviar proposta", "revision": 1}, self.actor)

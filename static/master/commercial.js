@@ -19,8 +19,8 @@
       $("salesRows").replaceChildren();
       for(const lead of leads){
         const row=el("tr");row.dataset.leadId=lead.id;
-        const identity=el("td"),open=el("button",lead.name,"salesName"),contact=el("small",lead.email);identity.dataset.label="Interessado";open.type="button";open.addEventListener("click",()=>show(lead));identity.append(open,contact);row.append(identity);
-        for(const [label,text] of [["Organização",lead.organization],["Interesse",lead.plan],["Etapa",stages[lead.status]],["Origem",lead.attribution.utm_source||"Site / direto"],["Recebido",date(lead.created_at)]]){const cell=el("td",text);cell.dataset.label=label;if(label==="Etapa")cell.dataset.stage=lead.status;row.append(cell);}
+        const identity=el("td"),open=el("button",lead.name,"salesName"),contact=el("small",lead.email||lead.phone);identity.dataset.label="Interessado";open.type="button";open.addEventListener("click",()=>show(lead));identity.append(open,contact);row.append(identity);
+        for(const [label,text] of [["Organização",lead.organization||"Não informada"],["Interesse",lead.plan],["Etapa",stages[lead.status]],["Origem",lead.attribution.utm_source||"Site / direto"],["Recebido",date(lead.created_at)]]){const cell=el("td",text);cell.dataset.label=label;if(label==="Etapa")cell.dataset.stage=lead.status;row.append(cell);}
         const actions=el("td"),button=el("button",undefined,"secondary iconButton");button.type="button";button.title="Abrir pedido";button.setAttribute("aria-label",`Abrir pedido de ${lead.name}`);const icon=el("i");icon.dataset.lucide="arrow-up-right";button.append(icon);button.addEventListener("click",()=>show(lead));actions.append(button);row.append(actions);$("salesRows").append(row);
       }
       if(!leads.length){const row=el("tr"),cell=el("td","Nenhum pedido encontrado.","emptyRow");cell.colSpan=7;row.append(cell);$("salesRows").append(row);}
@@ -28,10 +28,10 @@
     }catch(error){if(sequence===request){notice(error.message,true);leads=[];const row=el("tr"),cell=el("td","Não foi possível carregar. Tente buscar novamente.","emptyRow");cell.colSpan=7;row.append(cell);$("salesRows").replaceChildren(row);$("salesPrev").disabled=true;$("salesNext").disabled=true;$("salesPageLabel").textContent="Carregamento indisponível";$("salesTotal").textContent="";}}finally{if(sequence===request)$("salesRows").removeAttribute("aria-busy");}
   }
   function show(lead){
-    editing=lead;$("salesLeadTitle").textContent=lead.name;$("salesLeadOrganization").textContent=lead.organization;$("salesError").textContent="";$("salesLeadStatus").value=lead.status;$("salesNotes").value=lead.notes;$("salesMessage").textContent=lead.message||"Sem mensagem adicional.";$("salesDetails").replaceChildren();
+    editing=lead;$("salesLeadTitle").textContent=lead.name;$("salesLeadOrganization").textContent=lead.organization||"Organização não informada";$("salesError").textContent="";$("salesLeadStatus").value=lead.status;$("salesNotes").value=lead.notes;$("salesMessage").textContent=lead.message||"Sem mensagem adicional.";$("salesDetails").replaceChildren();
     const details={"Interesse":lead.plan,"Recebido":date(lead.created_at),"Atualizado":date(lead.updated_at),"Página":lead.source_path,"Ciência de privacidade":lead.privacy_version,...Object.fromEntries(Object.entries(lead.attribution).filter(([,value])=>value))};
     for(const [key,value] of Object.entries(details)){$("salesDetails").append(el("dt",key),el("dd",value));}
-    $("salesContactLinks").replaceChildren();for(const [href,label,kind] of [[`mailto:${encodeURIComponent(lead.email)}`,lead.email,"mail"],[`tel:${lead.phone}`,lead.phone,"phone"],[`https://wa.me/${lead.phone.replace(/\D/g,"")}`,"Conversar no WhatsApp","message-circle"]]){const link=el("a",undefined,"buttonLink secondary"),icon=el("i");link.href=href;icon.dataset.lucide=kind;link.append(icon,el("span",label));if(href.startsWith("https")){link.target="_blank";link.rel="noopener noreferrer";}$("salesContactLinks").append(link);}
+    $("salesContactLinks").replaceChildren();for(const [href,label,kind] of [[`mailto:${encodeURIComponent(lead.email)}`,lead.email,"mail"],[`tel:${lead.phone}`,lead.phone,"phone"],[`https://wa.me/${lead.phone.replace(/\D/g,"")}`,"Conversar no WhatsApp","message-circle"]]){if(!label)continue;const link=el("a",undefined,"buttonLink secondary"),icon=el("i");link.href=href;icon.dataset.lucide=kind;link.append(icon,el("span",label));if(href.startsWith("https")){link.target="_blank";link.rel="noopener noreferrer";}$("salesContactLinks").append(link);}
     window.lucide?.createIcons();$("salesDialog").showModal();
   }
   function close(){if(!$("salesSave").disabled)$("salesDialog").close();}

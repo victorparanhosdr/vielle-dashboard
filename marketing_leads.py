@@ -37,10 +37,10 @@ def validate_request(data):
     if not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9]{32}", request_id):
         raise ValueError("Atualize a página e tente novamente.")
     fields = {key: text_field(data.get(key, ""), label, limit, required=required)
-              for key, label, limit, required in (("name", "nome", 100, True), ("organization", "organização", 140, True),
-                  ("email", "e-mail", 180, True), ("phone", "telefone", 32, True), ("message", "mensagem", 1000, False))}
+              for key, label, limit, required in (("name", "nome", 100, True), ("organization", "organização", 140, False),
+                  ("email", "e-mail", 180, False), ("phone", "telefone", 32, True), ("message", "mensagem", 1000, False))}
     fields["email"] = fields["email"].casefold()
-    if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", fields["email"]):
+    if fields["email"] and not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", fields["email"]):
         raise ValueError("Informe um e-mail válido.")
     try:
         number = phonenumbers.parse(fields["phone"], "BR")
@@ -195,7 +195,7 @@ def public_request(handler):
             raise ValueError("Envie os dados em JSON válido.")
         data = json.loads(handler.rfile.read(length))
         values = validate_request(data)
-        if not handler.server.marketing_contact_limiter.allow(values["email"]):
+        if not handler.server.marketing_contact_limiter.allow(values["phone"]):
             handler.auth_json({"ok": False, "error": "Muitas tentativas para este contato. Aguarde alguns minutos."}, 429)
             return True
         store_for(handler.server.auth_store).submit(data)
