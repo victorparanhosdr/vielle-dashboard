@@ -342,6 +342,14 @@ if "--staff-fixture" in sys.argv:
     token = auth.login("preview-staff", password)
 
 
+if "--column-selection-fixture" in sys.argv:
+    preview_data = store.listing()
+    pipeline = preview_data["pipelines"][0]
+    for index in range(55):
+        store.lead({"doctor_id": preview_data["doctor_id"], "pipeline_id": pipeline["id"], "stage_id": pipeline["stages"][0]["id"],
+            "name": f"Cliente Coluna {index + 1:02d}", "phone": f"550008{index:07d}", "title": "Cadastro sintetico para validar selecao completa"}, "Equipe Vielle")
+
+
 if "--reminders-fixture" in sys.argv:
     from crm_reminders import save as save_reminder
     import uuid

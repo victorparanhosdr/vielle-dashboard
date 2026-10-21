@@ -154,6 +154,7 @@
     const res=await fetch(`/api/crm${action?"/"+action:""}?${new URLSearchParams({clinic:"vielle",doctor:payload?.doctor_id || state.doctor,...filters,...view,...query})}`, payload===undefined ? {} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const data=await res.json().catch(()=>({}));
     if(!res.ok || !data.ok){const error=new Error(data.error || "Não foi possível concluir a operação.");error.status=res.status;throw error;}
+    if(payload!==undefined && data.engagement)engagement.notify(data.engagement).catch(()=>{});
     return data;
   }
   async function load() {

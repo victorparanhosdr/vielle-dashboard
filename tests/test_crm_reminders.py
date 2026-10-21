@@ -11,7 +11,7 @@ import uuid
 
 from auth_store import AuthStore
 from crm_access import crm_access, institute_access
-from crm_engagement import snapshot
+from crm_engagement import snapshot, begin_feedback, finish_feedback
 from crm_reminders import assignees, lead_choices, listing, local_due, save
 from crm_store import CrmStore, Conflict, TZ
 
@@ -153,6 +153,36 @@ class ReminderTests(unittest.TestCase):
             self.assertEqual(len(data["celebrations"]), 1)
             self.assertEqual(snapshot(self.crm, self.user, {"watch": ["1"], "messages_after": [str(data["message_cursor"])], "xp_after": [str(data["xp_cursor"])]})["fresh_messages"], 0)
 
+    def test_immediate_stage_feedback_including_moves_without_new_xp(self):
+        def move(stage):
+            current = self.crm.detail(self.lead, self.doc)["lead"]
+            marker = begin_feedback(self.crm, self.user, [self.lead])
+            self.crm.lead({**current, "stage_id": stage}, self.user["nome"])
+            return finish_feedback(self.crm, self.user, marker)
+        first, second = [s["id"] for s in self.pipeline["stages"][:2]]
+        forward = move(second)
+        self.assertEqual((forward["kind"], forward["points"], forward["stage_changes"]), ("stage", 5, 1))
+        self.assertEqual(forward["actor_id"], str(self.uid))
+        back = move(first)
+        self.assertEqual((back["kind"], back["points"]), ("stage", 0))
+        repeated = move(second)
+        self.assertEqual((repeated["kind"], repeated["xp_ids"]), ("stage", []))
+        self.assertIsNone(move(second))
+        won = next(s["id"] for s in self.pipeline["stages"] if s["kind"] == "won")
+        self.assertEqual(move(won)["kind"], "win")
+
+    def test_immediate_level_feedback_does_not_count_inaccessible_points(self):
+        with self.crm.db() as c:
+            self.crm.award(c, self.lead, self.doc, "Gestor", "Teste", 98, "own-test", self.now)
+            self.crm.award(c, self.other, self.doc, "Gestor", "Teste", 1000, "hidden-test", self.now)
+        with crm_access({self.doc: [self.pipeline["id"]]}), institute_access([]):
+            marker = begin_feedback(self.crm, self.user, [self.lead])
+            self.crm.activity({"id": self.lead, "doctor_id": self.doc, "kind": "followup", "body": "Retorno realizado"}, "Gestor")
+            feedback = finish_feedback(self.crm, self.user, marker)
+            self.assertEqual((feedback["kind"], feedback["level"], feedback["points"]), ("level", 2, 3))
+            with self.assertRaises(PermissionError):
+                begin_feedback(self.crm, self.user, [self.other])
+
     def test_routes_require_crm_scope_and_same_origin(self):
         import crm_api
         payload = {"lead_id": self.lead, "title": "Ligar", "due_local": "2026-10-22T09:00", "request_id": str(uuid.uuid4())}
@@ -172,3 +202,26 @@ class ReminderTests(unittest.TestCase):
             status, data = crm_api.handle_request(handler, urlparse("/api/crm/reminders?clinic=vielle"))
             self.assertEqual(data["total"], 1)
             self.assertEqual(crm_api.handle_request(handler, urlparse("/api/crm/engagement?clinic=other"))[0], 403)
+
+    def test_successful_stage_api_returns_immediate_audio_feedback_only_after_commit(self):
+        import crm_api
+        def post(payload):
+            body = json.dumps(payload).encode()
+            handler = SimpleNamespace(command="POST", current_user=self.user, server=SimpleNamespace(auth_store=self.auth),
+                headers={"Content-Length": str(len(body))}, rfile=BytesIO(body), connection=SimpleNamespace(settimeout=lambda _: None),
+                same_origin_request=lambda: True, auth_json=lambda data, status=200: (status, data))
+            with patch.object(crm_api, "store_for", return_value=self.crm):
+                return crm_api.handle_request(handler, urlparse("/api/crm/lead?clinic=vielle&doctor=" + self.doc))
+        original = self.crm.detail(self.lead, self.doc)["lead"]
+        update = {**original, "stage_id": self.pipeline["stages"][1]["id"]}
+        status, data = post(update)
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["engagement"]["kind"], "stage")
+        self.assertTrue(data["engagement"]["xp_ids"])
+        status, stale = post(update)
+        self.assertEqual(status, 409)
+        self.assertNotIn("engagement", stale)
+        current = self.crm.detail(self.lead, self.doc)["lead"]
+        status, data = post(current)
+        self.assertEqual(status, 200, data)
+        self.assertIsNone(data["engagement"])

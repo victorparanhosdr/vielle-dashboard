@@ -5,6 +5,9 @@ const bulk=read('crm-bulk.js'),crm=read('crm.js'),audience=read('crm-audience.js
 assert.match(bulk,/observer\.observe\(lane,\{childList:true\}\)/);
 assert.ok(!bulk.includes('subtree:true'),'Icon replacement must not recursively trigger the board observer');
 assert.match(bulk,/lead-bulk-preview/);assert.match(bulk,/lead-bulk-apply/);assert.match(bulk,/name="confirm" required/);
+assert.match(bulk,/lead-column-selection/);assert.match(bulk,/data-bulk-column/);assert.match(bulk,/Selecionar coluna/);
+assert.match(bulk,/input\.indeterminate=selected>0/);assert.match(bulk,/version!==columnVersion/);
+assert.match(bulk,/filters:scope\.filters/);assert.match(bulk,/columns\.get\(stage\)\.forEach\(id=>chosen\.delete\(id\)\)/);
 assert.match(bulk,/seq!==request/);assert.match(bulk,/scope.active\?scope.active\(\):getScope\(\).doctor===owner/);
 assert.match(bulk,/createElement\("label"\)/);assert.match(bulk,/wrap\.append\(label,card\)/);
 assert.match(audience,/onBulk\?\./);assert.match(crm,/!bulk\.isSelecting\(\)/);

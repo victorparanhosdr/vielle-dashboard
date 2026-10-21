@@ -202,7 +202,20 @@ def _dispatch(handler, parsed, store, query, user, action):
             raise PermissionError("O profissional da solicitacao nao corresponde ao CRM aberto.")
         actor = handler.current_user["nome"]
         result = {}
-        if action in {"lead-bulk-preview", "lead-bulk-apply"}:
+        from crm_engagement import begin_feedback, finish_feedback
+        feedback_ids = []
+        if (action == "lead" and p.get("id")) or (action == "activity" and p.get("kind") == "followup"):
+            feedback_ids = [p.get("id")]
+        elif action == "lead-bulk-apply":
+            with store.db() as c:
+                batch = c.execute("SELECT actor_id,action,items FROM lead_bulk_batches WHERE id=?", (p.get("id"),)).fetchone()
+                if batch and batch["actor_id"] == str(user["id"]) and batch["action"] == "move":
+                    feedback_ids = [item["id"] for item in json.loads(batch["items"])]
+        feedback_marker = begin_feedback(store, user, feedback_ids)
+        if action == "lead-column-selection":
+            from crm_bulk import column_selection
+            result.update(column_selection(store, p))
+        elif action in {"lead-bulk-preview", "lead-bulk-apply"}:
             from crm_bulk import preview, apply
             result.update(preview(store, p, user) if action.endswith("preview") else apply(store, p, user))
         elif action == "bootstrap":
@@ -327,6 +340,8 @@ def _dispatch(handler, parsed, store, query, user, action):
             store.campaign_status(p.get("id"), p.get("doctor_id"), p.get("action"), sends_enabled() and (campaigns_enabled() or store.campaigns_allowed()) and store.worker_online())
         else:
             raise LookupError()
+        if feedback_marker:
+            result["engagement"] = finish_feedback(store, user, feedback_marker)
         handler.server.auth_store.audit_event("crm_" + action, handler.current_user["id"], details={"clinic": "vielle", "doctor_id": p.get("doctor_id", ""), "id": result.get("id", p.get("id", "")),
             **({"target_doctor_id": result["doctor_id"], "transfer_id": result["transfer_id"]} if action == "channel-transfer" else {}),
             **({"channel_id": p.get("channel_id", ""), "contact_id": p.get("contact_id", "")} if action in {"conversation-close", "conversation-sync"} else {})})

@@ -5,7 +5,7 @@ import time
 import unittest
 
 from crm_access import crm_access, institute_access
-from crm_bulk import apply, destinations, preview, trash
+from crm_bulk import apply, column_selection, destinations, preview, trash
 from crm_campaigns import candidates, audience
 from crm_dashboard import dashboard
 from crm_store import CrmStore, Conflict
@@ -45,6 +45,36 @@ class BulkLeadTests(unittest.TestCase):
     def foreign_pipeline(self):
         doctor = next(d["id"] for d in self.store.listing()["doctors"] if d["id"] != self.doctor)
         return self.store.listing(doctor)["pipelines"][0]
+
+    def test_select_entire_column_includes_unloaded_leads_and_respects_filters(self):
+        for index in range(70):
+            self.lead("550000001" + str(index).zfill(4))
+        original = self.store.detail(self.b, self.doctor)["lead"]
+        self.store.lead({**original, "stage_id": self.stage}, "Equipe")
+        payload = {"doctor_id": self.doctor, "pipeline_id": self.pipeline["id"], "stage_id": self.pipeline["stages"][0]["id"]}
+        all_items = column_selection(self.store, payload)
+        self.assertEqual(all_items["count"], 71)
+        self.assertIn(self.a, all_items["lead_ids"])
+        self.assertNotIn(self.b, all_items["lead_ids"])
+        self.assertNotIn(self.c, all_items["lead_ids"])
+        self.assertEqual(len(set(all_items["lead_ids"])), 71)
+        filtered = column_selection(self.store, {**payload, "filters": {"search": "5500000000001"}})
+        self.assertEqual(filtered["lead_ids"], [self.a])
+        previewed = self.prepare(selection={"lead_ids": all_items["lead_ids"]})
+        self.assertEqual(previewed["count"], 71)
+
+    def test_column_selection_is_permission_scoped_and_never_silently_truncated(self):
+        from unittest.mock import patch
+        payload = {"doctor_id": self.doctor, "pipeline_id": self.pipeline["id"], "stage_id": self.pipeline["stages"][0]["id"]}
+        with crm_access({self.doctor: [self.other["id"]]}), institute_access([]), self.assertRaises(PermissionError):
+            column_selection(self.store, payload)
+        with self.assertRaises(ValueError):
+            column_selection(self.store, {**payload, "stage_id": self.other["stages"][0]["id"]})
+        with patch("crm_bulk.MAX_BATCH", 1), self.assertRaisesRegex(ValueError, "Refine os filtros"):
+            column_selection(self.store, payload)
+        with self.store.db() as c:
+            c.execute("UPDATE contacts SET opted_out=1 WHERE id=(SELECT contact_id FROM leads WHERE id=?)", (self.a,))
+        self.assertIn(self.a, column_selection(self.store, payload)["lead_ids"])
 
     def test_transfer_to_another_funnel_reuses_lead_and_preserves_identity_notes_and_utm(self):
         original = self.store.detail(self.a, self.doctor)["lead"]

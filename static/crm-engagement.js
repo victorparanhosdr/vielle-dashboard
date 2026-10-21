@@ -3,6 +3,7 @@ window.createCrmEngagement=function({api,esc,icon,icons,reminders,onTasks,getUse
   let user=null,epoch=0,timer=null,busy=false,rerun=false,cursors=null,journey=null,alerts=[],dock=null,dialog=null,toastTimer=null;
   const sounds=window.CrmSounds.create({getUser:()=>user?.id});
   const dueSeen=new Set();
+  const localAwards=new Set();
   const request=(query={})=>api("engagement",undefined,{doctor:"",...query});
   const $=selector=>document.querySelector(selector);
   function mountDock(){
@@ -41,7 +42,8 @@ window.createCrmEngagement=function({api,esc,icon,icons,reminders,onTasks,getUse
       due.items.forEach(item=>dueSeen.add(`${item.id}:${item.revision}`));
       if(freshDue.length)await sounds.once(`reminder:${freshDue[0].id}:${freshDue[0].revision}`,"reminder");
       if(cursors){
-        const win=data.celebrations.find(p=>p.label==="Fechamento"),earned=win || data.celebrations.at(-1);
+        const pending=data.celebrations.filter(p=>!localAwards.has(p.id));
+        const win=pending.find(p=>p.label==="Fechamento"),earned=win || pending.at(-1);
         if(earned){const kind=previous && journey.level>previous.level?"level":win?"win":"achievement";toast(kind==="level"?`Você chegou ao nível ${journey.level}!`:`${earned.actor} · ${earned.label} · +${earned.points} XP`,win?"win":"achievement");await sounds.once(`xp:${earned.id}`,kind);}
         if(data.fresh_messages)await sounds.once(`message:${data.message_cursor}`,"message");
       }
@@ -49,6 +51,17 @@ window.createCrmEngagement=function({api,esc,icon,icons,reminders,onTasks,getUse
       if(dialog?.open && dialog.dataset.kind==="journey" && JSON.stringify(previous)!==JSON.stringify(journey))renderJourney();
     }catch(error){if(version===epoch && [401,403].includes(error.status))stop();}
     finally{if(version===epoch){busy=false;if(rerun){rerun=false;poll();}}}
+  }
+  async function notify(feedback){
+    if(!user || !feedback || String(feedback.actor_id)!==String(user.id) || !["stage","achievement","win","level"].includes(feedback.kind))return;
+    const related=(feedback.xp_ids || []).map(id=>`xp:${id}`);
+    (feedback.xp_ids || []).forEach(id=>localAwards.add(id));
+    if(localAwards.size>500){const keep=[...localAwards].slice(-250);localAwards.clear();keep.forEach(id=>localAwards.add(id));}
+    if(feedback.kind==="level")toast(`Você chegou ao nível ${feedback.level}!`);
+    else if(!feedback.stage_changes && feedback.points)toast(`Follow-up registrado · +${feedback.points} XP`);
+    const key=feedback.kind==="level"?`level:${user.id}:${feedback.level}`:related[0] || feedback.id;
+    await sounds.once(key,feedback.kind,{relatedIds:related});
+    poll(true);
   }
   function close(){dialog?.close();dialog?.remove();dialog=null;$("#crmJourneyToggle")?.setAttribute("aria-expanded","false");}
   function show(title,kind){
@@ -65,13 +78,13 @@ window.createCrmEngagement=function({api,esc,icon,icons,reminders,onTasks,getUse
   async function openJourney(){show("Jornada de conquistas","journey");renderJourney();await poll();renderJourney();}
   function openSounds(){
     const body=show("Sons do CRM","sounds"),settings=sounds.settings();
-    body.innerHTML=`<form class="crmSoundsForm"><label class="soundSwitch"><span>${icon("volume-2")} Ativar sons neste dispositivo</span><input name="enabled" type="checkbox" role="switch" ${settings.enabled?"checked":""}></label>${[["messages","Novas mensagens","message-circle"],["reminders","Lembretes de tarefas","alarm-clock"],["achievements","Conquistas e novos níveis","trophy"]].map(([key,label,symbol])=>`<label class="soundSwitch"><span>${icon(symbol)}${label}</span><input name="${key}" type="checkbox" role="switch" ${settings[key]?"checked":""}></label>`).join("")}<label class="soundVolume">Volume <output>${settings.volume}%</output><input name="volume" type="range" min="0" max="100" value="${settings.volume}"></label><div class="soundTests">${[["message","Mensagem"],["reminder","Lembrete"],["win","Conquista"]].map(([kind,label])=>`<button type="button" data-test-sound="${kind}">${icon("play")}${label}</button>`).join("")}</div><p class="soundState" role="status"></p></form>`;
+    body.innerHTML=`<form class="crmSoundsForm"><label class="soundSwitch"><span>${icon("volume-2")} Ativar sons neste dispositivo</span><input name="enabled" type="checkbox" role="switch" ${settings.enabled?"checked":""}></label><fieldset class="soundStyles"><legend>Personalidade do som</legend>${[["vibrant","Vibrante","sparkles"],["soft","Discreto","audio-lines"]].map(([value,label,symbol])=>`<label><input type="radio" name="style" value="${value}" ${settings.style===value?"checked":""}><span>${icon(symbol)}${label}</span></label>`).join("")}</fieldset>${[["messages","Novas mensagens","message-circle"],["reminders","Lembretes de tarefas","alarm-clock"],["achievements","Fases, conquistas e novos níveis","trophy"]].map(([key,label,symbol])=>`<label class="soundSwitch"><span>${icon(symbol)}${label}</span><input name="${key}" type="checkbox" role="switch" ${settings[key]?"checked":""}></label>`).join("")}<label class="soundVolume">Volume <output>${settings.volume}%</output><input name="volume" type="range" min="0" max="100" value="${settings.volume}"></label><div class="soundTests">${[["message","Mensagem"],["reminder","Lembrete"],["stage","Mudança de fase"],["win","Venda ganha"],["level","Novo nível"]].map(([kind,label])=>`<button type="button" data-test-sound="${kind}">${icon("play")}${label}</button>`).join("")}</div><p class="soundState" role="status"></p></form>`;
     const form=body.querySelector("form"),status=body.querySelector("[role=status]");
     form.onsubmit=e=>e.preventDefault();
-    form.oninput=async()=>{const values={};for(const key of ["enabled","messages","reminders","achievements"])values[key]=form.elements[key].checked;values.volume=Number(form.elements.volume.value);sounds.save(values);form.querySelector("output").textContent=values.volume+"%";updateDock();if(values.enabled){const ready=await sounds.unlock();status.textContent=ready?"Sons ativados neste dispositivo.":"O navegador não liberou o áudio. Toque em testar novamente.";}else status.textContent="Sons silenciados.";};
-    body.querySelectorAll("[data-test-sound]").forEach(button=>button.onclick=async()=>{if(await sounds.unlock()){await sounds.play(button.dataset.testSound,{test:true});status.textContent="Prévia do som. Suas preferências foram mantidas.";}else status.textContent="Áudio indisponível neste navegador.";});icons();
+    form.oninput=async()=>{const values={};for(const key of ["enabled","messages","reminders","achievements"])values[key]=form.elements[key].checked;values.volume=Number(form.elements.volume.value);values.style=form.elements.style.value;sounds.save(values);form.querySelector("output").textContent=values.volume+"%";updateDock();if(values.enabled){const ready=await sounds.unlock();status.textContent=ready?"Sons ativados neste dispositivo.":"O navegador não liberou o áudio. Toque em testar novamente.";}else status.textContent="Sons silenciados.";};
+    body.querySelectorAll("[data-test-sound]").forEach(button=>button.onclick=async()=>{if(await sounds.unlock()){const played=await sounds.play(button.dataset.testSound,{test:true});status.textContent=played?`Tocando: ${button.textContent.trim()} · ${sounds.settings().style==="vibrant"?"Vibrante":"Discreto"}`:"Aumente o volume para ouvir a prévia.";}else status.textContent="Áudio indisponível neste navegador.";});icons();
   }
-  function stop(){epoch++;clearInterval(timer);timer=null;busy=false;rerun=false;cursors=null;journey=null;alerts=[];dueSeen.clear();user=null;dock?.remove();dock=null;close();$("#crmReminderAlerts")?.remove();$("#crmAchievementToast")?.remove();}
+  function stop(){epoch++;clearInterval(timer);timer=null;busy=false;rerun=false;cursors=null;journey=null;alerts=[];dueSeen.clear();localAwards.clear();user=null;dock?.remove();dock=null;close();$("#crmReminderAlerts")?.remove();$("#crmAchievementToast")?.remove();}
   function start(value){
     if(user && String(user.id)===String(value.id))return;
     stop();user=value;sounds.reset();mountDock();poll();timer=setInterval(poll,10000);
@@ -79,5 +92,5 @@ window.createCrmEngagement=function({api,esc,icon,icons,reminders,onTasks,getUse
   window.addEventListener("crm-reminders-changed",()=>poll(true));
   document.addEventListener("crm-open-journey",openJourney);
   document.addEventListener("visibilitychange",()=>{if(!document.hidden && user)poll();});
-  return {start,stop,poll,openJourney,openSounds};
+  return {start,stop,poll,notify,openJourney,openSounds};
 };

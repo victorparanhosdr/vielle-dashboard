@@ -1,21 +1,30 @@
 (() => {
   "use strict";
   window.createCrmBulk=({api,esc,icon,icons,modal,error,getScope,onDone,notice})=>{
-    let board=null,toolbar=null,observer=null,selecting=false,key="",request=0;
+    let board=null,toolbar=null,observer=null,selecting=false,key="",request=0,columnVersion=0;
     const chosen=new Set(),dialog=()=>document.getElementById("crmDialog");
+    const columns=new Map(),busyColumns=new Set();
     dialog().addEventListener("close",()=>{request++;});
     const button=(command,label,symbol,disabled=false)=>`<button type="button" data-bulk="${command}" ${disabled?"disabled":""}>${icon(symbol)} ${label}</button>`;
-    function unmount(){observer?.disconnect();observer=null;board=null;toolbar=null;}
-    function reset(){chosen.clear();selecting=false;key="";unmount();}
+    function unmount(){columnVersion++;busyColumns.clear();observer?.disconnect();observer=null;board=null;toolbar?.remove();toolbar=null;}
+    function reset(){chosen.clear();columns.clear();selecting=false;key="";unmount();}
     function paint(){
       if(!board || !toolbar)return;
       board.classList.toggle("crmBulkSelecting",selecting);
       board.querySelectorAll("[data-lead]").forEach(card=>{
         const id=card.dataset.lead,wrap=card.closest(".leadSelectable");
-        if(wrap){wrap.classList.toggle("selected",chosen.has(id));wrap.querySelector("input").checked=chosen.has(id);wrap.querySelector("label").hidden=!selecting;}
+        if(wrap){wrap.classList.toggle("selected",chosen.has(id));wrap.querySelector("input").checked=chosen.has(id);wrap.querySelector("input").disabled=busyColumns.size>0;wrap.querySelector("label").hidden=!selecting;}
         card.draggable=!selecting;
       });
-      toolbar.innerHTML=selecting?`<strong role="status">${chosen.size} selecionados</strong>${button("loaded","Selecionar carregados","list-checks")}${button("move","Mover etapa","arrow-right",!chosen.size)}${button("transfer","Transferir","arrow-right-left",!chosen.size)}${button("delete","Excluir","trash-2",!chosen.size)}<button type="button" data-bulk="clear" class="icon-button" aria-label="Encerrar seleção" title="Encerrar seleção">${icon("x")}</button>`:button("select","Selecionar leads","list-checks");
+      const busy=busyColumns.size>0;
+      toolbar.innerHTML=selecting?`<strong role="status">${busy?"Selecionando coluna…":`${chosen.size} selecionados`}</strong>${button("loaded","Selecionar carregados","list-checks",busy)}${button("move","Mover etapa","arrow-right",!chosen.size || busy)}${button("transfer","Transferir","arrow-right-left",!chosen.size || busy)}${button("delete","Excluir","trash-2",!chosen.size || busy)}<button type="button" data-bulk="clear" class="icon-button" aria-label="Encerrar seleção" title="Encerrar seleção">${icon("x")}</button>`:button("select","Selecionar leads","list-checks");
+      board.querySelectorAll(".crmColumn").forEach(column=>{
+        const stage=column.dataset.stage,control=column.querySelector(".crmColumnSelect"),input=control?.querySelector("input");if(!input)return;
+        const snapshot=columns.get(stage),known=snapshot || [...column.querySelectorAll("[data-lead]")].map(card=>card.dataset.lead),selected=known.filter(id=>chosen.has(id)).length;
+        control.hidden=!selecting;input.disabled=!selecting || busyColumns.has(stage);
+        input.checked=busyColumns.has(stage) || Boolean(snapshot?.length && selected===snapshot.length);input.indeterminate=selected>0 && !input.checked;
+        control.querySelector("span").textContent=busyColumns.has(stage)?"Selecionando…":input.checked?`Coluna selecionada (${selected})`:"Selecionar coluna";
+      });
       icons();
     }
     function decorate(){
@@ -26,18 +35,40 @@
         wrap.className="leadSelectable";label.className="crmLeadSelect";input.type="checkbox";input.dataset.bulkLead=card.dataset.lead;
         input.setAttribute("aria-label",`Selecionar ${card.querySelector("strong")?.textContent || "lead"}`);
         card.replaceWith(wrap);label.append(input);wrap.append(label,card);
+      });
+      board.querySelectorAll(".crmColumn").forEach(column=>{
+        if(column.querySelector(".crmColumnSelect"))return;
+        const label=document.createElement("label");label.className="crmColumnSelect";
+        const title=column.querySelector(".columnHead strong")?.textContent || "etapa";
+        label.innerHTML=`<input type="checkbox" data-bulk-column="${esc(column.dataset.stage)}" aria-label="Selecionar coluna ${esc(title)}"><span>Selecionar coluna</span>`;
+        column.querySelector(".columnHead").append(label);
       });paint();
     }
-    function toggle(id){if(!selecting)return false;chosen.has(id)?chosen.delete(id):chosen.add(id);paint();return true;}
+    async function selectColumn(stage,checked){
+      if(!selecting || busyColumns.has(stage))return;
+      if(!checked && columns.has(stage)){columns.get(stage).forEach(id=>chosen.delete(id));paint();return;}
+      const root=board,version=columnVersion,scope=getScope(),signature=key;
+      busyColumns.add(stage);paint();
+      try{
+        const result=await api("lead-column-selection",{doctor_id:scope.doctor,pipeline_id:scope.pipeline,stage_id:stage,filters:scope.filters},{doctor:scope.doctor});
+        if(root!==board || version!==columnVersion || signature!==key || !selecting)return;
+        const all=new Set([...chosen,...result.lead_ids]);
+        if(all.size>5000)throw new Error("Selecione até 5.000 leads por operação. Refine os filtros ou desmarque outra coluna.");
+        columns.set(stage,result.lead_ids);result.lead_ids.forEach(id=>chosen.add(id));
+        if(!result.count)notice("Esta coluna não tem leads nos filtros atuais.");
+      }catch(err){if(root===board && version===columnVersion)notice(err.message);}
+      finally{if(root===board && version===columnVersion){busyColumns.delete(stage);paint();}}
+    }
+    function toggle(id){if(!selecting)return false;if(busyColumns.size)return true;chosen.has(id)?chosen.delete(id):chosen.add(id);paint();return true;}
     function mountBoard(target){
       unmount();const scope=getScope(),next=JSON.stringify([scope.doctor,scope.pipeline,scope.filters]);
-      if(next!==key){chosen.clear();selecting=false;key=next;}
+      if(next!==key){chosen.clear();columns.clear();selecting=false;key=next;}
       board=target;toolbar=document.createElement("div");toolbar.className="crmBulkToolbar";
       toolbar.setAttribute("aria-label","Ações em massa");target.closest(".crmWorkspace").before(toolbar);
-      target.addEventListener("change",e=>{if(e.target.dataset.bulkLead)toggle(e.target.dataset.bulkLead);});
+      target.addEventListener("change",e=>{if(e.target.dataset.bulkLead)toggle(e.target.dataset.bulkLead);if(e.target.dataset.bulkColumn)selectColumn(e.target.dataset.bulkColumn,e.target.checked);});
       toolbar.onclick=e=>{const command=e.target.closest("[data-bulk]")?.dataset.bulk;if(!command)return;
         if(command==="select")selecting=true;
-        if(command==="clear"){selecting=false;chosen.clear();}
+        if(command==="clear"){columnVersion++;busyColumns.clear();selecting=false;chosen.clear();columns.clear();}
         if(command==="loaded")board.querySelectorAll("[data-lead]").forEach(card=>chosen.add(card.dataset.lead));
         if(["move","transfer","delete"].includes(command))return open(command,{lead_ids:[...chosen]});paint();
       };

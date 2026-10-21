@@ -1,6 +1,7 @@
 .crmBulkToolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-height:44px; margin:0 0 12px; }
 .crmBulkToolbar strong { font-size:13px; margin-right:8px; }
 .crmBulkToolbar button { min-height:34px; padding:7px 11px; font-size:12px; }
+.crmPage .crmColumnSelect{display:flex;flex-direction:row;align-items:center;gap:8px;margin:12px 0 0;padding-top:10px;border-top:1px solid #d9e5dc;font-size:11px;font-weight:500;color:#44735a;cursor:pointer;line-height:1.4}.crmPage .crmColumnSelect[hidden]{display:none}.crmPage .crmColumnSelect input{width:17px;height:17px;min-height:0;padding:0;margin:0;accent-color:#286e4c;flex:none}.crmPage .crmColumnSelect span{background:none;border:0;padding:0;color:inherit;font:inherit;overflow-wrap:anywhere}.crmPage .crmColumnSelect:has(input:disabled){cursor:wait;opacity:.65}
 .leadSelectable { position:relative; min-width:0; }
 .leadSelectable>.leadCard { width:100%; }
 .crmPage .crmLeadSelect { display:none; position:absolute; left:12px; top:14px; z-index:1; margin:0; }

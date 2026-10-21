@@ -78,6 +78,21 @@ def automations(c, pipeline, stage):
     return result
 
 
+def column_selection(store, payload):
+    doctor, pipeline, stage = payload.get("doctor_id"), payload.get("pipeline_id"), payload.get("stage_id")
+    with store.db() as c:
+        store.owned(c, "pipelines", pipeline, doctor)
+        row = store.row(c, "stages", stage)
+        if row["pipeline_id"] != pipeline:
+            raise ValueError("A coluna nao pertence ao funil selecionado.")
+    from crm_campaigns import selection
+    rows, _, _, _ = selection(store, {"doctor_id": doctor, "pipeline_id": pipeline, "pipeline_ids": [pipeline],
+        "stage_ids": [stage], "stages_explicit": True, "filters": payload.get("filters", {})})
+    if len(rows) > MAX_BATCH:
+        raise ValueError(f"Esta coluna tem {len(rows)} leads. Refine os filtros para selecionar ate {MAX_BATCH} por operacao.")
+    return {"stage_id": stage, "lead_ids": [row["id"] for row in rows], "count": len(rows)}
+
+
 def preview(store, payload, actor):
     action, doctor, pipeline = payload.get("action"), payload.get("doctor_id"), payload.get("pipeline_id")
     if action not in {"move", "transfer", "delete", "restore"}:

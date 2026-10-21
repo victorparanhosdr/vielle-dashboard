@@ -7,6 +7,48 @@ from crm_reminders import permitted_pipelines
 from crm_store import TZ, integer
 
 
+def _personal_xp(c, user):
+    ids = permitted_pipelines(c)
+    marks = ",".join("?" for _ in ids) or "NULL"
+    return c.execute("""SELECT coalesce(sum(x.points),0) FROM xp x JOIN leads l ON l.id=x.lead_id
+        WHERE x.actor=? AND l.deleted_at=0 AND l.pipeline_id IN (""" + marks + ")", (user["nome"], *ids)).fetchone()[0]
+
+
+def begin_feedback(store, user, ids):
+    """Capture cursors before an explicit user mutation, not a periodic refresh."""
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        return None
+    with store.db() as c:
+        for key in ids:
+            store.row(c, "leads", key)
+        return {"ids": ids, "events": c.execute("SELECT coalesce(max(id),0) FROM events").fetchone()[0],
+                "xp": c.execute("SELECT coalesce(max(id),0) FROM xp").fetchone()[0], "personal": _personal_xp(c, user)}
+
+
+def finish_feedback(store, user, marker):
+    if marker is None:
+        return None
+    ids = marker["ids"]
+    marks = ",".join("?" for _ in ids)
+    with store.db() as c:
+        for key in ids:
+            store.row(c, "leads", key)
+        stages = [dict(r) for r in c.execute("""SELECT e.id,s.kind FROM events e JOIN leads l ON l.id=e.lead_id
+            JOIN stages s ON s.id=l.stage_id WHERE e.id>? AND e.actor=? AND e.kind='stage'
+            AND e.lead_id IN (""" + marks + ") ORDER BY e.id", (marker["events"], user["nome"], *ids))]
+        awards = [dict(r) for r in c.execute("SELECT id,label,points FROM xp WHERE id>? AND actor=? AND lead_id IN (" + marks + ") ORDER BY id",
+                                           (marker["xp"], user["nome"], *ids))]
+        if not stages and not awards:
+            return None
+        personal = _personal_xp(c, user)
+    level = personal // 100 + 1
+    kind = "level" if level > marker["personal"] // 100 + 1 else "win" if any(s["kind"] == "won" for s in stages) else "stage" if stages else "achievement"
+    event = "stage:" + str(stages[-1]["id"]) if stages else "xp:" + str(awards[-1]["id"])
+    return {"id": event, "actor_id": str(user["id"]), "kind": kind, "xp_ids": [p["id"] for p in awards], "points": sum(p["points"] for p in awards),
+            "level": level, "stage_changes": len(stages)}
+
+
 def snapshot(store, user, query):
     now = time.time()
     clock = datetime.fromtimestamp(now, TZ)
