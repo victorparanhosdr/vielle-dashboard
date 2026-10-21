@@ -640,6 +640,34 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(status,200,raw)
             self.assertNotIn("_experts_search",raw.decode())
 
+    def test_crm_inbox_search_discovers_only_permitted_leads_without_messages(self):
+        from crm_api import store_for
+        from urllib.parse import urlencode
+        store = store_for(self.store)
+        store.bootstrap({"Doutor teste": ["Permitido", "Restrito"]})
+        doctor = store.listing()["doctor_id"]
+        allowed, hidden = store.listing(doctor)["pipelines"]
+        ids = []
+        for i, pipeline in enumerate((allowed, hidden)):
+            ids.append(store.lead({"doctor_id": doctor, "pipeline_id": pipeline["id"], "stage_id": pipeline["stages"][0]["id"],
+                "phone": f"550000000000{i + 2}", "name": f"Contato Busca {i}", "title": "Contato"}, "Equipe"))
+        path = "/api/crm/inbox-multi?" + urlencode({"clinic": "vielle", "doctor": doctor, "doctors": json.dumps([doctor]), "search": "Contato Busca"})
+        self.assertEqual(self.request("GET", path)[0], 401)
+        self.limit_permissions(["crm.view"])
+        self.store.update_user(self.user_id, "Usuario Local", "teste", crm_scope={doctor: [allowed["id"]]})
+        cookie, _ = self.login()
+        status, _, raw = self.request("GET", path, cookie=cookie)
+        self.assertEqual(status, 200, raw)
+        data = json.loads(raw)
+        self.assertEqual(data["conversations"], [])
+        self.assertEqual([r["id"] for r in data["lead_results"]], [ids[0]])
+        self.assertFalse(data["lead_results"][0]["has_conversation"])
+        self.assertNotIn("_experts_search", raw.decode())
+        self.assertEqual(self.request("GET", path.replace("vielle", "inspire"), cookie=cookie)[0], 403)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM leads").fetchone()[0], 2)
+            self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0], 0)
+
     def test_meta_token_reuse_copies_only_secret_without_returning_it(self):
         from institute_api import store_for
         self.store.create_first_master("Master", "master", "Master-test-password!")

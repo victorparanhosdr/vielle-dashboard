@@ -1,7 +1,7 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
 window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
-  let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], messages=[], hasOlder=false;
+  let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], leadResults=[], leadResultsTotal=0, messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
   const mobileScreen=matchMedia("(max-width:760px)");
@@ -72,6 +72,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const b=event.target.closest("button");if(!b)return;
       if(b.dataset.inboxFilter){filter=b.dataset.inboxFilter;root.querySelectorAll("[data-inbox-filter]").forEach(n=>n.setAttribute("aria-pressed",String(n.dataset.inboxFilter===filter)));refreshList();}
       if(b.dataset.thread!==undefined){const item=list[Number(b.dataset.thread)];if(item)select(item);}
+      if(b.dataset.startLead!==undefined){const item=leadResults[Number(b.dataset.startLead)];if(item)openLead(item,{channelId:channel,start:!item.has_conversation,keepFilter:true});}
       if(b.id==="mobileInboxFilters"){const open=$("inboxWorkspace").classList.toggle("mobileFiltersOpen");b.setAttribute("aria-expanded",String(open));}
       if(b.id==="chatBack"){$("inboxWorkspace").classList.remove("chatActive","showContact");$("toggleContact")?.setAttribute("aria-expanded","false");$("mobileChatMore")?.removeAttribute("open");root.querySelector(".conversationRow.active")?.focus({preventScroll:true});}
       if(b.id==="toggleContact"){const open=$("inboxWorkspace").classList.toggle("showContact");b.setAttribute("aria-expanded",String(open));$("chatPane").inert=mobileScreen.matches && open;if(mobileScreen.matches)(open?root.querySelector(".mobileContactClose"):b)?.focus();}
@@ -95,7 +96,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const data=await api("inbox-multi",undefined,{doctor:doctors()[0],doctors:JSON.stringify(doctors()),channel,kind:filter,search:state.search,business:state.business || "all"});
       if(!root || request!==listSeq || currentScope!==scopeKey())return;
       catalog={channels:data.channels,pipelines:data.pipelines};drawChannelFilter();
-      list=data.conversations;
+      list=data.conversations;leadResults=data.lead_results || [];leadResultsTotal=data.lead_results_total || 0;
       if(Number.isFinite(data.server_time))clockOffset=data.server_time-Date.now()/1000;
       $("inboxCount").textContent=`${data.counts.all} conversas`;
       root.querySelectorAll("[data-count]").forEach(n=>n.textContent=data.counts[n.dataset.count]);
@@ -103,7 +104,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       $("inboxError").hidden=true;drawList();
       if(selected && (!catalog.channels.some(c=>c.id===selected.channel_id && c.doctor_id===owner) || selectedRecord && !catalog.pipelines.some(p=>p.id===selectedRecord.pipeline_id)))clearChat();
       else if(selected){drawSenderOptions();drawInfo();syncSend();}
-    }catch(e){if(root && request===listSeq){if(e.status===403){list=[];drawList();clearChat();}$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
+    }catch(e){if(root && request===listSeq){if(e.status===403){list=[];leadResults=[];leadResultsTotal=0;drawList();clearChat();}$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
   }
   function drawChannelFilter(){
     if(!$("inboxChannel"))return;
@@ -125,20 +126,23 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function drawList() {
     if(!root)return;
-    $("conversationRows").innerHTML=list.map((c,i)=>`<button class="conversationRow ${selected && c.doctor_id===owner && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,c.doctor_id,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${waitingTimer(c)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationOrigin(c)}${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("") || '<div class="inboxEmpty">Nenhuma conversa neste filtro</div>';
+    const conversations=list.map((c,i)=>`<button class="conversationRow ${selected && c.doctor_id===owner && c.channel_id===selected.channel_id && c.contact_id===selected.contact_id?"active":""}" data-tier="${esc(c.customer_value?.tier || "unclassified")}" data-thread="${i}" title="${esc(c.channel_name)}${c.unread?" · Aguardando resposta":""}">${avatars.markup(c.name,c.contact_id,c.doctor_id,c.channel_id)}<span class="conversationPreview"><span class="conversationName"><strong>${esc(c.name)}</strong><small>${waitingTimer(c)}</small></span><span class="conversationSnippet">${c.direction==="out"?icon(c.status==="sent"?"check":"clock-3"):""}${esc(messagePreview(c))}</span>${conversationOrigin(c)}${conversationFacts(c)}</span>${c.unread?`<b class="unreadCount" aria-label="${c.unread} mensagens não lidas">${c.unread}</b>`:""}</button>`).join("");
+    const candidates=leadResults.map((l,i)=>{const action=l.has_conversation?"Abrir conversa":"Criar conversa";return `<button type="button" class="conversationRow inboxLeadResult ${selected && owner===l.doctor_id && selected.contact_id===l.contact_id?"active":""}" data-start-lead="${i}" aria-label="${action} com ${esc(l.name)}">${avatars.markup(l.name,l.contact_id,l.doctor_id,"")}<span class="conversationPreview"><span class="conversationName"><strong>${esc(l.name)}</strong></span><span class="conversationSnippet">${l.phone?`+${esc(l.phone)}`:"Sem telefone na ficha"}</span><span class="inboxLeadPipeline">${esc(l.pipeline_name)} · ${esc(l.stage_name)}</span>${doctors().length>1?`<span class="conversationDoctor">${esc(l.doctor_name)}</span>`:""}<span class="inboxLeadAction">${icon(l.has_conversation?"messages-square":"message-circle-plus")}${action}</span></span></button>`;}).join("");
+    $("conversationRows").innerHTML=(conversations?`${leadResults.length?'<h3 class="inboxResultsTitle">Conversas</h3>':""}${conversations}`:"")+(candidates?`<h3 class="inboxResultsTitle">Clientes nos funis <span>${leadResultsTotal}</span></h3>${candidates}${leadResultsTotal>leadResults.length?`<p class="inboxResultsLimit">Exibindo ${leadResults.length} de ${leadResultsTotal} clientes. Refine a busca.</p>`:""}`:"") || `<div class="inboxEmpty">${state.search?"Nenhum cliente ou conversa encontrado neste filtro":"Nenhuma conversa neste filtro"}</div>`;
     icons();updateTimers();
   }
-  async function openLead(l) {
+  async function openLead(l,{channelId="",start=false,keepFilter=false}={}) {
     const doc=l.doctor_id, request=++openSeq;
-    channel="";if($("inboxChannel"))$("inboxChannel").value="";
+    if(!keepFilter){channel="";if($("inboxChannel"))$("inboxChannel").value="";}
     try {
       const data=await api("lead",undefined,{doctor:doc,id:l.id});
       if(!root || !doctors().includes(doc) || request!==openSeq)return;
       if(!catalog.channels.some(c=>c.doctor_id===doc)){await refreshList();if(!root || request!==openSeq)return;}
-      const available=catalog.channels.filter(c=>c.doctor_id===doc);
-      const sender=data.preferred_channel_id || data.messages[0]?.channel_id || available.find(c=>c.state==="open")?.id || available[0]?.id;
-      if(!sender){$("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Nenhum número cadastrado</h2><p>Cadastre um número em Números para abrir o atendimento.</p></div>';$("inboxWorkspace").classList.add("chatActive");return;}
-      select({doctor_id:doc,contact_id:l.contact_id,channel_id:sender,lead_id:l.id,_lead:data.lead});
+      const available=catalog.channels.filter(c=>c.doctor_id===doc && (!start || !c.archived_at));
+      const choices=channelId?[channelId]:[data.preferred_channel_id,data.messages[0]?.channel_id,available.find(c=>c.state==="open")?.id,available[0]?.id];
+      const sender=choices.find(id=>id && available.some(c=>c.id===id));
+      if(!sender){clearChat();$("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Nenhum número disponível</h2><p>Cadastre ou restaure uma conexão em Números para abrir o atendimento.</p></div>';$("inboxWorkspace").classList.add("chatActive");return;}
+      select({doctor_id:doc,contact_id:data.lead.contact_id,channel_id:sender,lead_id:data.lead.id,_lead:data.lead});
     }catch(e){if(root && request===openSeq){$("inboxError").textContent=e.message;$("inboxError").hidden=false;}}
   }
   function select(item) {

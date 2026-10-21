@@ -189,6 +189,12 @@
 .conversationSnippet { white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:400;color:#6a7c71;line-height:1.5; }.conversationSnippet svg { display:inline-block;width:12px;height:12px;vertical-align:middle;margin-right:4px; }
 .conversationMeta { font-size:9px;font-weight:450;color:#819287; }.unreadCount { flex:none;background:#32785c;color:white;min-width:18px;height:18px;padding:3px;border-radius:50%;font-size:9px;align-self:end; }
 .inboxEmpty { text-align:center;padding:32px 14px;color:var(--ui-muted);font-size:12px;line-height:1.6; }
+.inboxResultsTitle { display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:12px 14px 8px;font-size:12px;font-weight:650;color:var(--ui-muted); }
+.inboxResultsTitle span { font-weight:500; }
+.inboxLeadPipeline { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--ui-muted);line-height:1.5; }
+.inboxLeadAction { display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;font-weight:650;color:#246950; }
+.inboxLeadAction svg { width:15px;height:15px;flex:none; }
+.inboxResultsLimit { margin:0;padding:12px 14px;font-size:11px;color:var(--ui-muted);line-height:1.5; }
 .chatPane { min-width:0;display:flex;flex-direction:column;background:#f0f5f2;overflow:hidden; }
 .chatPlaceholder { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#82968a;padding:30px;text-align:center; }
 .chatPlaceholder>svg { width:46px;height:46px;stroke-width:1; }.chatPlaceholder h2 { font-size:20px;color:#315a46;margin:20px 0 0; }.chatPlaceholder p { font-size:12px; }

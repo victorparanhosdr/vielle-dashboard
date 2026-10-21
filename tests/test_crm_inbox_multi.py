@@ -110,6 +110,93 @@ class MultiInboxTests(unittest.TestCase):
         with self.assertRaises(LookupError):
             combined(self.store, ["nonexistent"], "user")
 
+    def test_search_finds_existing_funnel_contacts_without_starting_or_duplicating_chat(self):
+        lead_id = fixture.CrmTests.lead(self)
+        with self.store.db() as c:
+            contact = c.execute("SELECT contact_id FROM leads WHERE id=?", (lead_id,)).fetchone()[0]
+            c.execute("UPDATE contacts SET name='Debora Exemplo' WHERE id=?", (contact,))
+            before = {table: c.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                      for table in ("leads", "contacts", "messages", "conversation_resolutions")}
+        for search in ("débora", "+55 (00) 00000-0002"):
+            result = combined(self.store, [self.a], "user", search=search)
+            self.assertEqual(result["conversations"], [])
+            self.assertEqual(result["counts"]["all"], 0)
+            self.assertEqual(result["lead_results_total"], 1)
+            item = result["lead_results"][0]
+            self.assertEqual((item["id"], item["contact_id"], item["doctor_id"]), (lead_id, contact, self.a))
+            self.assertEqual(item["pipeline_name"], self.p["name"])
+            self.assertEqual(item["stage_name"], self.p["stages"][0]["name"])
+            self.assertFalse(item["has_conversation"])
+            thread = self.store.conversation(self.a, self.channel, contact)
+            self.assertEqual(thread["messages"], [])
+            self.assertTrue(thread["reply_allowed"])
+        self.assertEqual(combined(self.store, [self.a], "user")["lead_results"], [])
+        with self.store.db() as c:
+            self.assertEqual({table: c.execute(f"SELECT count(*) FROM {table}").fetchone()[0] for table in before}, before)
+
+    def test_search_deduplicates_contacts_and_does_not_repeat_existing_conversations(self):
+        fixture.CrmTests.lead(self)
+        other = self.store.listing(self.a)["pipelines"][1]
+        fixture.CrmTests.lead(self, pipeline=other)
+        result = combined(self.store, [self.a], "user", search="Cliente Exemplo")
+        self.assertEqual(result["lead_results_total"], 1)
+        thread = self.incoming(self.channel, "5500000000002", "existing")
+        result = combined(self.store, [self.a], "user", search="Cliente Exemplo")
+        self.assertEqual(len(result["conversations"]), 1)
+        self.assertEqual(result["lead_results"], [])
+        self.store.close_conversation({"doctor_id": self.a, "channel_id": self.channel,
+            "contact_id": thread["contact_id"], "cursor": thread["seq"]}, "user")
+        result = combined(self.store, [self.a], "user", search="Cliente Exemplo", kind="unread")
+        self.assertEqual(result["conversations"], [])
+        self.assertTrue(result["lead_results"][0]["has_conversation"])
+
+    def test_search_respects_funnel_professional_institute_and_business_access(self):
+        allowed = fixture.CrmTests.lead(self)
+        hidden_pipeline = self.store.listing(self.a)["pipelines"][1]
+        fixture.CrmTests.lead(self, number="5500000000005", pipeline=hidden_pipeline)
+        b_pipeline = self.store.listing(self.b)["pipelines"][0]
+        fixture.CrmTests.lead(self, number="5500000000006", doctor=self.b, pipeline=b_pipeline)
+        with crm_access({self.a: [self.p["id"]], self.b: None}, self.a):
+            result = combined(self.store, [self.a, self.b], "user", search="Cliente")
+            self.assertEqual(result["lead_results_total"], 2)
+            self.assertEqual({r["pipeline_id"] for r in result["lead_results"]}, {self.p["id"], b_pipeline["id"]})
+            result = combined(self.store, [self.a, self.b], "user", channel=self.second, search="Cliente")
+            self.assertEqual({r["doctor_id"] for r in result["lead_results"]}, {self.b})
+        with self.store.db() as c:
+            c.execute("UPDATE pipelines SET institute_key='private',course_key='online' WHERE id=?", (hidden_pipeline["id"],))
+        with institute_access([]):
+            result = combined(self.store, [self.a], "user", search="Cliente")
+            self.assertEqual([r["id"] for r in result["lead_results"]], [allowed])
+        self.assertEqual(combined(self.store, [self.a], "user", search="Cliente", business="course")["lead_results_total"], 1)
+        self.assertEqual(combined(self.store, [self.a], "user", search="Cliente", business="clinic")["lead_results_total"], 1)
+
+    def test_search_respects_filters_active_phone_and_deleted_leads(self):
+        first = fixture.CrmTests.lead(self)
+        removed = fixture.CrmTests.lead(self, number="5500000000005")
+        with self.store.db() as c:
+            c.execute("UPDATE leads SET deleted_at=1 WHERE id=?", (removed,))
+            c.execute("UPDATE contacts SET service_location='sao-paulo' WHERE id=(SELECT contact_id FROM leads WHERE id=?)", (first,))
+            contact = c.execute("SELECT contact_id FROM leads WHERE id=?", (first,)).fetchone()[0]
+            c.execute("INSERT INTO contact_phone_settings VALUES(?,?,1,1,'user')", (contact, "5511987654321"))
+        legacy = combined(self.store, [self.a], "user", search="5500000000002")
+        self.assertEqual(legacy["lead_results"][0]["phone"], "5511987654321")
+        result = combined(self.store, [self.a], "user", search="(11) 98765-4321", filters={"service_location": "sao-paulo"})
+        self.assertEqual([r["id"] for r in result["lead_results"]], [first])
+        self.assertEqual(result["lead_results"][0]["phone"], "5511987654321")
+        self.assertEqual(combined(self.store, [self.a], "user", search="Cliente", filters={"service_location": "capelinha"})["lead_results_total"], 0)
+
+    def test_search_beyond_loaded_leads_is_bounded_without_losing_total(self):
+        with self.store.db() as c:
+            for i in range(1050):
+                c.execute("INSERT INTO contacts(id,name,phone) VALUES(?,?,?)", (f"contact-{i}", f"Busca {i}", f"55001{i:08d}"))
+                c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,updated_at,created_at) VALUES(?,?,?,?,?,'Contato',?,?)",
+                          (f"lead-{i}", self.a, self.p["id"], self.p["stages"][0]["id"], f"contact-{i}", i, i))
+        result = combined(self.store, [self.a], "user", search="Busca")
+        self.assertEqual(result["lead_results_total"], 1050)
+        self.assertEqual(len(result["lead_results"]), 50)
+        self.assertEqual(result["lead_results"][0]["name"], "Busca 1049")
+        self.assertEqual(combined(self.store, [self.a], "user", search="Busca 0")["lead_results"][0]["id"], "lead-0")
+
 
 if __name__ == "__main__":
     unittest.main()

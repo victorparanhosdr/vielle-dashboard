@@ -5,6 +5,27 @@ from crm_access import CRM_SCOPE, crm_access, pipeline_visible
 from crm_filters import ordered, parse_filters
 
 
+def lead_results(store, doctor, name, pipelines, channel, filters):
+    from crm_store import THREAD_VISIBLE
+    catalog = {p["id"]: p for p in pipelines if p["doctor_id"] == doctor}
+    stages = {s["id"]: s["name"] for p in catalog.values() for s in p["stages"]}
+    with store.db() as c:
+        leads, _, _ = store.filtered_leads(c, doctor, name, filters)
+        history = {r[0] for r in c.execute(f"""SELECT DISTINCT contact_id FROM messages
+            WHERE channel_id IN (SELECT id FROM channels WHERE doctor_id=?)
+            AND (?='' OR channel_id=?) AND {THREAD_VISIBLE}""", (doctor, channel, channel))}
+    results = {}
+    for lead in leads:
+        if lead["contact_id"] in results:
+            continue
+        pipeline = catalog.get(lead["pipeline_id"])
+        if pipeline is None:
+            continue
+        results[lead["contact_id"]] = {**lead, "doctor_name": name, "pipeline_name": pipeline["name"],
+            "stage_name": stages.get(lead["stage_id"], ""), "has_conversation": lead["contact_id"] in history}
+    return list(results.values())
+
+
 def combined(store, doctors, user, channel="", kind="all", search="", filters=None, *, business="all"):
     if (not isinstance(doctors, list) or not 1 <= len(doctors) <= 100
             or any(not isinstance(d, str) or not d or len(d) > 64 for d in doctors)):
@@ -27,13 +48,19 @@ def combined(store, doctors, user, channel="", kind="all", search="", filters=No
     if channel and selected_channel is None:
         raise ValueError("Numero indisponivel para os profissionais selecionados.")
     counts = dict.fromkeys(("all", "unread", "waiting"), 0)
-    items, total, incomplete = [], 0, 0
+    items, candidates, total, incomplete = [], [], 0, 0
     filters = parse_filters(filters)
+    if search:
+        filters = parse_filters({**filters, "search": search})
     for doctor in doctors:
         if selected_channel and selected_channel["doctor_id"] != doctor:
             continue
         with crm_access(scope, doctor):
             data = store.inbox(doctor, user, channel, kind, search, filters, business=business)
+            if filters["search"]:
+                allowed = [p for p in catalog if business == "all" or ("course" if p["course_key"] else "clinic") == business]
+                candidates.extend(lead_results(store, doctor, next(d["name"] for d in professionals if d["id"] == doctor),
+                                               allowed, channel, filters))
         items.extend(data["conversations"])
         total += data["total"]
         incomplete += data["filter_incomplete"]
@@ -43,6 +70,12 @@ def combined(store, doctors, user, channel="", kind="all", search="", filters=No
     items = ordered(items, filters)
     if kind == "waiting":
         items.sort(key=lambda r: r["waiting_since"] or float("inf"))
+    visible = {(r["doctor_id"], r["contact_id"]) for r in items[:200]}
+    candidates = ordered(sorted((r for r in candidates if (r["doctor_id"], r["contact_id"]) not in visible),
+                                key=lambda r: (-r["updated_at"], r["id"])), filters)
+    fields = ("id", "doctor_id", "doctor_name", "contact_id", "name", "phone", "phone_removed", "pipeline_id",
+              "pipeline_name", "stage_id", "stage_name", "has_conversation")
     return {"conversations": items[:200], "total": total, "counts": counts,
+            "lead_results": [{k: r[k] for k in fields} for r in candidates[:50]], "lead_results_total": len(candidates),
             "filter_incomplete": incomplete, "server_time": time.time(),
             "doctors": professionals, "channels": channels, "pipelines": catalog}
