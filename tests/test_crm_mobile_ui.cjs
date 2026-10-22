@@ -14,6 +14,11 @@ for(const mode of ["inbox","board","dashboard","campaigns","channels","templates
 assert.match(html,/viewport-fit=cover/);
 assert.match(css,/:has\(\.inboxWorkspace\.chatActive\).*data-crm-mode=inbox/);
 assert.match(css,/env\(safe-area-inset-bottom/);
+assert.match(css,/@media\(min-width:761px\)\{\s*html:has\(>body\.crmDesktop\)\{overflow:hidden;\}\s*body\.crmDesktop\{position:fixed;inset:0;width:100%;\}/);
+assert.match(css,/\.crmDesktop \.crmRailModules\{flex:1 1 auto;min-height:0;[^}]*overflow-y:auto;overflow-x:hidden;/);
+assert.match(css,/\.crmDesktop \.crmRailBrand,\.crmDesktop \.crmRailBottom\{flex-shrink:0;\}/);
+assert.match(css,/\.crmDesktop \.crmRailModules>button\{flex-shrink:0;\}/);
+assert.match(html,/crm-shell\.css\?v=4/);
 assert.match(css,/\.mobileFiltersOpen \.inboxFilters/);
 assert.match(css,/\.mobileChatMore:not\(\[open\]\)/);
 assert.match(inbox,/data-mobile-chat="toggleChatSearch"/);

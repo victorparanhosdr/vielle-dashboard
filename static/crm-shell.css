@@ -25,6 +25,14 @@ body.crmPage.crmDesktop .appAreas,body.crmPage.crmDesktop .appNav,body.crmPage.c
 .crmDesktop .crmRailBrand img{display:block;width:32px;height:32px;object-fit:contain;}
 .crmDesktop .crmRailModules,.crmDesktop .crmRailBottom{display:flex;flex-direction:column;align-items:center;gap:8px;}
 .crmDesktop .crmRailBottom{margin-top:auto;gap:10px;}
+@media(min-width:761px){
+  html:has(>body.crmDesktop){overflow:hidden;}
+  body.crmDesktop{position:fixed;inset:0;width:100%;}
+  .crmDesktop .crmRailBrand,.crmDesktop .crmRailBottom{flex-shrink:0;}
+  .crmDesktop .crmRailModules{flex:1 1 auto;min-height:0;align-self:stretch;overflow-y:auto;overflow-x:hidden;margin-inline:-10px;padding-inline:10px;scrollbar-width:none;}
+  .crmDesktop .crmRailModules::-webkit-scrollbar{display:none;}
+  .crmDesktop .crmRailModules>button{flex-shrink:0;}
+}
 .crmDesktop .crmRail :is(button,.crmRailBottom a){position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:42px;min-height:42px;padding:0;border:0!important;border-radius:6px;background:transparent!important;color:#a5c0b5!important;text-decoration:none;cursor:pointer;}
 .crmDesktop .crmRail svg{width:19px;height:19px;stroke-width:1.65;}
 .crmDesktop .crmRail :is(button,a):hover{color:#fff!important;background:#ffffff0b!important;}
