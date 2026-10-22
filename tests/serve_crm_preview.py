@@ -350,12 +350,23 @@ if "--communications-fixture" in sys.argv:
 
 if "--campaigns-fixture" in sys.argv:
     import crm_api
+
+    class SyntheticCampaignGateway:
+        configured = True
+
+        def state(self, channel):
+            return "open"
+
+        def send(self, item):
+            raise AssertionError("Synthetic preview cannot send WhatsApp messages.")
+
+    crm_api.EvolutionGateway = SyntheticCampaignGateway
     crm_api.sends_enabled = lambda: True
     store.worker_online = lambda: True
     store.enable_campaigns()
     with store.db() as c:
         c.execute("UPDATE channels SET state='open'")
-        c.execute("UPDATE campaigns SET last_error='Numero reconectado; revisao pendente.' WHERE status='paused'")
+        c.execute("UPDATE campaigns SET last_error='Numero desconectado.' WHERE status='paused'")
         c.execute("""UPDATE messages SET status='unknown',claimed_at=? WHERE id IN
             (SELECT min(m.id) FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id WHERE ca.status='paused' AND m.status='queued' GROUP BY ca.id)""",(time.time()-600,))
 

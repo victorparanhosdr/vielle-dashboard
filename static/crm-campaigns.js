@@ -25,14 +25,17 @@ window.createCrmCampaigns=function({state,api,esc,icon,icons,modal,error,load,au
   function campaignCard(c) {
     const resumable=["draft","paused"].includes(c.status),blocked=c.start_blocker || (!state.data.campaigns_enabled?"O servidor de disparos precisa estar habilitado e online.":"");
     const finish=["paused","done","cancelled"].includes(c.status)&&!c.counts.queued&&!c.counts.sending&&c.resume_unconfirmed;
-    const lastError=c.last_error==="Numero desconectado."&&c.channel_state==="open"&&!c.channel_archived?"Número reconectado. Revise e retome os destinatários restantes.":c.last_error;
+    const activeChannel=!c.channel_archived&&c.channel_doctor===c.doctor_id;
+    const reconnected=c.status==="paused"&&activeChannel&&c.channel_state==="open"&&["Numero desconectado.","Número desconectado."].includes(c.last_error);
+    const lastError=reconnected?"":c.last_error;
     return `<article class="campaignRecord">
       <header><span class="campaignSymbol">${icon(c.status==="done"?"circle-check":c.status==="paused"?"pause":"send")}</span><div><h3>${esc(c.name)}</h3><p>${esc(c.channel_name)} · +${esc(c.channel_phone)} · ${stamp(c.created_at)}</p></div><span class="statusPill ${esc(c.status)}">${esc(waitLabel(c))}</span></header>
       <progress max="100" value="${c.progress}" aria-label="${c.progress}% processado"></progress>
       <div class="campaignCounts"><strong>${c.progress}%</strong><span>${c.counts.sent||0} aceitas</span><span>${c.counts.queued||0} na fila</span><span>${c.counts.unknown||0} sem confirmação</span><span>${(c.counts.skipped||0)+(c.counts.cancelled||0)} não enviadas</span></div>
       <div class="campaignSchedule"><span>${c.interval_seconds}s entre envios</span><span>${c.weekdays.map(d=>days[d]).join(', ')} · ${clock(c.hour_from,c.minute_from)}–${clock(c.hour_to,c.minute_to)}</span><span>Limite do número: ${c.daily_limit}/dia</span>${c.tag?`<span>${icon("tag")} ${esc(c.tag)}</span>`:""}</div>
-      ${lastError?`<p class="inlineWarning">${esc(lastError)}</p>`:""}${resumable&&blocked&&!finish?`<p class="connectionNote">${esc(blocked)}</p>`:""}${c.resume_excluded?`<p class="connectionNote">${c.resume_excluded} envio(s) sem confirmação mantidos fora da retomada.</p>`:""}
+      ${reconnected?`<p class="connectionNote campaignConnection" role="status">${icon("circle-check")}<span>Número conectado. A campanha continua pausada até você confirmar a retomada.</span></p><p class="connectionNote">Motivo da pausa anterior: o número estava desconectado.</p>`:""}${lastError?`<p class="inlineWarning">${esc(lastError)}</p>`:""}${resumable&&blocked&&!finish?`<p class="connectionNote">${esc(blocked)}</p>`:""}${c.resume_excluded?`<p class="connectionNote">${c.resume_excluded} envio(s) sem confirmação mantidos fora da retomada.</p>`:""}
       <footer><button data-campaign-detail="${c.id}">${icon("list-checks")} Acompanhar envios</button><div class="commands">
+        ${resumable&&activeChannel?`<button data-campaign-state="${c.id}" class="icon-button" title="Conferir conexão do número" aria-label="Conferir conexão ${esc(c.channel_name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button>`:""}
         <button data-campaign-template="${c.id}" data-edit="false" class="icon-button" title="Duplicar campanha" aria-label="Duplicar campanha">${icon("copy")}</button>
         ${c.status==="draft"?`<button data-campaign-template="${c.id}" data-edit="true" class="icon-button" title="Editar rascunho" aria-label="Editar rascunho">${icon("pencil")}</button>`:""}
         ${finish?`<button data-campaign-command="finish" data-id="${c.id}">${icon("check")} Concluir sem repetir</button>`:resumable?`<button data-campaign-command="start" data-id="${c.id}" ${blocked?"disabled":""} title="${esc(blocked || (c.status==="paused"?"Revisar retomada":"Revisar início"))}">${icon("play")} ${c.status==="paused"?"Retomar":"Iniciar"}</button>`:""}
@@ -58,12 +61,21 @@ window.createCrmCampaigns=function({state,api,esc,icon,icons,modal,error,load,au
       $("campaignPrev").onclick=()=>{page--;draw();};$("campaignNext").onclick=()=>{page++;draw();};
       target.querySelectorAll("[data-campaign-filter]").forEach(b=>b.onclick=()=>{status=b.dataset.campaignFilter;page=1;draw();});
       target.querySelectorAll("[data-campaign-detail]").forEach(b=>b.onclick=()=>detail(b.dataset.campaignDetail,doc));
+      target.querySelectorAll("[data-campaign-state]").forEach(b=>b.onclick=()=>checkConnection(data.campaigns.find(c=>c.id===b.dataset.campaignState),doc,b));
       target.querySelectorAll("[data-campaign-template]").forEach(b=>b.onclick=()=>reuse(b.dataset.campaignTemplate,doc,b.dataset.edit==="true"));
       target.querySelectorAll("[data-campaign-command]").forEach(b=>b.onclick=()=>command(data.campaigns.find(c=>c.id===b.dataset.id),b.dataset.campaignCommand,doc));
       $("campaignRefresh").onclick=()=>load();
       if($("enableCampaigns"))$("enableCampaigns").onclick=enable;
       icons();
     }catch(e){if(request===seq && target===root)target.innerHTML=`<p class="inlineWarning">${esc(e.message)}</p>`;}
+  }
+  async function checkConnection(c,doc,button) {
+    button.disabled=true;button.setAttribute("aria-busy","true");
+    try {
+      await call("channel-state",{id:c.channel_id,doctor_id:doc},{doctor:doc});
+      if(root&&state.doctor===doc&&state.mode==="campaigns")await load();
+    }catch(err){if(root&&state.doctor===doc&&state.mode==="campaigns")error(err.message);}
+    finally{button.disabled=false;button.removeAttribute("aria-busy");}
   }
   function enable() {
     modal("Habilitar campanhas",`<form id="campaignEnable"><p class="inlineWarning">A conexão não oficial pode ser bloqueada. Intervalos e limites não garantem proteção contra bloqueio. Pedidos de descadastro permanecem bloqueados.</p><label class="check"><input type="checkbox" required> Confirmo que a equipe revisará público, mensagem e remetente antes de iniciar cada campanha.</label><div class="formActions"><button type="submit" class="primary">Habilitar sem iniciar envios</button></div></form>`);

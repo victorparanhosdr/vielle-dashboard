@@ -131,6 +131,22 @@ class CampaignTests(unittest.TestCase):
         self.assertIsNone(self.store.claim(self.now+122))
         self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"done")
 
+    def test_reconnection_report_preserves_pause_history_and_never_starts_queue(self):
+        key=self.campaign([self.lead(),self.lead(number="5500000000003")])
+        self.enable(key)
+        with self.store.db() as c:
+            instance=self.store.row(c,"channels",self.channel)["instance"]
+        self.store.receive(instance,{"state":"close"},"connection.update")
+        self.store.receive(instance,{"state":"open"},"connection.update")
+        self.store.receive(instance,{"state":"open"},"connection.update")
+        row=dashboard(self.store,self.a,{})["campaigns"][0]
+        self.assertEqual((row["channel_state"],row["status"],row["last_error"]),
+                         ("open","paused","Numero desconectado."))
+        self.assertEqual(row["start_blocker"],"")
+        self.assertEqual(row["counts"],{"queued":2})
+        self.assertIsNone(self.store.claim(self.now))
+        self.assertTrue(all(item["claimed_at"] is None for item in detail(self.store,self.a,key,{})["items"]))
+
     def test_unknown_is_explicitly_excluded_without_inventing_acceptance(self):
         key=self.campaign([self.lead(),self.lead(number="5500000000003")])
         self.enable(key)
