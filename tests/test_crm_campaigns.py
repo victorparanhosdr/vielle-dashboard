@@ -230,6 +230,32 @@ class CampaignTests(unittest.TestCase):
         preview=audience(self.store,{"doctor_id":self.a,**data["audience"]},self.actor())
         self.assertEqual((preview["selected"],preview["recipients"],preview["excluded"]),(2,1,1))
 
+    def test_template_preserves_recipient_if_original_opportunity_was_replaced(self):
+        lead=self.lead()
+        key=create(self.store,self.payload(self.preview(lead_ids=[lead])),self.actor())
+        other=next(p for p in self.store.listing(self.a)["pipelines"] if p["id"]!=self.p["id"])
+        replacement=self.lead(pipeline=other)
+        self.assertEqual(template(self.store,self.a,key)["audience"]["lead_ids"],[lead])
+        with self.store.db() as c:
+            c.execute("UPDATE leads SET deleted_at=1 WHERE id=?",(lead,))
+        data=template(self.store,self.a,key)
+        self.assertEqual(data["audience"]["lead_ids"],[replacement])
+        self.assertEqual(data["unavailable"],0)
+        with crm_access({self.a:[self.p["id"]]}):
+            with self.assertRaises(PermissionError):template(self.store,self.a,key)
+
+    def test_template_copies_all_original_recipients_not_only_queued(self):
+        leads=[self.lead(number=f"55000000000{i:02d}") for i in range(2,5)]
+        key=self.campaign(leads)
+        self.lead(number="5500000000099")
+        with self.store.db() as c:
+            messages=c.execute("SELECT id FROM messages WHERE campaign_id=? ORDER BY id",(key,)).fetchall()
+            for message,status in zip(messages,("sent","skipped","cancelled")):
+                c.execute("UPDATE messages SET status=? WHERE id=?",(status,message["id"]))
+        data=template(self.store,self.a,key)
+        self.assertEqual(set(data["audience"]["lead_ids"]),set(leads))
+        self.assertEqual(data["unavailable"],0)
+
     def test_copy_review_excludes_uncertain_recipient_on_the_selected_number(self):
         a=self.lead();b=self.lead(number="5500000000003")
         key=self.campaign([a,b]);self.enable(key)

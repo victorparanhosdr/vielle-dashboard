@@ -175,9 +175,11 @@ def template(store,doctor,key):
         snapshot=c.execute("SELECT payload FROM campaign_audiences WHERE campaign_id=?",(key,)).fetchone()
         original=set(json.loads(snapshot[0])["ids"]) if snapshot else None
         ids,seen=[],set()
-        for row in c.execute("""SELECT l.id,l.contact_id,p.id pipeline_id,p.doctor_id,p.institute_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id
-            WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.created_at,l.id""",(doctor,)):
-            if row["contact_id"] in contacts and row["contact_id"] not in seen and (original is None or row["id"] in original) and pipeline_visible(dict(row)):
+        rows=c.execute("""SELECT l.id,l.contact_id,p.id pipeline_id,p.doctor_id,p.institute_key FROM leads l JOIN pipelines p ON p.id=l.pipeline_id
+            WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.created_at,l.id""",(doctor,)).fetchall()
+        # Recipients are contacts; a replaced opportunity must not erase that audience.
+        for row in sorted(rows,key=lambda item: original is not None and item["id"] not in original):
+            if row["contact_id"] in contacts and row["contact_id"] not in seen and pipeline_visible(dict(row)):
                 ids.append(row["id"])
                 seen.add(row["contact_id"])
         campaign["weekdays"]=json.loads(campaign["weekdays"])
