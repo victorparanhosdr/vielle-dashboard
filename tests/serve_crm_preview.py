@@ -386,6 +386,13 @@ if "--staff-fixture" in sys.argv:
     auth.create_user("Jane Teste", "preview-staff", password, clinic_keys=["vielle"], permissions={"vielle": ["crm.view"]})
     token = auth.login("preview-staff", password)
 
+if "--team-profiles-fixture" in sys.argv:
+    auth.create_user("Administrativo Exemplo", "preview-admin", password, clinic_keys=["vielle"],
+                     permissions={"vielle": ["team.view"]}, team_profiles={"vielle": "management"})
+    auth.create_user("Atendente Exemplo", "preview-attendant", password, clinic_keys=["vielle", "inspire"],
+                     permissions={"vielle": ["crm.view"], "inspire": []},
+                     team_profiles={"vielle": "attendant", "inspire": "management"})
+
 
 if "--column-selection-fixture" in sys.argv:
     preview_data = store.listing()

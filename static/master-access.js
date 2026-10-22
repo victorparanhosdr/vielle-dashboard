@@ -25,8 +25,24 @@ function permissionGrid(container,values,clinic=null) {
 function gridValues(container) { return Array.from(container.querySelectorAll("[data-permission]:checked"),input=>input.dataset.permission); }
 function setGridValues(container,values) { container.querySelectorAll("[data-permission]").forEach(input=>{input.checked=values.includes(input.dataset.permission);}); }
 
+function collectTeamProfiles() {
+  return Object.fromEntries(Array.from($("teamProfileChoices").querySelectorAll("[data-team-profile]"),select=>[select.dataset.teamProfile,select.value]));
+}
+function renderTeamProfiles(user,keys) {
+  const previous=collectTeamProfiles(),choices=$("teamProfileChoices");choices.replaceChildren();
+  clinicCatalog.filter(clinic=>keys.includes(clinic.key)).forEach(clinic=>{
+    const label=document.createElement("label"),name=document.createElement("span"),select=document.createElement("select");
+    name.textContent=clinic.name;select.dataset.teamProfile=clinic.key;select.setAttribute("aria-label",`Perfil na equipe em ${clinic.name}`);
+    select.append(choiceOption("attendant","Atendente"),choiceOption("management","Gestão / administrativo"));
+    select.value=previous[clinic.key]||user?.team_profiles?.[clinic.key]||(user?.is_master?"management":"attendant");
+    label.append(name,select);choices.append(label);
+  });
+  $("teamProfileField").hidden=!keys.length;
+}
+
 function renderClinicPermissions(user) {
   $("clinicChoices").replaceChildren();
+  const syncTeamProfiles=()=>renderTeamProfiles(user,user?.is_master?clinicCatalog.map(clinic=>clinic.key):Array.from($("clinicChoices").querySelectorAll('input[name="clinic_key"]:checked'),input=>input.value));
   clinicCatalog.forEach(clinic=>{
     const section=document.createElement("div");section.className="clinicPermissions";section.dataset.clinic=clinic.key;
     const label=document.createElement("label"),toggle=document.createElement("input"),name=document.createElement("span");label.className="checkboxLabel clinicToggle";toggle.type="checkbox";toggle.name="clinic_key";toggle.value=clinic.key;toggle.checked=Boolean(user?.clinic_keys?.includes(clinic.key));toggle.disabled=Boolean(user?.is_master);name.textContent=clinic.name;label.append(toggle,name);section.append(label);
@@ -38,18 +54,20 @@ function renderClinicPermissions(user) {
     const grid=document.createElement("div");grid.className="permissionGrid";permissionGrid(grid,user?.permissions?.[clinic.key]||[],clinic.key);details.append(grid);section.append(details);$("clinicChoices").append(section);
     const crm=clinic.key==="vielle"?renderCrmAccess(user):null;if(crm)details.append(crm);
     const syncCrm=()=>{if(crm)crm.hidden=!toggle.checked || !grid.querySelector('[data-permission="crm.view"]')?.checked;};syncCrm();
-    toggle.addEventListener("change",()=>{details.hidden=!toggle.checked;details.open=toggle.checked;syncCrm();});
+    toggle.addEventListener("change",()=>{details.hidden=!toggle.checked;details.open=toggle.checked;syncCrm();syncTeamProfiles();});
     profile.addEventListener("change",()=>{const selected=accessProfiles.find(item=>String(item.id)===profile.value);if(selected)setGridValues(grid,selected.permissions);syncCrm();});
     copy.addEventListener("change",()=>{const source=document.querySelector(`.clinicPermissions[data-clinic="${copy.value}"] .permissionGrid`);if(source)setGridValues(grid,gridValues(source));profile.value="";copy.value="";syncCrm();});
     all.addEventListener("click",()=>{grid.querySelectorAll("input").forEach(input=>{input.checked=true;});profile.value="";syncCrm();});
     none.addEventListener("click",()=>{setGridValues(grid,[]);profile.value="";syncCrm();});
     grid.addEventListener("change",()=>{profile.value="";syncCrm();});
   });
+  syncTeamProfiles();
 }
 function collectClinicPermissions(keys) { return Object.fromEntries(keys.map(key=>[key,gridValues(document.querySelector(`.clinicPermissions[data-clinic="${key}"] .permissionGrid`))])); }
 
 const auditLabels={login:"Login realizado",login_denied:"Login negado",logout:"Logout",user_created:"Usuário criado",user_updated:"Usuário editado",user_activated:"Usuário ativado",user_deactivated:"Usuário desativado",password_reset:"Senha redefinida",clinics_changed:"Clínicas alteradas",permissions_changed:"Permissões alteradas",profile_saved:"Perfil salvo"};
 auditLabels.crm_access_changed="Acessos do CRM alterados";
+auditLabels.team_profiles_changed="Perfis da equipe alterados";
 Object.entries(auditLabels).forEach(([key,label])=>$("auditAction").append(choiceOption(key,label)));
 let auditPage=1,auditRequest=0,editingProfile=null;
 async function loadAudit() {

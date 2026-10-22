@@ -11,7 +11,7 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from clinic_catalog import SUPPORTED_CLINICS, validate_clinic_keys
-from access_store import AccessStoreMixin, initialize_access_schema, validate_crm_scope, CRM_SCOPE_UNCHANGED
+from access_store import AccessStoreMixin, initialize_access_schema, validate_crm_scope, CRM_SCOPE_UNCHANGED, TEAM_PROFILES_UNCHANGED
 from access_policy import permission_map
 from team_presence import initialize_schema as initialize_team_schema, close_sessions as close_team_sessions
 
@@ -142,7 +142,7 @@ class AuthStore(AccessStoreMixin):
             initialize_team_schema(conn)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, actor_id=None):
+    def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         if status not in ("active", "inactive") or not isinstance(is_master, bool):
@@ -166,6 +166,8 @@ class AuthStore(AccessStoreMixin):
                              [(user_id, key, now) for key in keys])
             self._save_permissions(conn, user_id, keys, permissions)
             self._save_crm_scope(conn, user_id, crm_scope, actor_id)
+            self._save_team_profiles(conn, user_id, list(SUPPORTED_CLINICS) if is_master else keys,
+                                     team_profiles, {}, actor_id, is_master=is_master)
             self._audit(conn, "user_created", actor_id, user_id, {"clinics": keys, "permissions": permissions})
             return user_id
 
@@ -214,6 +216,7 @@ class AuthStore(AccessStoreMixin):
         from access_policy import clinic_permissions
         user["crm_scope"] = None if user["is_master"] else self._crm_scope(conn, user["id"])
         user["permissions"] = {clinic: clinic_permissions(clinic) if user["is_master"] else [item[0] for item in conn.execute("SELECT permission_key FROM user_clinic_permissions WHERE user_id = ? AND clinic_key = ? ORDER BY permission_key", (user["id"], clinic))] for clinic in user["clinic_keys"]}
+        user["team_profiles"] = self._team_profiles(conn, user["id"], user["clinic_keys"], bool(user["is_master"]))
         return user
 
     def allowed_clinics(self, user_id):
@@ -229,7 +232,7 @@ class AuthStore(AccessStoreMixin):
             row = conn.execute(f"SELECT {USER_PUBLIC_COLUMNS} FROM users WHERE id = ?", (user_id,)).fetchone()
             return self._public_memberships(conn, row) if row else None
 
-    def update_user(self, user_id, nome, login, *, clinic_keys=None, permissions=None, crm_scope=CRM_SCOPE_UNCHANGED, actor_id=None):
+    def update_user(self, user_id, nome, login, *, clinic_keys=None, permissions=None, crm_scope=CRM_SCOPE_UNCHANGED, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         login = normalize_login(login)
@@ -244,6 +247,7 @@ class AuthStore(AccessStoreMixin):
                     raise ValueError("O Master possui acesso a todo o CRM.")
                 self._save_crm_scope(conn, user_id, crm_scope, actor_id)
             old_keys = [row[0] for row in conn.execute("SELECT clinic_key FROM user_clinics WHERE user_id = ?", (user_id,))]
+            previous_profiles = self._team_profiles(conn, user_id, list(SUPPORTED_CLINICS) if old["is_master"] else old_keys, bool(old["is_master"]))
             old_permissions = {clinic: [row[0] for row in conn.execute("SELECT permission_key FROM user_clinic_permissions WHERE user_id = ? AND clinic_key = ? ORDER BY permission_key", (user_id, clinic))] for clinic in old_keys}
             if permissions is not None and keys is None:
                 keys = old_keys
@@ -259,6 +263,8 @@ class AuthStore(AccessStoreMixin):
                     self._audit(conn, "clinics_changed", actor_id, user_id, {"before": old_keys, "after": keys})
                 if old_permissions != next_permissions:
                     self._audit(conn, "permissions_changed", actor_id, user_id, {"before": old_permissions, "after": next_permissions})
+            self._save_team_profiles(conn, user_id, list(SUPPORTED_CLINICS) if old["is_master"] else (old_keys if keys is None else keys),
+                                     team_profiles, previous_profiles, actor_id, is_master=bool(old["is_master"]))
             conn.execute("UPDATE users SET nome = ?, login = ?, updated_at = ? WHERE id = ?", (nome.strip(), login, utc_now(), user_id))
             if old["login"] != login:
                 close_team_sessions(conn, time.time(), user_id=user_id)

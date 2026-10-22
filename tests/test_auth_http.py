@@ -999,6 +999,42 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(self.request("POST",f"/api/master/users/{uid}/status",{"active":False},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)
         self.assertEqual(self.request("GET","/api/master/users",cookie=cookie)[0],200)
 
+    def test_master_team_profile_is_scoped_audited_and_does_not_grant_permissions(self):
+        cookie=self.master_cookie(); headers={"X-DOC4DOCS-Request":"1"}
+        before=self.store.get_public_user(self.user_id)
+        payload={"nome":before["nome"],"login":before["login"],"team_profiles":{"vielle":"management"}}
+        path=f"/api/master/users/{self.user_id}/edit"
+        self.assertEqual(self.request("POST",path,payload,cookie)[0],403)
+        status,_,body=self.request("POST",path,payload,cookie,headers)
+        self.assertEqual(status,200,body)
+        user=json.loads(body)["user"]
+        self.assertEqual(user["team_profiles"],{"vielle":"management"})
+        self.assertEqual(user["permissions"],before["permissions"])
+        self.assertEqual(self.request("POST",path,{**payload,"team_profiles":{"carla":"management"}},cookie,headers)[0],400)
+        self.assertEqual(self.request("POST",path,{**payload,"team_profiles":None},cookie,headers)[0],400)
+        self.assertTrue(self.store.list_audit(action="team_profiles_changed")["events"])
+        regular,_=self.login()
+        self.assertEqual(self.request("POST",path,payload,regular,headers)[0],403)
+
+    def test_master_can_set_own_team_profile_without_changing_account_access(self):
+        cookie=self.master_cookie(); headers={"X-DOC4DOCS-Request":"1"}
+        master=self.store.get_user_by_login("master")
+        path=f"/api/master/users/{master['id']}/edit"
+        status,_,body=self.request("POST",path,{"nome":"Master","login":"master","team_profiles":{"vielle":"attendant"}},cookie,headers)
+        self.assertEqual(status,200,body)
+        user=json.loads(body)["user"]
+        self.assertTrue(user["is_master"])
+        self.assertEqual(set(user["clinic_keys"]),set(SUPPORTED_CLINICS))
+        self.assertEqual(user["team_profiles"]["vielle"],"attendant")
+
+    def test_master_creates_user_with_team_profile(self):
+        cookie=self.master_cookie(); headers={"X-DOC4DOCS-Request":"1"}
+        payload={"nome":"Gestao Teste","login":"gestaoteste","password":"Temporary-test-password!",
+                 "clinic_keys":["vielle"],"permissions":{"vielle":[]},"team_profiles":{"vielle":"management"}}
+        status,_,body=self.request("POST","/api/master/users",payload,cookie,headers)
+        self.assertEqual(status,201,body)
+        self.assertEqual(json.loads(body)["user"]["team_profiles"],{"vielle":"management"})
+
     def test_clinic_isolation_in_pages_and_apis(self):
         cookie, _ = self.login()
         headers = {"X-DOC4DOCS-Request": "1"}

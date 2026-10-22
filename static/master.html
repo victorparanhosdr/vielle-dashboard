@@ -9,9 +9,9 @@
     <link rel="stylesheet" href="/master.css?v=crm-scope-1">
     <script src="/session.js"></script>
     <script src="/master-icons.js" defer></script>
-    <script src="/master.js?v=crm-scope-1" defer></script>
+    <script src="/master.js?v=team-profile-1" defer></script>
     <script src="/master-crm-access.js?v=1" defer></script>
-    <script src="/master-access.js?v=crm-scope-1" defer></script>
+    <script src="/master-access.js?v=team-profile-1" defer></script>
   <link rel="stylesheet" href="/design-system.css?v=crm-release1">
   <script src="/body-icons.js" defer></script>
   <script src="/app-shell.js?v=crm-release1" defer></script>
@@ -61,6 +61,7 @@
         <label><span>Login</span><input id="userLogin" name="login" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
         <label id="initialPasswordField"><span>Senha (mínimo de 12 caracteres)</span><input id="initialPassword" name="password" type="password" autocomplete="new-password" minlength="12"></label>
         <label id="initialStatusField" class="checkboxLabel"><input id="initialActive" type="checkbox" checked><span>Usuário ativo</span></label>
+        <fieldset id="teamProfileField" hidden><legend>Perfil na equipe</legend><div id="teamProfileChoices" class="permissionTools"></div></fieldset>
         <fieldset id="clinicMemberships"><legend>Clínicas permitidas</legend><div id="clinicChoices"></div></fieldset>
         <p id="masterClinicNotice" hidden>Master: acesso a todas as clínicas.</p>
         <p id="userFormError" class="formError" role="alert"></p>

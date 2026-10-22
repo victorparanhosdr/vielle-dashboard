@@ -5,8 +5,19 @@ import re
 from datetime import datetime, timezone
 
 from access_policy import clinic_permissions, permission_map, profile_defaults, validate_permissions
+from clinic_catalog import SUPPORTED_CLINICS
 
 CRM_SCOPE_UNCHANGED = object()
+TEAM_PROFILES_UNCHANGED = object()
+
+
+def validate_team_profiles(value, clinics):
+    if not isinstance(value, dict) or len(value) > len(SUPPORTED_CLINICS):
+        raise ValueError("Selecione o perfil na equipe de cada clinica.")
+    if any(clinic not in clinics or profile not in ("attendant", "management")
+           for clinic, profile in value.items()):
+        raise ValueError("Perfil de equipe ou clinica invalido.")
+    return dict(value)
 
 
 def validate_crm_scope(value):
@@ -30,6 +41,11 @@ def timestamp():
 
 
 def initialize_access_schema(conn, old_version):
+    conn.execute("""CREATE TABLE IF NOT EXISTS user_team_profiles (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        clinic_key TEXT NOT NULL, profile TEXT NOT NULL CHECK(profile IN ('attendant','management')),
+        updated_at TEXT NOT NULL, PRIMARY KEY(user_id,clinic_key)
+    )""")
     conn.execute("""CREATE TABLE IF NOT EXISTS user_crm_scope (
         user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         scope_json TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -61,6 +77,23 @@ def initialize_access_schema(conn, old_version):
 
 
 class AccessStoreMixin:
+    def _team_profiles(self, conn, user_id, clinics, is_master=False):
+        saved = dict(conn.execute("SELECT clinic_key,profile FROM user_team_profiles WHERE user_id=?", (user_id,)))
+        default = "management" if is_master else "attendant"
+        return {clinic: saved.get(clinic, default) for clinic in clinics}
+
+    def _save_team_profiles(self, conn, user_id, clinics, profiles, previous, actor_id=None, *, is_master=False):
+        values = {} if profiles is TEAM_PROFILES_UNCHANGED else validate_team_profiles(profiles, clinics)
+        default = "management" if is_master else "attendant"
+        current = {clinic: previous.get(clinic, default) for clinic in clinics}
+        current.update(values)
+        if previous == current:
+            return
+        conn.execute("DELETE FROM user_team_profiles WHERE user_id=?", (user_id,))
+        conn.executemany("INSERT INTO user_team_profiles VALUES(?,?,?,?)",
+                         [(user_id, clinic, profile, timestamp()) for clinic, profile in current.items()])
+        self._audit(conn, "team_profiles_changed", actor_id, user_id, {"before": previous, "after": current})
+
     def _crm_scope(self, conn, user_id):
         row = conn.execute("SELECT scope_json FROM user_crm_scope WHERE user_id=?", (user_id,)).fetchone()
         return json.loads(row[0]) if row else None

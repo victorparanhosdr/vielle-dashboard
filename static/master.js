@@ -64,7 +64,7 @@ function openUser(user=null) {
   $("userName").value=user?.nome||"";$("userLogin").value=user?.login||"";
   $("initialPasswordField").hidden=Boolean(user);$("initialStatusField").hidden=Boolean(user);$("initialPassword").required=!user;$("initialPassword").disabled=Boolean(user);
   $("clinicMemberships").hidden=Boolean(user?.is_master);$("masterClinicNotice").hidden=!user?.is_master;
-  renderClinicPermissions(user);
+  $("teamProfileChoices").replaceChildren();renderClinicPermissions(user);
   $("userDialog").showModal();$("userName").focus();
 }
 function openPassword(user) { passwordUser=user;$("passwordForm").reset();$("passwordError").textContent="";$("passwordTarget").textContent=`${user.nome} · ${user.login}`;$("passwordDialog").showModal();$("newPassword").focus(); }
@@ -75,6 +75,7 @@ function formSubmit(formId, buttonId, errorId, run) {
 formSubmit("userForm","saveUser","userFormError",async()=>{
   const body={nome:$("userName").value,login:$("userLogin").value};const user=editing;
   if(!user?.is_master){body.clinic_keys=Array.from($("clinicChoices").querySelectorAll('input[name="clinic_key"]:checked'),input=>input.value);body.permissions=collectClinicPermissions(body.clinic_keys);body.crm_scope=collectCrmScope();}
+  body.team_profiles=collectTeamProfiles();
   if(!user){body.password=$("initialPassword").value;body.status=$("initialActive").checked?"active":"inactive";}
   const result=await api(user?`/api/master/users/${user.id}/edit`:"/api/master/users",body);
   $("userDialog").close();notice(user?"Usuário atualizado.":"Usuário criado.");

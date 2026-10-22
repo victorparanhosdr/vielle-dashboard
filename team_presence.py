@@ -109,11 +109,13 @@ class TeamPresence:
         self.auth = auth
 
     @staticmethod
-    def roster(c, clinic):
+    def roster(c, clinic, *, attendants_only=False):
         return [dict(row) for row in c.execute("""SELECT u.id,u.nome AS name FROM users u
+            LEFT JOIN user_team_profiles profile ON profile.user_id=u.id AND profile.clinic_key=?
             WHERE u.status='active' AND (u.is_master=1 OR EXISTS(
                 SELECT 1 FROM user_clinics m WHERE m.user_id=u.id AND m.clinic_key=?))
-            ORDER BY u.nome COLLATE NOCASE,u.id""", (clinic,))]
+            AND (?=0 OR coalesce(profile.profile,CASE WHEN u.is_master=1 THEN 'management' ELSE 'attendant' END)='attendant')
+            ORDER BY u.nome COLLATE NOCASE,u.id""", (clinic, clinic, attendants_only))]
 
     def heartbeat(self, clinic, user_id, token, payload, *, leave=False, now=None):
         now = time.time() if now is None else now
@@ -185,11 +187,11 @@ class TeamPresence:
         now = time.time() if now is None else now
         with self.auth.connection() as c:
             c.execute("BEGIN IMMEDIATE")
-            members = self.roster(c, clinic)
+            members = self.roster(c, clinic, attendants_only=True)
             for member in members:
                 previous = c.execute("SELECT 1 FROM team_presence WHERE clinic_key=? AND user_id=?", (clinic, member["id"])).fetchone()
                 member.update(settle(c, clinic, member["id"], now) if previous else {"status": "offline", "status_since": None})
-            ids = {member["id"] for member in members}
+            ids = {member["id"] for member in self.roster(c, clinic)}
             requests = [item for item in self._help(c, clinic, user_id, now) if item["sender_id"] in ids and item["recipient_id"] in ids]
         return {"members": members, "help_requests": requests, "server_time": now, "idle_after": IDLE_SECONDS, "lease_seconds": LEASE_SECONDS}
 
@@ -214,6 +216,8 @@ class TeamPresence:
                 if previous["recipient_id"] != recipient or previous["message"] != message:
                     raise ValueError("Este pedido já foi utilizado.")
                 return previous["id"]
+            if recipient not in {member["id"] for member in self.roster(c, clinic, attendants_only=True)}:
+                raise PermissionError("Selecione um atendente desta clinica.")
             if settle(c, clinic, recipient, now)["status"] == "offline":
                 raise ValueError("Este colega está offline. Escolha alguém online.")
             if c.execute("SELECT count(*) FROM team_help WHERE clinic_key=? AND sender_id=? AND created_at>?", (clinic, user_id, now - 60)).fetchone()[0] >= 5:

@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 from auth_store import normalize_login, password_bytes
 from clinic_catalog import CLINIC_DISPLAY_NAMES, validate_clinic_keys
 from access_policy import MODULES, ACTION_LABELS, permission_map
-from access_store import validate_crm_scope
+from access_store import validate_crm_scope, TEAM_PROFILES_UNCHANGED
 
 
 def crm_catalog(auth):
@@ -110,7 +110,7 @@ class MasterApiMixin:
                 self.auth_json({"ok": True, "id": profile_id})
                 return True
             if not match:
-                user_fields(data, ("nome", "login", "password", "status", "clinic_keys", "permissions", "crm_scope"))
+                user_fields(data, ("nome", "login", "password", "status", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
                 name, login = validate_identity(data)
                 password = validate_password(data)
                 status = data.get("status", "active")
@@ -121,7 +121,8 @@ class MasterApiMixin:
                     raise ValueError("Permissões inválidas.")
                 permissions = permission_map(keys, data.get("permissions", {key: [] for key in keys}))
                 scope = crm_scope_fields(store, data)
-                user_id = store.create_user(name, login, password, status=status, clinic_keys=keys, permissions=permissions, actor_id=actor_id, **scope)
+                user_id = store.create_user(name, login, password, status=status, clinic_keys=keys, permissions=permissions,
+                                            team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope)
                 self.auth_json({"ok": True, "user": store.get_public_user(user_id)}, 201)
                 return True
             user_id, action = int(match[1]), match[2]
@@ -129,14 +130,15 @@ class MasterApiMixin:
                 self.auth_json({"ok": False, "error": "Usuário não encontrado."}, 404)
                 return True
             if action == "edit":
-                user_fields(data, ("nome", "login", "clinic_keys", "permissions", "crm_scope"))
+                user_fields(data, ("nome", "login", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
                 name, login = validate_identity(data)
                 if "clinic_keys" in data and not isinstance(data["clinic_keys"], list):
                     raise ValueError("Clínicas inválidas.")
                 if "permissions" in data and not isinstance(data["permissions"], dict):
                     raise ValueError("Permissões inválidas.")
                 scope = crm_scope_fields(store, data)
-                store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"), actor_id=actor_id, **scope)
+                store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"),
+                                  team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope)
             elif action == "status":
                 user_fields(data, ("active",))
                 if not isinstance(data.get("active"), bool):
