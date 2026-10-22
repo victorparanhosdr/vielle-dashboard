@@ -232,8 +232,6 @@ def dashboard(store,doctor,query):
                 row["start_blocker"]="Reconecte o numero para retomar."
             elif c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='sending'",(row["channel_id"],)).fetchone():
                 row["start_blocker"]="Aguarde o envio em andamento e atualize."
-            elif c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='unknown' AND automation_excluded_at=0 AND (campaign_id IS NULL OR campaign_id<>?)",(row["channel_id"],row["id"])).fetchone():
-                row["start_blocker"]="Outro envio deste numero precisa de revisao na campanha de origem."
             row["progress"]=round(100*(row["total"]-row["counts"].get("queued",0)-row["counts"].get("sending",0))/row["total"]) if row["total"] else 0
             row["daily_used"]=c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND campaign_id IS NOT NULL AND (sent_at>=? OR claimed_at>=?)",(row["channel_id"],datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp(),datetime.now(TZ).replace(hour=0,minute=0,second=0,microsecond=0).timestamp())).fetchone()[0]
         metrics=Counter(r[0] for r in c.execute("""SELECT m.status,m.campaign_id FROM messages m JOIN campaigns ca ON ca.id=m.campaign_id

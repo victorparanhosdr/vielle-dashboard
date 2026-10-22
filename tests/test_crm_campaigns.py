@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from tests import test_crm as base
 from crm_campaigns import audience, candidates, create, dashboard, detail, template
 from crm_access import crm_access
-from crm_store import Conflict, TZ
+from crm_store import CrmStore, Conflict, TZ
 from crm_worker import tick
 
 
@@ -163,15 +163,121 @@ class CampaignTests(unittest.TestCase):
             self.assertGreater(row["automation_excluded_at"],0)
         self.assertEqual(detail(self.store,self.a,key,{})["campaign"]["status"],"done")
 
-    def test_resume_cannot_override_inflight_or_unrelated_unknown_sends(self):
+    def test_resume_cannot_override_inflight_but_unrelated_unknown_is_isolated(self):
         key=self.campaign([self.lead(),self.lead(number="5500000000003")]);self.enable(key)
         item=self.store.claim(self.now)
         self.store.campaign_status(key,self.a,"pause")
         with self.assertRaises(Conflict):self.store.campaign_status(key,self.a,"start",True,exclude_unknown=True)
         self.store.finish(item,error=True)
         other=self.campaign([self.lead(number="5500000000004")])
-        with self.assertRaises(Conflict):self.store.campaign_status(other,self.a,"start",True,exclude_unknown=True)
+        self.assertEqual(next(row for row in dashboard(self.store,self.a,{})["campaigns"] if row["id"]==other)["start_blocker"],"")
+        self.store.campaign_status(other,self.a,"start",True)
+        sent=self.store.claim(self.now+61)
+        self.assertEqual(sent["campaign_id"],other)
+        self.assertNotEqual(sent["contact_id"],item["contact_id"])
+        self.store.finish(sent,"other-contact-accepted")
+        self.assertIsNone(self.store.claim(self.now+122))
         with self.store.db() as c:self.assertEqual(self.store.row(c,"messages",item["id"])["automation_excluded_at"],0)
+
+    def test_manual_unknown_does_not_block_unrelated_campaign(self):
+        first=self.lead()
+        contact=self.store.detail(first,self.a)["lead"]["contact_id"]
+        with self.store.db() as c:c.execute("UPDATE channels SET state='open' WHERE id=?",(self.channel,))
+        manual=self.store.reply({"doctor_id":self.a,"channel_id":self.channel,"contact_id":contact,
+            "body":"Resposta sintetica anterior","request_id":"manual-unknown"},"operator",True,sender_name="Equipe")
+        item=self.store.claim(self.now)
+        self.store.finish(item,error=True)
+        target=self.lead(number="5500000000004")
+        key=create(self.store,self.payload(self.preview(lead_ids=[target],channel_id=self.channel)),self.actor())
+        self.assertEqual(next(row for row in dashboard(self.store,self.a,{})["campaigns"] if row["id"]==key)["start_blocker"],"")
+        self.store.campaign_status(key,self.a,"start",True)
+        gateway=Mock();gateway.send.return_value="synthetic-acceptance"
+        self.assertTrue(tick(self.store,gateway,self.now+61))
+        self.assertEqual(gateway.send.call_args.args[0]["campaign_id"],key)
+        self.assertFalse(tick(self.store,gateway,self.now+122))
+        gateway.send.assert_called_once()
+        with self.store.db() as c:
+            previous=self.store.row(c,"messages",manual)
+            self.assertEqual((previous["status"],previous["provider_id"],previous["automation_excluded_at"]),("unknown",None,0))
+
+    def test_late_uncertainty_skips_only_matching_recipient_without_changing_original(self):
+        first=self.lead();second=self.lead(number="5500000000004")
+        original=self.campaign([first])
+        copied=create(self.store,self.payload(self.preview(lead_ids=[first,second],channel_id=self.channel)),self.actor())
+        self.enable(original)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        self.store.campaign_status(original,self.a,"cancel")
+        before=detail(self.store,self.a,original,{})
+        self.store.campaign_status(copied,self.a,"start",True)
+        gateway=Mock();gateway.send.return_value="other-recipient-accepted"
+        self.assertTrue(tick(self.store,gateway,self.now+61))
+        self.assertNotEqual(gateway.send.call_args.args[0]["contact_id"],item["contact_id"])
+        self.assertFalse(tick(self.store,gateway,self.now+122))
+        gateway.send.assert_called_once()
+        self.assertEqual(detail(self.store,self.a,original,{}),before)
+        rows=detail(self.store,self.a,copied,{})["items"]
+        self.assertCountEqual([row["status"] for row in rows],["sent","skipped"])
+        self.assertIn("sem confirmacao",next(row for row in rows if row["status"]=="skipped")["skip_reason"])
+
+    def test_uncertain_phone_is_protected_even_when_contact_ids_differ(self):
+        first=self.lead();second=self.lead(number="5500000000004");third=self.lead(number="5500000000005")
+        original=self.campaign([first]);copied=self.campaign([second,third])
+        self.enable(original)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        second_phone=self.store.detail(second,self.a)["lead"]["phone"]
+        with self.store.db() as c:c.execute("UPDATE messages SET recipient_phone=? WHERE id=?",(second_phone,item["id"]))
+        self.store.campaign_status(copied,self.a,"start",True)
+        sent=self.store.claim(self.now+61)
+        self.assertEqual(sent["contact_id"],self.store.detail(third,self.a)["lead"]["contact_id"])
+        self.store.finish(sent,"third-recipient-accepted")
+        self.assertIsNone(self.store.claim(self.now+122))
+        self.assertCountEqual([r["status"] for r in detail(self.store,self.a,copied,{})["items"]],["sent","skipped"])
+
+    def test_only_uncertain_recipient_is_skipped_without_any_provider_call(self):
+        first=self.lead();original=self.campaign([first]);copied=self.campaign([first])
+        self.enable(original)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        self.store.campaign_status(copied,self.a,"start",True)
+        gateway=Mock()
+        self.assertFalse(tick(self.store,gateway,self.now+61))
+        gateway.send.assert_not_called()
+        data=detail(self.store,self.a,copied,{})
+        self.assertEqual((data["campaign"]["status"],data["items"][0]["status"]),("done","skipped"))
+
+    def test_recipient_guard_never_bypasses_concurrent_claim_or_daily_limit(self):
+        original=self.campaign();self.enable(original)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        copied=self.campaign([self.lead(number="5500000000004"),self.lead(number="5500000000005")])
+        self.store.campaign_status(copied,self.a,"start",True)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            claims=list(pool.map(lambda _:self.store.claim(self.now+61),range(2)))
+        active=[claim for claim in claims if claim is not None]
+        self.assertEqual(len(active),1)
+        self.assertIsNone(self.store.claim(self.now+62))
+        self.store.finish(active[0],"accepted-once")
+        with self.store.db() as c:c.execute("UPDATE channels SET daily_limit=1 WHERE id=?",(self.channel,))
+        self.assertIsNone(self.store.claim(self.now+122))
+
+    def test_upgrade_preserves_legacy_queues_until_explicit_start(self):
+        original=self.campaign();self.enable(original)
+        item=self.store.claim(self.now);self.store.finish(item,error=True)
+        copied=self.campaign([self.lead(number="5500000000004")])
+        draft=self.campaign([self.lead(number="5500000000005")])
+        with self.store.db() as c:
+            c.execute("UPDATE campaigns SET status='running' WHERE id=?",(copied,))
+            c.execute("ALTER TABLE campaigns DROP COLUMN recipient_uncertainty_guard")
+            before=[tuple(row) for row in c.execute("SELECT id,status,claimed_at,sent_at FROM messages ORDER BY id")]
+        self.store=CrmStore(self.tmp.name)
+        with self.store.db() as c:
+            self.assertEqual(c.execute("SELECT sum(recipient_uncertainty_guard) FROM campaigns").fetchone()[0],0)
+            self.assertEqual([tuple(row) for row in c.execute("SELECT id,status,claimed_at,sent_at FROM messages ORDER BY id")],before)
+        self.assertIsNone(self.store.claim(self.now+61))
+        self.assertEqual(detail(self.store,self.a,draft,{})["campaign"]["status"],"draft")
+        self.assertEqual(detail(self.store,self.a,original,{})["campaign"]["status"],"paused")
+        self.store.campaign_status(copied,self.a,"pause")
+        self.store.campaign_status(copied,self.a,"start",True)
+        sent=self.store.claim(self.now+122)
+        self.assertEqual(sent["campaign_id"],copied)
 
     def test_final_uncertain_message_can_be_closed_without_resending(self):
         key=self.campaign();self.enable(key)

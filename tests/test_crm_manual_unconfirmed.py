@@ -185,11 +185,9 @@ class ManualUnconfirmedTests(unittest.TestCase):
         self.store.finish(stale, "accepted-second")
         self.assertIsNone(self.store.claim())
 
-    def test_campaign_does_not_resume_behind_the_manual_reply(self):
+    def test_draft_campaign_does_not_start_behind_the_manual_reply(self):
         self.unknown()
         campaign = self.campaign(ids=[self.key])
-        with self.assertRaisesRegex(Conflict, "Outro envio"):
-            self.store.campaign_status(campaign, self.a, "start", True)
         target = self.text("Atendimento manual", "new")
         gateway = Mock()
         gateway.send.return_value = "accepted-manual"
@@ -198,6 +196,7 @@ class ManualUnconfirmedTests(unittest.TestCase):
         self.assertFalse(tick(self.store, gateway))
         with self.store.db() as c:
             self.assertEqual(c.execute("SELECT status FROM messages WHERE campaign_id=?", (campaign,)).fetchone()[0], "queued")
+            self.assertEqual(self.store.row(c, "campaigns", campaign)["status"], "draft")
 
     def test_duplicate_guard_is_scoped_to_recipient_and_sender_number(self):
         previous = self.unknown()

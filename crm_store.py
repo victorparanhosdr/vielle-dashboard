@@ -217,7 +217,8 @@ class CrmStore:
                 ("minute_from", "INTEGER NOT NULL DEFAULT 0"), ("minute_to", "INTEGER NOT NULL DEFAULT 0"),
                 ("tag", "TEXT NOT NULL DEFAULT ''"), ("selected_count", "INTEGER NOT NULL DEFAULT 0"),
                 ("duplicates_count", "INTEGER NOT NULL DEFAULT 0"), ("excluded_count", "INTEGER NOT NULL DEFAULT 0"),
-                ("institute_keys", "TEXT NOT NULL DEFAULT '[]'"), ("revision", "INTEGER NOT NULL DEFAULT 1")):
+                ("institute_keys", "TEXT NOT NULL DEFAULT '[]'"), ("revision", "INTEGER NOT NULL DEFAULT 1"),
+                ("recipient_uncertainty_guard", "INTEGER NOT NULL DEFAULT 0")):
                 if name not in columns:
                     c.execute(f"ALTER TABLE campaigns ADD COLUMN {name} {definition}")
             c.executescript("""
@@ -1200,8 +1201,8 @@ class CrmStore:
                     if exclude_unknown is not True:
                         raise Conflict("Confirme que os envios sem confirmacao ficarao fora da retomada. Eles nao serao repetidos.")
                     c.execute("UPDATE messages SET automation_excluded_at=?,automation_excluded_by=? WHERE campaign_id=? AND status='unknown' AND automation_excluded_at=0", (time.time(), str(actor_id), key))
-                if c.execute("SELECT 1 FROM messages WHERE channel_id=? AND status='unknown' AND automation_excluded_at=0", (channel["id"],)).fetchone():
-                    raise Conflict("Outro envio deste numero esta sem confirmacao. Revise a campanha de origem antes de retomar.")
+                # Opt in only on explicit start; deployment must not release legacy queues.
+                c.execute("UPDATE campaigns SET recipient_uncertainty_guard=1 WHERE id=?", (key,))
             c.execute("UPDATE campaigns SET status=?,last_error='',revision=revision+1 WHERE id=?", (target, key))
             if action == "cancel":
                 c.execute("UPDATE messages SET status='cancelled' WHERE campaign_id=? AND status='queued'", (key,))
@@ -1252,7 +1253,10 @@ class CrmStore:
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Envio anterior sem confirmacao neste numero; nao repetido'
                 WHERE status='queued' AND campaign_id IS NOT NULL AND EXISTS
                 (SELECT 1 FROM messages pending WHERE pending.channel_id=messages.channel_id AND pending.status='unknown'
-                 AND pending.automation_excluded_at>0 AND (pending.contact_id=messages.contact_id
+                 AND (pending.automation_excluded_at>0 OR EXISTS
+                     (SELECT 1 FROM campaigns current WHERE current.id=messages.campaign_id
+                      AND current.status='running' AND current.recipient_uncertainty_guard=1))
+                 AND (pending.contact_id=messages.contact_id
                      OR (pending.recipient_phone<>'' AND pending.recipient_phone=messages.recipient_phone)))""")
             c.execute("UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND (status IN ('queued','sending') OR (status='unknown' AND automation_excluded_at=0)))")
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
@@ -1264,7 +1268,8 @@ class CrmStore:
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id
                     AND (pending.status='sending' OR (pending.status='unknown'
                         AND (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.independent_manual_send=0)
-                        AND (pending.automation_excluded_at=0 OR pending.contact_id=m.contact_id
+                        AND ((pending.automation_excluded_at=0 AND (m.campaign_id IS NULL OR ca.recipient_uncertainty_guard=0))
+                            OR pending.contact_id=m.contact_id
                             OR (pending.recipient_phone<>'' AND pending.recipient_phone=coalesce(nullif(m.recipient_phone,''),ct.phone))))))
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
