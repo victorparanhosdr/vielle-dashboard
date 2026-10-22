@@ -2,6 +2,7 @@
 import os
 import logging
 from pathlib import Path
+import sqlite3
 import threading
 import time
 
@@ -42,11 +43,17 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
 
 def run(auth, stop):
     from crm_api import store_for
-    store = store_for(auth)
+    store = None
     gateway = EvolutionGateway()
     webhook_next = {}
-    while not stop.wait(2):
-        if sends_enabled():
+    delay = 2
+    while not stop.wait(delay):
+        try:
+            if not sends_enabled():
+                delay = 2
+                continue
+            if store is None:
+                store = store_for(auth)
             store.heartbeat()
             with store.db() as c:
                 channels = [dict(r) for r in c.execute("SELECT * FROM channels WHERE state='open'")]
@@ -60,6 +67,14 @@ def run(auth, stop):
                     webhook_next[channel["id"]] = time.time() + 300
                     logging.warning("CRM WhatsApp webhook configuration pending")
             tick(store, gateway, allow_campaigns=campaigns_enabled() or store.campaigns_allowed())
+            delay = 2
+        except sqlite3.OperationalError as exc:
+            code = getattr(exc, "sqlite_errorcode", None)
+            if code is None or (code & 0xff) not in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
+                raise
+            # Retry the worker cycle, never reset or replay an in-flight message.
+            delay = min(delay * 2, 30)
+            logging.warning("CRM WhatsApp worker waiting for database; retrying in %s seconds", delay)
 
 
 if __name__ == "__main__":
