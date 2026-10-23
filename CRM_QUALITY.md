@@ -81,14 +81,51 @@ de produtividade. Nao ha decisao automatica de remuneracao ou emprego.
 
 ## Acesso
 
-Painel e API exclusivos do Master. Clinic, profissional, sessao e origem sao
-validados no servidor. A versao nativa atual esta restrita ao CRM Vielle.
+Regua, solicitacao de analise, painel da equipe e revisao continuam exclusivos
+do Master. A area Minhas avaliacoes permite ao atendente consultar somente
+suas proprias notas publicadas pela revisao humana. Clinic, profissional,
+funil, instituto, sessao e origem sao validados no servidor. A versao nativa
+atual esta restrita ao CRM Vielle.
 
 Promocao de outro usuario a Master ocorre em rota especifica com confirmacao,
 login esperado e Master ativo validados novamente na transacao. Acesso total
 a todas as clinicas e configuracoes. Promocao auditada, sem trocar senha ou
 identidade, encerra as sessoes anteriores do promovido e o classifica como
 Gestao. Editar usuario ou criar conta comum nao promove implicitamente.
+
+## Aceite e ressalva do atendente
+
+Minhas avaliacoes inclui mes de recebimento, situacao, media e paginacao. O mes
+usa a primeira revisao humana em America/Sao_Paulo, nao a data da conversa nem
+a ultima alteracao da nota. Registros anteriores usam a primeira revisao do
+historico. A media usa todas as notas numericas do filtro, nao apenas a pagina;
+notas em contestacao continuam contando pela nota atual ate decisao do lider.
+Notas nao avaliaveis ficam fora do denominador. O profissional selecionado
+no CRM define o escopo, e o painel exibe seu nome.
+
+O usuario pode aceitar a versao atual ou enviar uma ressalva com justificativa,
+uma unica vez por avaliacao. A identidade vem da sessao, nunca do payload. Nao
+ha acesso a notas de colegas, resultados provisorios ou snapshot bruto pela
+API do atendente. Contato e numero sao identificados apenas no escopo de
+conversas que o usuario ja pode consultar; nao sao expostos telefones na area.
+
+Na Monitoria, o lider ve aguardando aceite, aceita, ressalva em analise e
+ressalva respondida. O filtro de ressalvas pendentes inclui qualquer data,
+inclusive avaliacoes fora dos ultimos trinta dias. O lider deve registrar uma
+decisao e resposta para resolver a ressalva. Pode acolher e manter/ajustar os
+descontos pelos criterios existentes ou manter a avaliacao, sem mudar a nota.
+Nao existe campo para inventar uma nota arbitraria. A decisao e a revisao da
+nota sao atomicas, com controle de concorrencia para ambas as versoes.
+
+Apos a decisao, o atendente pode dar ciencia, mas nao contestar novamente.
+Nova revisao da nota exige novo aceite, sem devolver a chance de ressalva
+ja utilizada. Aceite de uma versao impede contestar essa mesma versao.
+Original da IA, revisoes humanas, notas anteriores, aceite, ressalva e decisao
+permanecem auditados. Nenhuma dessas acoes chama IA ou envia mensagem.
+
+Tests: test_crm_quality_feedback.py, test_crm_quality_self_ui.cjs e o fluxo
+HTTP em test_auth_http.py. Previa sintetica: --quality-feedback-fixture;
+adicione --quality-feedback-self para entrar como atendente ficticio.
 
 ## Verificacao
 

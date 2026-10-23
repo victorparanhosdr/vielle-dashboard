@@ -61,6 +61,8 @@ def schema(c):
     c.execute("CREATE INDEX IF NOT EXISTS quality_jobs_context ON quality_jobs(context_key,created_at)")
     from crm_quality_audio import schema as audio_schema
     audio_schema(c)
+    from crm_quality_feedback import schema as feedback_schema
+    feedback_schema(c)
 
 
 def defaults():
@@ -416,6 +418,9 @@ def detail(store, doctor, ident):
         job["assessments"] = [{**dict(r), "original": json.loads(r["original"]), "result": json.loads(r["result"]),
             "history": [dict(h) for h in c.execute("SELECT actor_id,created_at,reason FROM quality_reviews WHERE assessment_id=? ORDER BY id", (r["id"],))]}
             for r in c.execute("SELECT * FROM quality_assessments WHERE job_id=? ORDER BY actor_name", (ident,))]
+        from crm_quality_feedback import response
+        for assessment in job["assessments"]:
+            assessment["response"] = response(c, assessment)
         return job
 
 
@@ -442,18 +447,30 @@ def review(store, doctor, ident, payload, actor):
                 item["reason"] = "Desconto desconsiderado pelo gestor: " + reason
         original["score"] = score(original["items"])
         body = json.dumps(original)
-        c.execute("UPDATE quality_assessments SET result=?,score=?,reviewed=1,revision=revision+1 WHERE id=?", (body, original["score"], ident))
-        c.execute("INSERT INTO quality_reviews(assessment_id,actor_id,created_at,reason,result) VALUES(?,?,?,?,?)", (ident, str(actor), time.time(), reason, body))
+        now = time.time()
+        from crm_quality_feedback import review_response
+        review_response(c, row, payload, actor, original, now)
+        c.execute("""UPDATE quality_assessments SET result=?,score=?,reviewed=1,revision=revision+1,
+            published_at=COALESCE(NULLIF(published_at,0),(SELECT min(created_at) FROM quality_reviews WHERE assessment_id=?),?) WHERE id=?""",
+            (body, original["score"], ident, now, ident))
+        c.execute("INSERT INTO quality_reviews(assessment_id,actor_id,created_at,reason,result) VALUES(?,?,?,?,?)", (ident, str(actor), now, reason, body))
 
 
-def listing(store, doctor, *, channel="", contact="", page=1):
+def listing(store, doctor, *, channel="", contact="", page=1, view="recent"):
     page = integer(page, 1, 100000)
+    if view not in {"recent", "contested"}:
+        raise ValueError("Filtro de monitoria inválido.")
     with store.db() as c:
         store.row(c, "doctors", doctor)
         if channel or contact:
             store.conversation_contact(c, doctor, channel, contact)
-        where = "j.doctor_id=? AND ch.doctor_id=j.doctor_id AND ct.merged_into='' AND j.created_at>=?"
-        args = [doctor, time.time()-30*86400]
+        where = "j.doctor_id=? AND ch.doctor_id=j.doctor_id AND ct.merged_into=''"
+        args = [doctor]
+        if view == "recent":
+            where += " AND j.created_at>=?"
+            args.append(time.time()-30*86400)
+        else:
+            where += " AND EXISTS(SELECT 1 FROM quality_assessments qa JOIN quality_responses qr ON qr.assessment_id=qa.id WHERE qa.job_id=j.id AND qa.reviewed=1 AND qr.contest_used=1 AND qr.decision='')"
         if channel:
             where += " AND j.channel_id=? AND j.contact_id=?"
             args.extend([channel, contact])
@@ -463,7 +480,10 @@ def listing(store, doctor, *, channel="", contact="", page=1):
         for job in jobs:
             if job["status"]=="failed" and not job["error_code"]:
                 job["error_code"]="legacy_unknown";job["error"]="A tentativa anterior falhou sem diagnóstico detalhado. A causa não foi confirmada."
-            job["assessments"] = [dict(r) for r in c.execute("SELECT id,actor_id,actor_name,score,reviewed FROM quality_assessments WHERE job_id=? ORDER BY actor_name", (job["id"],))]
+            job["assessments"] = [dict(r) for r in c.execute("SELECT id,actor_id,actor_name,score,reviewed,revision FROM quality_assessments WHERE job_id=? ORDER BY actor_name", (job["id"],))]
+            from crm_quality_feedback import response
+            for assessment in job["assessments"]:
+                assessment["response"] = response(c, assessment)
         aggregates = c.execute("""SELECT count(*) count,sum(a.reviewed) reviewed,
             avg(CASE WHEN a.reviewed=1 THEN a.score END) average
             FROM quality_assessments a JOIN quality_jobs j ON j.id=a.job_id

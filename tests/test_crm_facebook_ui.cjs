@@ -2,7 +2,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const read=file=>fs.readFileSync(path.join(__dirname,'../static',file),'utf8');
 new vm.Script(read('crm-facebook.js'));
 const main=read('crm.js'),html=read('crm.html');
-assert.ok(main.includes("['facebook','quality'].includes(state.mode) && !state.data.can_manage"));
+assert.ok(main.includes("state.mode==='facebook' && !state.data.can_manage"));
+assert.ok(main.includes("state.data.can_manage?'Monitoria':'Minhas avaliações'"));
 assert.ok(html.includes('data-mode="facebook"'));
 assert.ok(html.includes('/crm-facebook.js?v=1'));
 const ctx={window:{}};vm.createContext(ctx);vm.runInContext(read('crm-facebook.js'),ctx);

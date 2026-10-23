@@ -13,7 +13,7 @@ function harness(provider){
   const nodes=new Map(),lists={"[data-quality-view]":[{dataset:{qualityView:"jobs"}},{dataset:{qualityView:"selections"}}]},context=vm.createContext({window:{},Date,Intl,Map,Set,clearTimeout,setTimeout,crypto:require("node:crypto").webcrypto,
     document:{getElementById(){return null;}}});
   vm.runInContext(source,context);
-  const root={innerHTML:"",querySelector(selector){if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector);},querySelectorAll(selector){return lists[selector] || [];}};
+  const root={innerHTML:"",querySelector(selector){if(!nodes.has(selector))nodes.set(selector,{insertAdjacentHTML(){}});return nodes.get(selector);},querySelectorAll(selector){return lists[selector] || [];}};
   const center=context.window.createCrmQuality({state,esc,icon:name=>`<svg data-icon="${name}"></svg>`,icons(){},modal(){},error(){},
     api:async(...args)=>{calls.push(args);return provider(...args);}});
   return{center,state,root,calls,nodes,lists};

@@ -1,30 +1,37 @@
 "use strict";
 window.createCrmQuality = function ({state,api,esc,icon,icons,modal,error}) {
-  let root=null,page=1,pageSeq=0,dialogSeq=0,timer=0;
+  let root=null,page=1,pageSeq=0,dialogSeq=0,timer=0,view="recent";
+  const self=window.createCrmQualitySelf?.({state,api,esc,icon,icons,modal,error});
+  const responseLabels={awaiting_ack:"Aguardando aceite",accepted:"Aceita pelo atendente",contested:"Ressalva em análise",resolved:"Ressalva respondida"};
+  const responseBadge=r=>r && r.status!=="unpublished"?`<small class="qualityResponseState ${esc(r.status)}">${esc(responseLabels[r.status] || "")}</small>`:"";
   const labels={queued:"Na fila",running:"Analisando",done:"Análise pronta",failed:"Não avaliada",cancelled:"Cancelada"};
   const when=value=>new Date(value*1000).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"});
   const badge=(value,reviewed)=>`<span class="qualityScore ${value===null?"unknown":value<=50?"low":value<80?"medium":"high"}">${value===null?"Não avaliável":`${value}/100`}</span><small>${reviewed?"Revisada pelo gestor":"Provisória · IA"}</small>`;
   const average=value=>value===null || value===undefined?"—":Number(value).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1});
   function jobRows(jobs){
-    return jobs.map(j=>`<tr><td><strong>${esc(j.name)}</strong><small>${esc(j.channel_name)}</small></td><td>${esc(when(j.created_at))}</td><td><span class="qualityJobState">${labels[j.status] || esc(j.status)}</span>${j.error?`<small class="qualityError">${esc(j.error)}</small>`:""}</td><td>${j.assessments.map(a=>`<div class="qualityMiniScore"><strong>${esc(a.actor_name)}</strong><span>${badge(a.score,a.reviewed)}</span></div>`).join("") || "—"}</td><td><button type="button" class="icon-button" data-quality-job="${esc(j.id)}" title="Abrir avaliação" aria-label="Abrir avaliação de ${esc(j.name)}">${icon("arrow-up-right")}</button></td></tr>`).join("") || '<tr><td colspan="5" class="qualityEmpty">Nenhuma avaliação neste período.</td></tr>';
+    return jobs.map(j=>`<tr><td><strong>${esc(j.name)}</strong><small>${esc(j.channel_name)}</small></td><td>${esc(when(j.created_at))}</td><td><span class="qualityJobState">${labels[j.status] || esc(j.status)}</span>${j.error?`<small class="qualityError">${esc(j.error)}</small>`:""}</td><td>${j.assessments.map(a=>`<div class="qualityMiniScore"><strong>${esc(a.actor_name)}</strong><span>${badge(a.score,a.reviewed)}</span>${responseBadge(a.response)}</div>`).join("") || "—"}</td><td><button type="button" class="icon-button" data-quality-job="${esc(j.id)}" title="Abrir avaliação" aria-label="Abrir avaliação de ${esc(j.name)}">${icon("arrow-up-right")}</button></td></tr>`).join("") || '<tr><td colspan="5" class="qualityEmpty">Nenhuma avaliação neste período.</td></tr>';
   }
   const mounted=(seq,doc)=>root && seq===pageSeq && state.mode==="quality" && state.doctor===doc;
   async function mount(target){
-    root=target;page=1;await refresh();
+    if(state.data.can_manage===false){unmount();await self?.mount(target);return;}
+    self?.unmount();root=target;page=1;view="recent";await refresh();
   }
-  function unmount(){root=null;pageSeq++;dialogSeq++;clearTimeout(timer);}
+  function unmount(){root=null;pageSeq++;dialogSeq++;clearTimeout(timer);self?.unmount();}
   async function refresh(){
     if(!root)return;
     const seq=++pageSeq,doc=state.doctor;
     root.innerHTML='<p class="emptyState" role="status">Carregando qualidade do atendimento…</p>';
     try{
-      const data=await api("quality",undefined,{doctor:doc,page});if(!mounted(seq,doc))return;
+      const data=await api("quality",undefined,{doctor:doc,page,view});if(!mounted(seq,doc))return;
       const s=data.summary;
       root.innerHTML=`<section class="qualityWorkspace"><header class="qualityHeading"><div><h2>Monitoria da equipe</h2><span>Últimos 30 dias · ${esc(state.data.doctors.find(d=>d.id===doc)?.name || "")}</span></div><div class="commands"><button type="button" data-quality-settings>${icon("sliders-horizontal")} Régua e IA</button><button type="button" class="icon-button" data-quality-refresh title="Atualizar avaliações" aria-label="Atualizar avaliações">${icon("refresh-cw")}</button></div></header>
         <dl class="qualityMetrics"><div><dt>Média revisada</dt><dd>${average(s.average)}<small>Somente notas revisadas</small></dd></div><div><dt>Aguardando revisão</dt><dd>${Math.max(0,(s.count || 0)-(s.reviewed || 0))}</dd></div><div><dt>Notas revisadas</dt><dd>${s.reviewed || 0}</dd></div><div><dt>Análises de hoje</dt><dd>${data.daily_used || 0}<small>de ${data.settings.daily_limit || 20} por profissional</small></dd></div></dl>
         <p class="${data.settings.enabled?"qualityScope":"inlineWarning"}">${data.settings.enabled?"Piloto manual ativo · revisão do gestor antes dos indicadores":"Análise por IA desativada. Nenhuma conversa é enviada até a autorização na régua."}</p>
         ${data.provider_ready===false?'<p class="inlineWarning">Configure a API OpenAI da clínica para executar as análises manuais.</p>':""}\n        <div class="qualityTableWrap"><table class="qualityTable"><thead><tr><th>Conversa</th><th>Data da análise</th><th>Situação</th><th>Atendente e nota</th><th><span class="visuallyHidden">Ações</span></th></tr></thead><tbody>${jobRows(data.jobs)}</tbody></table></div><footer class="qualityPagination"><span>${data.total} ${data.total===1?"análise":"análises"} · página ${page} de ${data.pages}</span><div class="commands"><button class="icon-button" data-quality-prev ${page<=1?"disabled":""} title="Página anterior" aria-label="Página anterior">${icon("chevron-left")}</button><button class="icon-button" data-quality-next ${page>=data.pages?"disabled":""} title="Próxima página" aria-label="Próxima página">${icon("chevron-right")}</button></div></footer></section>`;
       root.querySelector("[data-quality-settings]").onclick=()=>configure(doc,data.settings,data.rubric,refresh);
+      root.querySelector('.qualityHeading').insertAdjacentHTML('afterend',`<label class="qualityManagerFilter">Exibir<select data-quality-list-view><option value="recent">Todas · últimos 30 dias</option><option value="contested" ${view==='contested'?'selected':''}>Ressalvas pendentes · qualquer data</option></select></label>`);
+      root.querySelector('[data-quality-list-view]').onchange=event=>{view=event.target.value;page=1;refresh();};
+      if(view==='contested')root.querySelector('.qualityHeading span').textContent=`Ressalvas pendentes · ${state.data.doctors.find(d=>d.id===doc)?.name || ''}`;
       root.querySelector("[data-quality-refresh]").onclick=refresh;
       root.querySelector("[data-quality-prev]").onclick=()=>{page--;refresh();};
       root.querySelector("[data-quality-next]").onclick=()=>{page++;refresh();};
@@ -106,10 +113,17 @@ window.createCrmQuality = function ({state,api,esc,icon,icons,modal,error}) {
         host.querySelector('.qualityRetry')?.insertAdjacentHTML('afterbegin',`<label class="check"><input type="checkbox" data-quality-retry-audio ${job.include_audio?'checked':''}>Incluir áudios nesta tentativa; transcrições que falharam podem consumir a API novamente</label>`);
         host.querySelectorAll("[data-assessment]").forEach(section=>{
           const a=job.assessments.find(a=>a.id===section.dataset.assessment);
+          const r=a.response;
+          if(r){
+            section.querySelector('header').insertAdjacentHTML('afterend',`<div class="qualityResponseHeading">${responseBadge(r)}${r.status==='accepted'?`<small>${esc(when(r.accepted_at))}</small>`:''}</div>`);
+            if(r.contest_used)section.querySelector('.qualityResponseHeading').insertAdjacentHTML('afterend',`<div class="qualityAppeal"><strong>Ressalva do atendente · ${esc(when(r.contested_at))}</strong><p>${esc(r.contest_reason)}</p>${r.decision?`<strong>${r.decision==='accept'?'Ressalva acolhida':'Avaliação mantida'} · ${esc(when(r.decided_at))}</strong><p>${esc(r.decision_reason)}</p>`:''}</div>`);
+            if(r.status==='contested')section.querySelector('.qualityReviewForm').insertAdjacentHTML('afterbegin',`<label>Decisão sobre a ressalva<select name="contest_decision" required><option value="">Selecione</option><option value="accept">Acolher ressalva · ajustar ou esclarecer</option><option value="reject">Manter avaliação</option></select></label><label>Resposta ao atendente<textarea name="contest_note" rows="3" maxlength="2000" required></textarea></label>`);
+          }
           section.querySelector("form").onsubmit=async event=>{
             event.preventDefault();const button=event.currentTarget.querySelector("button");button.disabled=true;
             try{
-              await api("quality/review",{doctor_id:doc,id:a.id,revision:a.revision,failures:[...section.querySelectorAll("[data-keep-failure]:checked")].map(c=>c.dataset.keepFailure),reason:section.querySelector("textarea").value},{doctor:doc});
+              await api("quality/review",{doctor_id:doc,id:a.id,revision:a.revision,failures:[...section.querySelectorAll("[data-keep-failure]:checked")].map(c=>c.dataset.keepFailure),reason:section.querySelector('[name="reason"]').value,
+                ...(r?.status==='contested'?{contest_decision:section.querySelector('[name="contest_decision"]').value,contest_note:section.querySelector('[name="contest_note"]').value,response_revision:r.revision}:{})},{doctor:doc});
               if(token===dialogSeq && host.isConnected){await poll();if(root)refresh();}
             }catch(e){if(token===dialogSeq && host.isConnected){error(e.message);button.disabled=false;}}
           };

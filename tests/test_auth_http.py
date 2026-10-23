@@ -1033,6 +1033,56 @@ class HttpAuthTests(unittest.TestCase):
         with store.db() as c:
             self.assertEqual(c.execute("SELECT count(*) FROM quality_jobs").fetchone()[0],0)
 
+    def test_quality_employee_ack_and_one_appeal_with_manager_resolution(self):
+        import time
+        import crm_quality as quality
+        from crm_api import store_for
+        master=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
+        self.limit_permissions(["crm.view"]);staff=self.login()[0]
+        other=self.store.create_user("Outro Exemplo","other-quality","Temporary-test-password!",clinic_keys=["vielle"],permissions={"vielle":["crm.view"]})
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica"]})
+        data=store.listing();doc=data["doctor_id"];p=data["pipelines"][0]
+        lead=store.lead({"doctor_id":doc,"pipeline_id":p["id"],"stage_id":p["stages"][0]["id"],"name":"Contato Exemplo","phone":"5500000012345","title":"Sintético"},"Equipe")
+        contact=store.detail(lead,doc)["lead"]["contact_id"]
+        channel=store.channel({"doctor_id":doc,"phone":"5500000014321","name":"Comercial"})
+        with store.db() as c:
+            for key,direction,actor,body in (("quality-http-in","in","","Olá"),("quality-http-out","out",str(self.user_id),"Podemos ajudar.")):
+                c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name) VALUES(?,?,?,?,?,'sent',?,?,'Atendente Exemplo')",(key,channel,contact,body,direction,time.time()-1,actor))
+        quality.save_settings(store,doc,{**quality.defaults(),"enabled":True,"confirm":True,"revision":0},"master")
+        job=quality.request(store,doc,channel,contact,"master")
+        def provider(messages):
+            data=json.loads(messages[1]["content"])
+            return {"assessments":[{"actor":actor,"summary":"Resumo de exemplo","feedback":"Orientação de exemplo","items":[{
+                "id":r["id"],"outcome":"na" if not r["enabled"] else "fail" if r["id"]=="clarity" else "pass","reason":"Exemplo sintético","evidence":[next(m["id"] for m in data["messages"] if m["actor"]==actor)]} for r in data["rubric"]]} for actor in data["actors"]]}
+        quality.tick(store,provider,lambda _:True)
+        a=quality.detail(store,doc,job)["assessments"][0]
+        root=f"/api/crm/quality/self?clinic=vielle&doctor={doc}"
+        self.assertEqual(json.loads(self.request("GET",root,cookie=staff)[2])["total"],0)
+        quality.review(store,doc,a["id"],{"revision":1,"failures":["clarity"],"reason":"Publicação sintética"},"master")
+        status,_,raw=self.request("GET",root,cookie=staff)
+        self.assertEqual(status,200,raw);self.assertEqual(json.loads(raw)["total"],1)
+        response=root.replace("/self?","/self/respond?")
+        payload={"doctor_id":doc,"id":a["id"],"revision":2,"response_revision":0,"action":"contest","reason":"Pedido de revisão de exemplo"}
+        self.assertEqual(self.request("POST",response,payload,staff)[0],403)
+        other_cookie="doc4docs_session="+self.store.login("other-quality","Temporary-test-password!")
+        self.assertEqual(self.request("POST",response,{**payload,"actor_id":self.user_id},other_cookie,headers)[0],404)
+        status,_,raw=self.request("POST",response,payload,staff,headers)
+        self.assertEqual(status,200,raw);self.assertEqual(json.loads(raw)["response"]["status"],"contested")
+        self.assertEqual(self.request("POST",response,payload,staff,headers)[0],409)
+        review=f"/api/crm/quality/review?clinic=vielle&doctor={doc}"
+        decision={"doctor_id":doc,"id":a["id"],"revision":2,"failures":[],"reason":"Correção sintética","contest_decision":"accept","contest_note":"Contexto revisto","response_revision":1}
+        self.assertEqual(self.request("POST",review,decision,staff,headers)[0],403)
+        self.assertEqual(self.request("POST",review,decision,master,headers)[0],200)
+        status,_,raw=self.request("GET",root.replace("/self?","/self/item?")+"&id="+a["id"],cookie=staff)
+        value=json.loads(raw)["assessment"]
+        self.assertEqual(value["score"],100);self.assertEqual(value["response"]["status"],"resolved")
+        self.assertNotIn("original",value);self.assertNotIn("messages",value)
+        updated={**payload,"revision":3,"response_revision":2}
+        self.assertEqual(self.request("POST",response,updated,staff,headers)[0],409)
+        self.assertEqual(self.request("POST",response,{**updated,"action":"accept"},staff,headers)[0],200)
+        self.limit_permissions([])
+        self.assertEqual(self.request("GET",root,cookie=staff)[0],403)
+
     def test_quality_audio_requires_explicit_consent_and_only_queues(self):
         from crm_api import store_for
         import crm_quality

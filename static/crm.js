@@ -263,15 +263,20 @@
   }
   function render() {
     if(!state.data) return;
-    if(['facebook','quality'].includes(state.mode) && !state.data.can_manage)state.mode='inbox';
-    document.querySelectorAll('[data-mode="facebook"],[data-mode="quality"]').forEach(button=>button.hidden=!state.data.can_manage);
+    if(state.mode==='facebook' && !state.data.can_manage)state.mode='inbox';
+    document.querySelectorAll('[data-mode="facebook"]').forEach(button=>button.hidden=!state.data.can_manage);
+    document.querySelectorAll('[data-mode="quality"]').forEach(button=>{
+      button.hidden=false;const label=state.data.can_manage?'Monitoria':'Minhas avaliações';
+      button.setAttribute('aria-label',label);button.dataset.tooltip=label;
+      const text=button.querySelector('span');if(text)text.textContent=label;
+    });
     if(state.mode!=="board")bulk.reset();
     document.body.dataset.crmMode=state.mode;
     renderInboxScope();
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
     $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
-    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",followups:"Follow up",facebook:"Integração Facebook",quality:"Monitoria"})[state.mode];
+    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",followups:"Follow up",facebook:"Integração Facebook",quality:state.data.can_manage?"Monitoria":"Minhas avaliações"})[state.mode];
     const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);if(state.pipeline)url.searchParams.set("pipeline",state.pipeline);history.replaceState(null,"",url);
     $("newLead").innerHTML=`${icon("user-round-plus")} ${courseScope()?"Oportunidade":"Paciente"}`;$("newLead").setAttribute("aria-label",courseScope()?"Nova oportunidade":"Novo paciente");$("newLead").title=courseScope()?"Nova oportunidade":"Novo paciente";
     $("newLead").hidden=!["board","inbox"].includes(state.mode);
