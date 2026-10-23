@@ -267,6 +267,9 @@ class CrmStore:
         from crm_channels import schema as channel_schema
         with self.db() as c:
             channel_schema(c)
+        from crm_quality import schema as quality_schema
+        with self.db() as c:
+            quality_schema(c)
         from crm_identity import schema as identity_schema, backup as identity_backup
         with self.db() as c:
             identity_schema(c)

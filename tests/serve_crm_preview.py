@@ -382,6 +382,35 @@ if "--bots-fixture" in sys.argv:
         {"id":"5","kind":"end","data":{},"x":900,"y":300,"next":{}}]
     bots.save({"doctor_id":doc["id"],"pipeline_id":pipeline["id"],"name":"Acompanhamento · exemplo","definition":{"nodes":nodes,"trigger":{"kind":"stage","stage_id":pipeline["stages"][0]["id"],"delay_minutes":0},"stop_on_reply":True}},1)
 
+if "--quality-fixture" in sys.argv:
+    import crm_quality as quality
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    channel=store.listing(doc)["channels"][0]["id"]
+    quality.save_settings(store,doc,{**quality.defaults(),"revision":0,"enabled":True,"confirm":True,
+        "scripts":"Acolher, personalizar e responder com clareza, sem pressão comercial.",
+        "services":"Informações comerciais gerais; indicação depende de avaliação profissional."},"1")
+    for index,lead in enumerate(store.listing(doc)["leads"][:3]):
+        with store.db() as c:
+            c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at) VALUES(?,?,?,?,?,?,?)",
+                (f"quality-inbound-example-{index}",channel,lead["contact_id"],"Gostaria de combinar meu retorno.","in","received",time.time()-1))
+            c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name) VALUES(?,?,?,?,?,?,?,?,?)",
+                (f"quality-example-{index}",channel,lead["contact_id"],"Vamos verificar as opções de horário para seu retorno.","out","sent",time.time(),"1","Equipe Exemplo"))
+        job=quality.request(store,doc,channel,lead["contact_id"],"1")
+        if index==2:
+            continue
+        def synthetic_quality(messages):
+            data=json.loads(messages[1]["content"])
+            return {"assessments":[{"actor":actor,"summary":"Atendimento de demonstração com orientação de retorno.",
+                "feedback":"Confirmar o próximo passo e registrar o combinado com o cliente.",
+                "items":[{"id":r["id"],"outcome":"na" if not r["enabled"] else "fail" if r["id"]=="clarity" else "pass",
+                    "reason":"Evidência fictícia para validar o painel.","evidence":[next(m["id"] for m in data["messages"] if m["kind"]=="human" and m["actor"]==actor)]} for r in data["rubric"]]}
+                for actor in data["actors"]]}
+        quality.tick(store,synthetic_quality,lambda _:True)
+        if index==0:
+            assessment=quality.detail(store,doc,job)["assessments"][0]
+            quality.review(store,doc,assessment["id"],{"revision":1,"failures":["clarity"],"reason":"Revisão sintética aprovada."},"1")
+    auth.create_user("Gerente Exemplo","preview-manager",password,clinic_keys=["vielle"],permissions={"vielle":["crm.view"]})
+
 if "--staff-fixture" in sys.argv:
     auth.create_user("Jane Teste", "preview-staff", password, clinic_keys=["vielle"], permissions={"vielle": ["crm.view"]})
     token = auth.login("preview-staff", password)

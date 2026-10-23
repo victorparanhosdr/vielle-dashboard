@@ -45,6 +45,33 @@ class UserAdminTests(unittest.TestCase):
             self.store.set_user_active(self.master,False)
         self.assertIsNotNone(self.store.session_user(token))
 
+    def test_explicit_promotion_preserves_identity_revokes_sessions_and_audits(self):
+        token=self.store.login("equipe","Equipe-test-password!")
+        before=self.store.get_user_by_login("equipe")
+        self.store.promote_to_master(self.user,actor_id=self.master,expected_login="equipe")
+        after=self.store.get_user_by_login("equipe")
+        self.assertTrue(after["is_master"])
+        for key in ("password_hash","nome","login","created_at","status"):
+            self.assertEqual(before[key],after[key])
+        self.assertIsNone(self.store.session_user(token))
+        public=self.store.get_public_user(self.user)
+        self.assertTrue(public["permissions"]["vielle"])
+        self.assertTrue(all(p=="management" for p in public["team_profiles"].values()))
+        self.assertEqual(len(self.store.list_audit(action="user_promoted_master")["events"]),1)
+        self.store.promote_to_master(self.user,actor_id=self.master,expected_login="equipe")
+        self.assertEqual(len(self.store.list_audit(action="user_promoted_master")["events"]),1)
+
+    def test_promotion_requires_active_master_and_matching_active_target(self):
+        with self.assertRaises(ValueError):
+            self.store.promote_to_master(self.user,actor_id=self.user,expected_login="equipe")
+        with self.assertRaises(ValueError):
+            self.store.promote_to_master(self.user,actor_id=self.master,expected_login="other")
+        self.store.set_user_active(self.user,False)
+        with self.assertRaises(ValueError):
+            self.store.promote_to_master(self.user,actor_id=self.master,expected_login="equipe")
+        self.assertFalse(self.store.get_public_user(self.user)["is_master"])
+        self.assertEqual(self.store.list_audit(action="user_promoted_master")["total"],0)
+
     def test_concurrent_deactivation_preserves_one_active_master(self):
         other=self.store.create_user("Other","other","Other-test-password!",is_master=True)
         def disable(uid):

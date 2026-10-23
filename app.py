@@ -7689,6 +7689,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_bot_worker, args=(auth_store, threading.Event()), daemon=True).start()
     from crm_whatsapp_attribution import run as run_ad_attribution
     threading.Thread(target=run_ad_attribution, args=(auth_store, threading.Event()), daemon=True).start()
+    from crm_quality import run_worker as run_quality_worker
+    threading.Thread(target=run_quality_worker, args=(auth_store, threading.Event()), daemon=True).start()
     if sends_enabled():
         from crm_worker import run as run_crm_worker
         threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()

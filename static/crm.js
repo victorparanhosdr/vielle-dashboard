@@ -7,7 +7,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots","facebook"].includes(requestedMode)?requestedMode:"inbox",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots","facebook","quality"].includes(requestedMode)?requestedMode:"inbox",seq:0,search:"",filters:{},sort:"updated",session:null};
   const inboxPreference=()=>`doc4docs.crm.inboxDoctors.${state.session?.user.id}`;
   const inboxScope=window.createCrmInboxScope({esc,icon,icons,onChange:ids=>{
     state.inboxDoctors=ids;
@@ -258,15 +258,15 @@
   }
   function render() {
     if(!state.data) return;
-    if(state.mode==='facebook' && !state.data.can_manage)state.mode='inbox';
-    document.querySelectorAll('[data-mode="facebook"]').forEach(button=>button.hidden=!state.data.can_manage);
+    if(['facebook','quality'].includes(state.mode) && !state.data.can_manage)state.mode='inbox';
+    document.querySelectorAll('[data-mode="facebook"],[data-mode="quality"]').forEach(button=>button.hidden=!state.data.can_manage);
     if(state.mode!=="board")bulk.reset();
     document.body.dataset.crmMode=state.mode;
     renderInboxScope();
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
     $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
-    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",facebook:"Integração Facebook"})[state.mode];
+    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",facebook:"Integração Facebook",quality:"Monitoria"})[state.mode];
     const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);if(state.pipeline)url.searchParams.set("pipeline",state.pipeline);history.replaceState(null,"",url);
     $("newLead").hidden=!["board","inbox"].includes(state.mode);
     $("addDoctor").hidden=!state.data.can_manage || !["board","channels"].includes(state.mode);
@@ -286,7 +286,7 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard"].includes(state.mode)?"":state.mode==="facebook"?'<div id="crmFacebookHost"></div>':state.mode==="tasks"?'<div id="crmRemindersHost" class="crmRemindersPage"></div>':state.mode==="forms"?'<div id="crmFormsHost"></div>':state.mode==="bots"?'<div id="crmBotsHost"></div>':state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
+    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard","quality"].includes(state.mode)?"":state.mode==="facebook"?'<div id="crmFacebookHost"></div>':state.mode==="tasks"?'<div id="crmRemindersHost" class="crmRemindersPage"></div>':state.mode==="forms"?'<div id="crmFormsHost"></div>':state.mode==="bots"?'<div id="crmBotsHost"></div>':state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
     if(!state.data.can_manage)$("crmView").querySelectorAll("[data-connect]").forEach(button=>button.hidden=true);
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
@@ -306,6 +306,7 @@
     if(state.mode==="forms")formsCenter.mount($("crmFormsHost"));else formsCenter.unmount();
     if(state.mode==="bots")botsCenter.mount($("crmBotsHost"));else botsCenter.unmount();
     if(state.mode==="tasks")reminders.mount($("crmRemindersHost"));else reminders.unmount();
+    if(state.mode==="quality")qualityCenter.mount($("crmView"));else qualityCenter.unmount();
     if(state.mode==="facebook")facebookCenter.mount($("crmFacebookHost"));else facebookCenter.unmount();
     document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===state.mode)));
     icons();
@@ -591,7 +592,8 @@
     try{state.doctor=item.doctor_id;state.pipeline=item.pipeline_id;state.mode="inbox";state.inboxDoctors=[...new Set([...(state.inboxDoctors || []),item.doctor_id])];state.filters={};state.search="";$("search").value="";await load();await inbox.openLead({id:item.lead_id,doctor_id:item.doctor_id,contact_id:item.contact_id});}catch(e){notice(e.message);}
   }});
   const engagement=window.createCrmEngagement({api,esc,icon,icons,reminders,getUser:()=>state.session?.user,onTasks:()=>{if(!state.data)return;state.mode="tasks";render();}});
-  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder:l=>reminders.open(l),transferLead:(l,context)=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines:context.pipelines,active:context.active}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
+  const qualityCenter=window.createCrmQuality({state,api,esc,icon,icons,modal,error});
+  const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder:l=>reminders.open(l),openQuality:context=>qualityCenter.openConversation(context),transferLead:(l,context)=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines:context.pipelines,active:context.active}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
   const facebookCenter=window.createCrmFacebook({state,api,esc,icon,icons,profile});
@@ -656,10 +658,10 @@
   };
   function sessionAllowed(data){return Boolean(data?.clinics?.some(c=>c.key==="vielle") && data.permissions?.vielle?.includes("crm.view"));}
   function session(data){
-    const changed=state.session && (state.session.user.id!==data.user.id || JSON.stringify(state.session.user.crm_scope)!==JSON.stringify(data.user.crm_scope));
+    const changed=state.session && (state.session.user.id!==data.user.id || state.session.user.is_master!==data.user.is_master || JSON.stringify(state.session.user.crm_scope)!==JSON.stringify(data.user.crm_scope));
     state.session=data;
-    if(changed){engagement.stop();reminders.reset();inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.inboxDoctors=null;state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
-    if(!sessionAllowed(data)){engagement.stop();reminders.reset();inbox.unmount();inboxScope.hide();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
+    if(changed){qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.inboxDoctors=null;state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
+    if(!sessionAllowed(data)){qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();inboxScope.hide();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
     engagement.start(data.user);
     $("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();
   }

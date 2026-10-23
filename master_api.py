@@ -89,7 +89,7 @@ class MasterApiMixin:
                                 "modules": MODULES, "actions": ACTION_LABELS, "profiles": store.list_profiles(),
                                 "crm_catalog": crm_catalog(store)})
                 return True
-            match = re.fullmatch(r"/api/master/users/([1-9][0-9]{0,17})/(edit|status|password)", parsed.path)
+            match = re.fullmatch(r"/api/master/users/([1-9][0-9]{0,17})/(edit|status|password|promote)", parsed.path)
             profile_match = re.fullmatch(r"/api/master/profiles/([1-9][0-9]{0,17})", parsed.path)
             profile_route = parsed.path == "/api/master/profiles" or bool(profile_match)
             if self.command != "POST" or not (parsed.path == "/api/master/users" or match or profile_route):
@@ -139,6 +139,11 @@ class MasterApiMixin:
                 scope = crm_scope_fields(store, data)
                 store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"),
                                   team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope)
+            elif action == "promote":
+                user_fields(data, ("confirm", "expected_login"))
+                if data.get("confirm") is not True:
+                    raise ValueError("Confirme o acesso administrativo completo como Master.")
+                store.promote_to_master(user_id, actor_id=actor_id, expected_login=data.get("expected_login"))
             elif action == "status":
                 user_fields(data, ("active",))
                 if not isinstance(data.get("active"), bool):

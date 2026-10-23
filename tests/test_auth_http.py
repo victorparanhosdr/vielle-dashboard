@@ -994,6 +994,45 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(self.request("POST","/api/master/users/999/status",{"active":False},cookie,headers)[0],404)
         self.assertEqual(self.store.get_user_by_login("teste")["is_master"],0)
 
+    def test_master_promotion_requires_master_origin_confirmation_and_exact_target(self):
+        cookie=self.master_cookie()
+        path=f"/api/master/users/{self.user_id}/promote"
+        payload={"confirm":True,"expected_login":"teste"}
+        headers={"X-DOC4DOCS-Request":"1"}
+        self.assertEqual(self.request("POST",path,payload,self.login()[0],headers)[0],403)
+        self.assertEqual(self.request("POST",path,payload,cookie)[0],403)
+        self.assertEqual(self.request("POST",path,{**payload,"confirm":False},cookie,headers)[0],400)
+        self.assertEqual(self.request("POST",path,{**payload,"expected_login":"other"},cookie,headers)[0],400)
+        self.assertEqual(self.request("POST",path,{**payload,"is_master":True},cookie,headers)[0],400)
+        old_token=self.store.login("teste","Temporary-test-password!")
+        status,_,raw=self.request("POST",path,payload,cookie,headers)
+        self.assertEqual(status,200,raw)
+        self.assertTrue(json.loads(raw)["user"]["is_master"])
+        self.assertIsNone(self.store.session_user(old_token))
+        self.assertEqual(self.request("GET","/api/master/users",cookie=cookie)[0],200)
+        self.assertEqual(self.request("GET","/api/master/users",cookie=self.login()[0])[0],200)
+
+    def test_native_quality_http_pilot_is_master_only_and_never_auto_enabled(self):
+        cookie=self.master_cookie()
+        from crm_api import store_for
+        store=store_for(self.store)
+        store.bootstrap({"Profissional Exemplo":["Clínica"]})
+        doc=store.listing()["doctor_id"]
+        path=f"/api/crm/quality?clinic=vielle&doctor={doc}"
+        self.assertEqual(self.request("GET",path,cookie=self.login()[0])[0],403)
+        status,_,raw=self.request("GET",path,cookie=cookie)
+        self.assertEqual(status,200,raw)
+        self.assertFalse(json.loads(raw)["settings"]["enabled"])
+        settings=path.replace("/quality?","/quality/settings?")
+        payload={"doctor_id":doc,"revision":0,"enabled":True,"auto_closed":False,"daily_limit":20,"confirm":True}
+        self.assertEqual(self.request("POST",settings,payload,cookie)[0],403)
+        self.assertEqual(self.request("POST",settings,{**payload,"auto_closed":True},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)
+        status,_,raw=self.request("POST",settings,payload,cookie,{"X-DOC4DOCS-Request":"1"})
+        self.assertEqual(status,200,raw)
+        self.assertEqual(json.loads(raw)["settings"]["daily_limit"],20)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM quality_jobs").fetchone()[0],0)
+
     def test_admin_refuses_last_master_deactivation(self):
         cookie=self.master_cookie();uid=self.store.get_user_by_login("master")["id"]
         self.assertEqual(self.request("POST",f"/api/master/users/{uid}/status",{"active":False},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)

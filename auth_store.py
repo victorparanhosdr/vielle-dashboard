@@ -274,6 +274,27 @@ class AuthStore(AccessStoreMixin):
             self._audit(conn, "user_updated", actor_id, user_id)
             return True
 
+    def promote_to_master(self, user_id, *, actor_id, expected_login):
+        expected_login = normalize_login(expected_login)
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            actor = conn.execute("SELECT is_master,status FROM users WHERE id=?", (actor_id,)).fetchone()
+            if not actor or not actor["is_master"] or actor["status"] != "active":
+                raise ValueError("Somente um Master ativo pode promover outro usuário.")
+            target = conn.execute("SELECT login,is_master,status FROM users WHERE id=?", (user_id,)).fetchone()
+            if not target or target["login"] != expected_login or target["status"] != "active":
+                raise ValueError("Usuário alterado ou inativo. Atualize a lista antes de promover.")
+            if target["is_master"]:
+                return
+            previous = self._team_profiles(conn, user_id, list(SUPPORTED_CLINICS))
+            conn.execute("UPDATE users SET is_master=1,updated_at=? WHERE id=?", (utc_now(), user_id))
+            self._save_team_profiles(conn, user_id, list(SUPPORTED_CLINICS),
+                {clinic: "management" for clinic in SUPPORTED_CLINICS}, previous, actor_id, is_master=True)
+            close_team_sessions(conn, time.time(), user_id=user_id)
+            conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            self._audit(conn, "user_promoted_master", actor_id, user_id,
+                        {"before": "common", "after": "master", "sessions_revoked": True})
+
     def validate_password(self, login, password):
         try:
             user = self.get_user_by_login(login)

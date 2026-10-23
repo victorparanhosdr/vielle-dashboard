@@ -1,6 +1,6 @@
 /* One conversation per doctor, sender number and contact. No remote read receipts. */
 "use strict";
-window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
+window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder,openQuality,transferLead,appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange}) {
   let root=null, owner="", selected=null, listSeq=0, threadSeq=0, filter="all", channel="", list=[], leadResults=[], leadResultsTotal=0, messages=[], hasOlder=false;
   let threadData=null, sending=false, replyChannel="", openSeq=0, closing="", selectedRecord=null, drafts=new Map(),renderedSearch="",focusFrame=0;
   const syncing=new Set(),syncedAt=new Map();
@@ -85,6 +85,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.id==="syncMessages")syncExternalMessages(true);
       if(b.id==="voiceCall"){const l=leadFor();if(l)voice.open(l);}
       if(b.id==="createChatReminder"){const l=leadFor();if(l)openReminder(l);}
+      if(b.id==="reviewQuality" && selected && state.data.can_manage){const signature=key(selected);openQuality?.({doctor_id:owner,channel_id:selected.channel_id,contact_id:selected.contact_id,name:threadData?.contact.name || leadFor()?.name || "",active:()=>Boolean(root && selected && key(selected)===signature)});}
       if(b.dataset.loadMedia)loadMedia(b);
     };
     refreshList();if(selected)select(selected);icons();focus();
@@ -162,6 +163,10 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     $("toggleContact").insertAdjacentHTML("afterend",`<details id="mobileChatMore" class="crmMobileOnly mobileChatMore"><summary aria-label="Mais ações da conversa" title="Mais ações da conversa">${icon("ellipsis-vertical")}</summary><div class="mobileChatMenu"><button type="button" data-mobile-chat="toggleChatSearch">${icon("search")} Buscar na conversa</button><button type="button" data-mobile-chat="syncMessages">${icon("refresh-cw")} Sincronizar mensagens</button><button type="button" data-mobile-chat="closeConversation">${icon("check-check")} Fechar conversa</button></div></details>`);
     $("toggleContact").insertAdjacentHTML("beforeend",`<span class="crmMobileOnly">${icon("contact-round")}</span>`);
     $("mobileChatMore").ontoggle=()=>{if($("mobileChatMore")?.open)$("mobileChatMore").querySelectorAll("[data-mobile-chat]").forEach(button=>button.disabled=Boolean($(button.dataset.mobileChat)?.disabled));};
+    if(state.data.can_manage && openQuality){
+      $("closeConversation").insertAdjacentHTML("beforebegin",`<button type="button" id="reviewQuality" class="icon-button crmQualityChatAction" title="Avaliar qualidade do atendimento" aria-label="Avaliar qualidade do atendimento">${icon("clipboard-check")}</button>`);
+      $("mobileChatMore").querySelector(".mobileChatMenu").insertAdjacentHTML("beforeend",`<button type="button" data-mobile-chat="reviewQuality">${icon("clipboard-check")} Avaliar atendimento</button>`);
+    }
     $("chatPane").querySelector(".replyOptions").insertAdjacentHTML("beforebegin",`<button type="button" id="mobileReplyOptions" class="crmMobileOnly" aria-expanded="false" aria-label="Número de resposta e modelos">${icon("smartphone")}<span></span>${icon("chevron-up")}</button>`);
     $("chatPane").querySelector(".chatIdentity").insertAdjacentHTML("beforeend",`<small class="chatDoctor">${esc(state.data.doctors.find(d=>d.id===owner)?.name || "")}</small>`);
     if(l)$("toggleContact").insertAdjacentHTML("beforebegin",`<button id="voiceCall" class="icon-button" aria-label="Ligar para ${esc(l.name)}" title="Ligar para cliente">${icon("phone")}</button>`);

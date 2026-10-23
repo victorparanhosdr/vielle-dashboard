@@ -65,6 +65,20 @@ function openUser(user=null) {
   $("initialPasswordField").hidden=Boolean(user);$("initialStatusField").hidden=Boolean(user);$("initialPassword").required=!user;$("initialPassword").disabled=Boolean(user);
   $("clinicMemberships").hidden=Boolean(user?.is_master);$("masterClinicNotice").hidden=!user?.is_master;
   $("teamProfileChoices").replaceChildren();renderClinicPermissions(user);
+  $("masterPromotion")?.remove();
+  if(user && !user.is_master && user.status==="active"){
+    const section=document.createElement("section");section.id="masterPromotion";
+    section.innerHTML='<h3>Acesso Master</h3><p>Permite administrar todas as clínicas, usuários, permissões e configurações. As sessões deste usuário serão encerradas.</p><label class="check"><input type="checkbox" id="confirmMaster">Confirmo a concessão de acesso administrativo completo</label><button type="button" id="promoteMaster" class="secondary">Tornar Master</button>';
+    $("userForm").after(section);
+    $("promoteMaster").onclick=async event=>{
+      if(!$("confirmMaster").checked){$("userFormError").textContent="Confirme o acesso administrativo completo antes de promover.";return;}
+      const button=event.currentTarget;button.disabled=true;
+      try{
+        await api(`/api/master/users/${user.id}/promote`,{confirm:true,expected_login:user.login});
+        $("userDialog").close();notice("Usuário promovido a Master. Ele precisa entrar novamente no sistema.");await loadUsers();
+      }catch(error){$("userFormError").textContent=error.message;}finally{button.disabled=false;}
+    };
+  }
   $("userDialog").showModal();$("userName").focus();
 }
 function openPassword(user) { passwordUser=user;$("passwordForm").reset();$("passwordError").textContent="";$("passwordTarget").textContent=`${user.nome} · ${user.login}`;$("passwordDialog").showModal();$("newPassword").focus(); }
