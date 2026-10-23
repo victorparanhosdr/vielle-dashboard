@@ -348,6 +348,31 @@ if "--communications-fixture" in sys.argv:
                     c.execute("UPDATE messages SET status='sent',sent_at=?,claimed_at=? WHERE campaign_id=?",(now-86400,now-86400,key))
 
 
+if "--sticker-fixture" in sys.argv:
+    import crm_api
+    import crm_sticker_fixture as stickers
+    import base64
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    pipeline=store.listing(doc)["pipelines"][0]
+    store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],"name":"Figurinhas Exemplo","phone":"5500000009999","title":"Conversa sintética para validar figurinhas"},"Equipe")
+    channel=store.listing(doc)["channels"][0]
+    fixtures={}
+    for index,key in enumerate(("static-sticker","animated-sticker","legacy-sticker")):
+        value=stickers.payload(key,animated=index==1,phone="5500000009999")
+        value["messageTimestamp"]=time.time()-15+index*5
+        fixtures[key]=value
+        store.receive(channel["instance"],{**value,"message":{"conversation":"[Figurinha]"}} if index==2 else value,"messages.upsert")
+    class SyntheticStickerGateway:
+        configured=True
+        def history(self,*_):return [],False
+        def profile_picture(self,*_):return ""
+        def media_message(self,channel,key):return fixtures[key]
+        def download_media(self,channel,message,maximum):
+            raw=stickers.ANIMATED if message["key"]["id"]=="animated-sticker" else stickers.STATIC
+            return {"base64":base64.b64encode(raw).decode(),"mimetype":"image/webp"}
+        def send(self,*_):raise AssertionError("Sticker preview cannot send messages")
+    crm_api.EvolutionGateway=SyntheticStickerGateway
+
 if "--campaigns-fixture" in sys.argv:
     import crm_api
 

@@ -1033,6 +1033,34 @@ class HttpAuthTests(unittest.TestCase):
         with store.db() as c:
             self.assertEqual(c.execute("SELECT count(*) FROM quality_jobs").fetchone()[0],0)
 
+    def test_staff_can_view_private_stickers_with_csrf_and_live_scope_checks(self):
+        import base64
+        from crm_api import store_for
+        from tests.crm_sticker_fixture import STATIC,payload
+        self.limit_permissions(["crm.view"]);staff=self.login()[0]
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica"]})
+        data=store.listing();doc=data["doctor_id"];p=data["pipelines"][0]
+        lead=store.lead({"doctor_id":doc,"pipeline_id":p["id"],"stage_id":p["stages"][0]["id"],"name":"Figurinha Exemplo","phone":"5500000000002","title":"Sintético"},"Equipe")
+        contact=store.detail(lead,doc)["lead"]["contact_id"]
+        channel=store.channel({"doctor_id":doc,"phone":"5500000000001","name":"Comercial"})
+        with store.db() as c:instance=c.execute("SELECT instance FROM channels WHERE id=?",(channel,)).fetchone()[0]
+        store.receive(instance,payload(),"messages.upsert")
+        media=store.conversation(doc,channel,contact)["messages"][-1]["media"]
+        from unittest.mock import Mock
+        gateway=Mock();gateway.download_media.return_value={"base64":base64.b64encode(STATIC).decode(),"mimetype":"image/webp"}
+        fetch=f"/api/crm/media-fetch?clinic=vielle&doctor={doc}"
+        body={"doctor_id":doc,"id":media["id"]}
+        with patch("crm_api.EvolutionGateway",return_value=gateway):
+            self.assertEqual(self.request("POST",fetch,body,staff)[0],403)
+            status,_,raw=self.request("POST",fetch,body,staff,{"X-DOC4DOCS-Request":"1"})
+        self.assertEqual(status,200,raw);self.assertTrue(json.loads(raw)["media"]["is_sticker"])
+        self.assertEqual(self.request("GET",media["url"])[0],401)
+        status,headers,raw=self.request("GET",media["url"],cookie=staff)
+        self.assertEqual(status,200);self.assertEqual(raw,STATIC)
+        self.assertEqual(dict(headers)["Content-Type"],"image/webp")
+        self.store.update_user(self.user_id,"Usuario Local","teste",crm_scope={doc:[]})
+        self.assertEqual(self.request("GET",media["url"],cookie=staff)[0],403)
+
     def test_quality_employee_ack_and_one_appeal_with_manager_resolution(self):
         import time
         import crm_quality as quality

@@ -132,3 +132,24 @@ So depois de aprovar/comprar o numero, conferir custos e configurar as credencia
 - https://github.com/evolution-foundation/evolution-docs/blob/main/docs/02-Configuration/Webhooks.md
 
 SDK JavaScript oficial vendorizado: `@twilio/voice-sdk` 2.18.5, com licenca em `static/twilio-voice.LICENSE.md`. SDK Python fixado em requirements.txt. Nenhuma chamada ou envio real faz parte dos testes automatizados.
+## Figurinhas recebidas
+
+`stickerMessage` usa o fluxo privado de anexos de imagem com marcador persistente
+`is_sticker`. Preserva WebP estatico ou animado sem converter bytes; teto local
+de um MB para download de figurinha, MIME e assinatura validados. Sem novo
+recurso de envio de figurinhas ou alteracao de campanhas.
+
+Mensagens antigas `[Figurinha]` sem anexo sao vinculadas sob demanda pela chave
+exata da mensagem no conector. Nao reimportar mensagens nem mudar nao lidas,
+etapas, autores ou datas. Historico remoto expirado/ausente continua podendo
+ficar indisponivel; nao inventar arquivo nem contornar visualizacao unica.
+
+Na conversa, carregar automaticamente apenas figurinhas visiveis ou proximas
+da area visivel, uma por vez. Falha nao repete automaticamente a cada polling;
+botao manual permanece. Troca de contato e desmontagem cancelam fila local;
+requisicao ja iniciada ainda pode concluir seu cache privado, sem pintar outro
+atendimento. Fotos comuns mantem seu comportamento anterior.
+
+Testes sinteticos: `test_crm_stickers.py`, `test_crm_stickers_ui.cjs` e previa
+`tests/serve_crm_preview.py --sticker-fixture --staff-fixture`. Nenhuma figurinha
+real precisa ser enviada para validar o contrato do software.

@@ -18,7 +18,7 @@ assert.match(css,/@media\(min-width:761px\)\{\s*html:has\(>body\.crmDesktop\)\{o
 assert.match(css,/\.crmDesktop \.crmRailModules\{flex:1 1 auto;min-height:0;[^}]*overflow-y:auto;overflow-x:hidden;/);
 assert.match(css,/\.crmDesktop \.crmRailBrand,\.crmDesktop \.crmRailBottom\{flex-shrink:0;\}/);
 assert.match(css,/\.crmDesktop \.crmRailModules>button\{flex-shrink:0;\}/);
-assert.match(html,/crm-shell\.css\?v=4/);
+assert.match(html,/crm-shell\.css\?v=5/);
 assert.match(css,/\.mobileFiltersOpen \.inboxFilters/);
 assert.match(css,/\.mobileChatMore:not\(\[open\]\)/);
 assert.match(inbox,/data-mobile-chat="toggleChatSearch"/);

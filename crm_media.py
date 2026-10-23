@@ -80,7 +80,7 @@ def storage_used(c):
 
 
 def public(row):
-    return {k: row[k] for k in ("id", "name", "mime", "kind", "size")} | {"state": row.get("download_state", "ready"), "url": "/api/crm/media?" + urlencode({"clinic": "vielle", "doctor": row["doctor_id"], "id": row["id"]})}
+    return {k: row[k] for k in ("id", "name", "mime", "kind", "size")} | {"state": row.get("download_state", "ready"), "url": "/api/crm/media?" + urlencode({"clinic": "vielle", "doctor": row["doctor_id"], "id": row["id"]})} | ({"is_sticker": True} if row.get("is_sticker") else {})
 
 
 def path_for(store, key):
@@ -136,7 +136,7 @@ def extract(payload):
             return None
         if any(k in message for k in ("viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension")):
             return None
-        for field, kind in (("imageMessage", "image"), ("videoMessage", "video"), ("audioMessage", "audio"), ("documentMessage", "document")):
+        for field, kind in (("imageMessage", "image"), ("videoMessage", "video"), ("audioMessage", "audio"), ("documentMessage", "document"), ("stickerMessage", "image")):
             value = message.get(field)
             if isinstance(value, dict):
                 return None if value.get("viewOnce") else (kind, value, {field: value})
@@ -162,18 +162,19 @@ def register_received(c, message, channel, payload, *, legacy=False):
                 (json.dumps({"key": payload["key"], "message": found[2]}), message["media_id"]))
         return
     kind, value, raw = found if found else (payload["kind"], {}, None)
+    is_sticker = bool(raw and "stickerMessage" in raw or legacy and payload.get("is_sticker") is True)
     defaults = {"image": "imagem.jpg", "audio": "audio.ogg", "video": "video.mp4", "document": "arquivo"}
-    mime = value.get("mimetype") if isinstance(value.get("mimetype"), str) else "application/octet-stream"
-    name = safe_name(value.get("fileName"), defaults[kind])
+    mime = value.get("mimetype") if isinstance(value.get("mimetype"), str) else "image/webp" if is_sticker else "application/octet-stream"
+    name = safe_name(value.get("fileName"), "figurinha.webp" if is_sticker else defaults[kind])
     size = value.get("fileLength", 0)
     if isinstance(size, dict):
         size = size.get("low", 0)
     size = size if type(size) is int and 0 <= size <= 2**53 else 0
     key = uuid.uuid4().hex
     stored = {"key": payload["key"], **({"message": raw} if raw else {})}
-    c.execute("""INSERT OR IGNORE INTO message_media(id,doctor_id,source_channel_id,contact_id,user_id,upload_request,name,mime,kind,size,sha256,created_at,message_id,provider_payload,download_state)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'remote')""", (key, channel["doctor_id"], message["channel_id"], message["contact_id"], "external", "message:" + message["id"],
-        name, mime[:100], kind, size, "", message["created_at"], message["id"], json.dumps(stored)))
+    c.execute("""INSERT OR IGNORE INTO message_media(id,doctor_id,source_channel_id,contact_id,user_id,upload_request,name,mime,kind,size,sha256,created_at,message_id,provider_payload,download_state,is_sticker)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'remote',?)""", (key, channel["doctor_id"], message["channel_id"], message["contact_id"], "external", "message:" + message["id"],
+        name, mime[:100], kind, size, "", message["created_at"], message["id"], json.dumps(stored), int(is_sticker)))
     key = c.execute("SELECT id FROM message_media WHERE user_id='external' AND upload_request=?", ("message:" + message["id"],)).fetchone()[0]
     c.execute("UPDATE messages SET media_id=? WHERE id=?", (key, message["id"]))
     message["media_id"] = key
@@ -184,11 +185,11 @@ def attach(c, messages, *, legacy=False):
         for message in messages:
             if message.get("media_id") or not message.get("provider_id"):
                 continue
-            match = re.match(r"^\[(Imagem|Audio|Video|Documento)\](?: |$)", message["body"])
+            match = re.match(r"^\[(Imagem|Audio|Video|Documento|Figurinha)\](?: |$)", message["body"])
             if match:
                 channel = dict(c.execute("SELECT * FROM channels WHERE id=?", (message["channel_id"],)).fetchone())
-                kind = {"Imagem": "image", "Audio": "audio", "Video": "video", "Documento": "document"}[match[1]]
-                payload = {"kind": kind, "key": {"id": message["provider_id"], "remoteJid": (message["recipient_phone"] or "") + "@s.whatsapp.net", "fromMe": message["direction"] == "out"}}
+                kind = {"Imagem": "image", "Figurinha": "image", "Audio": "audio", "Video": "video", "Documento": "document"}[match[1]]
+                payload = {"kind": kind, "is_sticker": match[1] == "Figurinha", "key": {"id": message["provider_id"], "remoteJid": (message["recipient_phone"] or "") + "@s.whatsapp.net", "fromMe": message["direction"] == "out"}}
                 register_received(c, message, channel, payload, legacy=True)
     ids = {m.get("media_id") for m in messages if m.get("media_id")}
     if not ids:
@@ -221,7 +222,7 @@ def fetch_media(store, gateway, doctor, key):
         found = extract(payload)
         if not found:
             raise ValueError("Este anexo nao esta disponivel para arquivo. Midia de visualizacao unica nao e armazenada.")
-        if found[0] != row["kind"] or (payload.get("key") or {}).get("id") != json.loads(row["provider_payload"])["key"]["id"]:
+        if found[0] != row["kind"] or bool("stickerMessage" in found[2]) != bool(row["is_sticker"]) or (payload.get("key") or {}).get("id") != json.loads(row["provider_payload"])["key"]["id"]:
             raise ValueError("Anexo nao corresponde a esta mensagem.")
         with store.db() as c:
             message = store.row(c, "messages", row["message_id"])
@@ -230,9 +231,10 @@ def fetch_media(store, gateway, doctor, key):
             remote = payload["key"].get("remoteJidAlt", "")
         if not isinstance(remote, str) or not remote.endswith("@s.whatsapp.net") or remote.split("@", 1)[0].split(":", 1)[0] != message["recipient_phone"]:
             raise ValueError("Anexo de outra conversa.")
-        response = gateway.download_media(channel, {"key": payload["key"], "message": found[2]}, LIMITS[row["kind"]])
+        maximum = MB if row["is_sticker"] else LIMITS[row["kind"]]
+        response = gateway.download_media(channel, {"key": payload["key"], "message": found[2]}, maximum)
         encoded = response.get("base64") if isinstance(response, dict) else None
-        if not isinstance(encoded, str) or len(encoded) > 4 * ((LIMITS[row["kind"]] + 2) // 3) + 256:
+        if not isinstance(encoded, str) or len(encoded) > 4 * ((maximum + 2) // 3) + 256:
             raise ValueError("Anexo indisponivel ou maior que o limite permitido.")
         if encoded.startswith("data:"):
             encoded = encoded.split(",", 1)[-1]
@@ -240,10 +242,14 @@ def fetch_media(store, gateway, doctor, key):
             data = base64.b64decode(encoded, validate=True)
         except (ValueError, UnicodeError):
             raise ValueError("Anexo retornado pelo WhatsApp e invalido.") from None
-        if not data or len(data) > LIMITS[row["kind"]]:
+        if not data or len(data) > maximum:
             raise ValueError("Anexo vazio ou maior que o limite permitido.")
         mime = response.get("mimetype", row["mime"])
         mime = mime.split(";", 1)[0] if isinstance(mime, str) else "application/octet-stream"
+        if row["is_sticker"]:
+            if mime not in {"image/webp", "application/octet-stream", ""}:
+                raise ValueError("Formato de figurinha nao suportado.")
+            mime = "image/webp"
         extensions = {value[1]: ext for ext, value in TYPES.items() if value[0] == row["kind"]}
         if row["kind"] != "document":
             ext = extensions.get(mime)

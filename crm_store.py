@@ -202,7 +202,8 @@ class CrmStore:
                 if name not in columns:
                     c.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
             media_columns = {r[1] for r in c.execute("PRAGMA table_info(message_media)")}
-            for name, definition in (("provider_payload", "TEXT NOT NULL DEFAULT ''"), ("download_state", "TEXT NOT NULL DEFAULT 'ready'")):
+            for name, definition in (("provider_payload", "TEXT NOT NULL DEFAULT ''"), ("download_state", "TEXT NOT NULL DEFAULT 'ready'"),
+                                     ("is_sticker", "INTEGER NOT NULL DEFAULT 0")):
                 if name not in media_columns:
                     c.execute(f"ALTER TABLE message_media ADD COLUMN {name} {definition}")
             if "skip_reason" not in columns:

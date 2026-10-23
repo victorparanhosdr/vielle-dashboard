@@ -21,6 +21,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(!selected)return;const signature=key(selected),draft=drafts.get(signature) || {body:$("replyBody")?.value || "",requests:{}};
     draft.media=value;draft.requests={};drafts.set(signature,draft);syncSend();
   }});
+  const stickerPreviews=window.createCrmStickerPreviews?.({load:loadMedia,active:signature=>Boolean(root && selected && signature===key(selected))});
   const chatSearch=window.createCrmChatSearch({api,esc,icon,icons,onResult:seq=>{messages=[];hasOlder=false;refreshThread(false,seq);},onClose:()=>{messages=[];hasOlder=false;refreshThread();}});
   const templates=window.createCrmMessageTemplates({api,esc,icon,icons,onError:chatError,getContext:()=>({name:threadData?.contact.name || leadFor()?.name || "",doctor:state.data.doctors.find(d=>d.id===owner)?.name || ""})});
   function conversationFacts(c) {
@@ -56,7 +57,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function mount(target) {
     const changed=scope!==scopeKey();
-    if(changed){media.destroy();chatSearch.destroy();templates.destroy();scope=scopeKey();owner=doctors().includes(state.doctor)?state.doctor:doctors()[0];selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;catalog={channels:state.data.channels.filter(c=>doctors().includes(c.doctor_id)),pipelines:state.data.pipelines.filter(p=>doctors().includes(p.doctor_id))};}
+    if(changed){stickerPreviews?.reset();media.destroy();chatSearch.destroy();templates.destroy();scope=scopeKey();owner=doctors().includes(state.doctor)?state.doctor:doctors()[0];selected=null;selectedRecord=null;filter="all";channel="";messages=[];threadData=null;threadSeq++;catalog={channels:state.data.channels.filter(c=>doctors().includes(c.doctor_id)),pipelines:state.data.pipelines.filter(p=>doctors().includes(p.doctor_id))};}
     if(root===target && $("inboxWorkspace") && !changed){refreshList();if(selected){drawSenderOptions();drawInfo();refreshThread();}return;}
     media.destroy();chatSearch.destroy();templates.destroy();root=target;listSeq++;threadSeq++;
     root.innerHTML=`<div class="inboxWorkspace" id="inboxWorkspace"><aside class="conversationList" aria-label="Conversas"><div class="inboxListHead"><div><h2>Atendimento</h2><span id="inboxCount"></span></div><button id="inboxNewContact" class="icon-button" aria-label="Nova oportunidade" title="Nova oportunidade">${icon("square-pen")}</button></div><label class="channelFilter">Número de atendimento<select id="inboxChannel"><option value="">Todos os números</option>${state.data.channels.map(c=>`<option value="${esc(c.id)}" ${channel===c.id?"selected":""}>${esc(c.name)} · +${esc(c.phone)}</option>`).join("")}</select></label><div class="inboxSegments" role="group" aria-label="Filtrar conversas">${[["all","Todas"],["unread","Não lidas"],["waiting","Sem resposta"]].map(([id,name])=>`<button data-inbox-filter="${id}" aria-pressed="${filter===id}">${name}<span data-count="${id}">0</span></button>`).join("")}</div><div id="conversationRows" class="conversationRows"></div><p id="inboxLimit" class="connectionNote" hidden></p><p id="inboxError" role="status" hidden></p></aside><section id="chatPane" class="chatPane" aria-label="Chat do cliente"><div class="chatPlaceholder">${icon("messages-square")}<h2>Conversas que conectam</h2><p>Selecione um cliente</p></div></section><aside id="contactPanel" class="contactPanel" aria-label="Ficha comercial" hidden></aside></div>`;
@@ -125,6 +126,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     if(badge){badge.textContent=count;badge.hidden=!count;}
   }
   function clearChat(){
+    stickerPreviews?.reset();
     media.destroy();chatSearch.destroy();templates.destroy();selected=null;selectedRecord=null;threadData=null;messages=[];threadSeq++;openSeq++;contextSeq++;
     $("chatPane").innerHTML='<div class="chatPlaceholder"><h2>Selecione um cliente</h2></div>';$("contactPanel").replaceChildren();$("contactPanel").hidden=true;$("inboxWorkspace").classList.remove("chatActive","showContact");
     $("chatPane").inert=false;
@@ -157,7 +159,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   function select(item) {
     const doc=item.doctor_id || catalog.channels.find(c=>c.id===item.channel_id)?.doctor_id;
     if(!doctors().includes(doc))return;
-    media.destroy();chatSearch.destroy();templates.destroy();renderedSearch="";
+    stickerPreviews?.reset();media.destroy();chatSearch.destroy();templates.destroy();renderedSearch="";
     openSeq++;
     const previous=owner===doc && selected?.contact_id===item.contact_id?leadFor():null;
     owner=doc;
@@ -357,11 +359,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
         timeline.innerHTML=`${hasOlder?'<button id="olderMessages" class="olderMessages">Mensagens anteriores</button>':""}<div class="chatMessages">${messages.map(m=>{
           const d=new Date(m.created_at*1000).toLocaleDateString("pt-BR"), divider=day!==d?`<div class="chatDay">${d}</div>`:"";day=d;
           const status=m.origin==="external"?"Enviada externamente":labels[m.status] || m.status;
-          return `${divider}<article data-message-seq="${m.seq}" class="chatBubble ${m.direction} ${m.status} ${m.seq===focus?"searchResult":""}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind!=="audio" && messageText(m)?`<p>${chatSearch.highlight(messageText(m))}</p>`:""}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
+          return `${divider}<article data-message-seq="${m.seq}" class="chatBubble ${m.direction} ${m.status} ${m.media?.is_sticker && m.media.state==='ready'?'stickerBubble':''} ${m.seq===focus?"searchResult":""}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind!=="audio" && messageText(m) && !(m.media?.is_sticker && messageText(m)==='[Figurinha]')?`<p>${chatSearch.highlight(messageText(m))}</p>`:""}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
         }).join("") || '<p class="inboxEmpty">Nenhuma mensagem neste número</p>'}</div>`;
         timeline.querySelectorAll('[data-audio-transcript]').forEach(node=>node.open=expanded.has(node.dataset.audioTranscript));
         if(around)timeline.querySelector(`[data-message-seq="${around}"]`)?.scrollIntoView({block:"center",behavior:"instant"});else if(older)timeline.scrollTop=scroll+timeline.scrollHeight-height;else if(!focus && (nearBottom || !height))timeline.scrollTop=timeline.scrollHeight;
         icons();
+        stickerPreviews?.watch(timeline,signature);
       }
       $("chatName").textContent=data.contact.name;
       const record=leadFor(),preference=data.contact.followup_contact;
@@ -397,7 +400,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}
     finally{if(root && selected && signature===key(selected)){sending=false;syncSend();}}
   }
-  function unmount(){media.destroy();chatSearch.destroy();templates.destroy();cancelAnimationFrame(focusFrame);focusFrame=0;root=null;listSeq++;threadSeq++;openSeq++;}
+  function unmount(){stickerPreviews?.reset();media.destroy();chatSearch.destroy();templates.destroy();cancelAnimationFrame(focusFrame);focusFrame=0;root=null;listSeq++;threadSeq++;openSeq++;}
   setInterval(()=>{if(root && !document.hidden && !document.querySelector("dialog[open]")){refreshList();if(selected)refreshThread();}},5000);
   setInterval(updateTimers,1000);
   function setFilter(kind){if(!["all","unread","waiting"].includes(kind))return;filter=kind;if(root){root.querySelectorAll("[data-inbox-filter]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.inboxFilter===kind)));refreshList();}}
