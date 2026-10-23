@@ -411,6 +411,11 @@ if "--quality-fixture" in sys.argv:
             quality.review(store,doc,assessment["id"],{"revision":1,"failures":["clarity"],"reason":"Revisão sintética aprovada."},"1")
     auth.create_user("Gerente Exemplo","preview-manager",password,clinic_keys=["vielle"],permissions={"vielle":["crm.view"]})
 
+if "--followup-actions-fixture" in sys.argv:
+    from crm_followup_fixture import prepare
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    prepare(store,doc,store.listing(doc)["pipelines"][0],{"id":"1","is_master":True})
+
 if "--followup-contact-fixture" in sys.argv:
     import crm_api
     import crm_followup_settings as followup_settings

@@ -73,6 +73,12 @@ def validate(name, kind, data):
     return name, mime
 
 
+def storage_used(c):
+    return c.execute("""SELECT
+        (SELECT coalesce(sum(size),0) FROM message_media WHERE download_state='ready' AND followup_asset_id='')+
+        (SELECT coalesce(sum(size),0) FROM crm_followup_assets)""").fetchone()[0]
+
+
 def public(row):
     return {k: row[k] for k in ("id", "name", "mime", "kind", "size")} | {"state": row.get("download_state", "ready"), "url": "/api/crm/media?" + urlencode({"clinic": "vielle", "doctor": row["doctor_id"], "id": row["id"]})}
 
@@ -104,7 +110,7 @@ def upload(store, doctor, channel, contact, user, request, name, kind, data):
         for row in stale:
             path_for(store, row[0]).unlink(missing_ok=True)
             c.execute("DELETE FROM message_media WHERE id=?", (row[0],))
-        used = c.execute("SELECT coalesce(sum(size),0) FROM message_media WHERE download_state='ready'").fetchone()[0]
+        used = storage_used(c)
         drafts = c.execute("SELECT coalesce(sum(size),0) FROM message_media WHERE user_id=? AND message_id=''", (str(user),)).fetchone()[0]
         if used + len(data) > 1024 * MB or drafts + len(data) > 100 * MB:
             raise ValueError("Armazenamento de anexos cheio. Revise os arquivos antes de continuar.")
@@ -248,7 +254,7 @@ def fetch_media(store, gateway, doctor, key):
             mime = TYPES.get(Path(name).suffix.lower(), ("document", "application/octet-stream"))[1]
         with store.db() as c:
             c.execute("BEGIN IMMEDIATE")
-            used = c.execute("SELECT coalesce(sum(size),0) FROM message_media WHERE download_state='ready'").fetchone()[0]
+            used = storage_used(c)
             if used + len(data) > 1024 * MB:
                 raise ValueError("Armazenamento de anexos cheio.")
             path = path_for(store, key)
@@ -274,7 +280,7 @@ def for_send(store, item):
         row = store.row(c, "message_media", item["media_id"])
         if (row["message_id"], row["doctor_id"], row["contact_id"]) != (item["id"], item["doctor_id"], item["contact_id"]):
             raise ValueError("Anexo de outra conversa.")
-    path = path_for(store, row["id"])
+    path = path_for(store, row.get("followup_asset_id") or row["id"])
     if path.is_symlink():
         raise ValueError("Anexo indisponivel.")
     with path.open("rb") as source:
@@ -289,7 +295,11 @@ def serve(handler, store, doctor, key):
         row = store.owned(c, "message_media", key, doctor)
         if not row["message_id"] and row["user_id"] != str(handler.current_user["id"]):
             raise ValueError("Anexo de outro usuario.")
-    path = path_for(store, key)
+    path = path_for(store, row.get("followup_asset_id") or key)
+    return stream(handler, row, path)
+
+
+def stream(handler, row, path):
     if not path.is_file() or path.is_symlink():
         raise LookupError("Anexo indisponivel.")
     size = path.stat().st_size

@@ -23,7 +23,7 @@ assert.equal((html.match(/data-mode="followups"/g)||[]).length,2);
 assert.ok(crm.includes('followups:"Follow up"'));assert.ok(crm.includes('followupCenter.canLeave()'));
 assert.ok(source.includes('draft.steps.length>=data.max_steps'));
 assert.ok(source.includes('role="switch"'));assert.ok(source.includes('followups/toggle'));
-assert.ok(source.includes('esc(step.body)'));assert.ok(source.includes('simulation===previewSeq'));
+assert.ok(source.includes('esc(step.body || "")'));assert.ok(source.includes('simulation===previewSeq'));
 assert.ok(source.includes('data.enabled && button.type==="submit"'));
 assert.ok(!crm.includes('clinicReviewBadge'));assert.ok(!crm.includes('summary.review} para revisão'));
 assert.ok(!read('crm-clinic-journey.js').includes('Etapa atual conferida'));

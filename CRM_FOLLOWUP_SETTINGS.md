@@ -97,6 +97,46 @@ Testes sinteticos de configuracao, concorrencia, ativacao, cancelamento,
 preflight, incerteza, espacamento, retomada de expediente, autoria e permissao.
 Provedores simulados; nenhum envio real e necessario para testar a entrega.
 
+## Passos com anexos e robos
+
+Cada passo escolhe texto, imagem, documento, video, audio ou acionar robo.
+Imagem/video/documento admitem legenda opcional; audio nao admite legenda no
+gateway atual. Reutiliza validacao por assinatura, extensao e tamanho do CRM:
+imagem ate 10 MB, audio/video ate 16 MB e documento ate 25 MB.
+
+Arquivos reutilizaveis ficam em crm_followup_assets, privados e vinculados ao
+funil, separados de anexos dos pacientes. Upload e edicao exigem Master, CSRF,
+escopo atual e regua desligada. Leitura exige acesso ao funil. Ao reservar um
+envio, cria message_media proprio do destinatario, apontando ao arquivo imutavel.
+Hash e identidade sao verificados antes do provider. Arquivo ausente/alterado
+interrompe, sem mudar de arquivo ou reenviar. O historico conserva o anexo.
+
+Robos usam o editor existente. A selecao exige robo ativo do mesmo funil,
+stop_on_reply e somente blocos start/message/delay/condition/note/task/tag/end.
+Movimentacao de fase, alteracao de campos e fechamento de conversa permanecem
+fora desta integracao. A versao selecionada fica congelada; trocar, pausar ou
+alterar o robo exige revisar a regua. O numero dos blocos deve coincidir com a
+conexao do ciclo. A execucao e unica por ciclo/passo, sem iniciar outra regua.
+
+Todos os blocos do robo associado passam pelo guard do follow-up antes de
+executar, inclusive notas e tarefas. Horario, pausa individual, resposta,
+permissoes e mudancas de contexto interrompem ou adiam conforme o caso. O
+passo seguinte so e calculado depois de o robo concluir; se falhar, cancelar
+ou tiver envio incerto, nao ha retomada automatica. Mensagens deste robo nao
+recebem o rodape legado. Robos independentes mantem comportamento anterior.
+
+## Progresso e filtros
+
+Cartoes clinicos e lista mostram Follow-up N/total, situacao e proximo passo.
+Filtros por situacao e numero de passos concluidos sao aplicados no servidor
+antes da paginacao, compartilhados com acoes em massa e selecao de publico.
+Reserva na fila nao conta como concluida. Mensagem conta apos aceite do
+conector; robo, depois de concluir. Isso nao confirma entrega ou leitura.
+Resposta do cliente encerra o ciclo anterior; a fase comercial nao e alterada.
+O read model consulta apenas o ciclo mais recente do lead no escopo atual,
+sem matricular contatos, modificar mensagens ou expor o funil de origem apos
+transferencia. Cursos nao recebem metadados ou badges de follow-up clinico.
+
 Validacao de entrega em 23/10/2026: 560 testes Python do CRM e 67 testes HTTP
 aprovados. Trinta suites JavaScript do CRM passaram; a assercao textual antiga
 de test_crm_facebook_ui.cjs falha tambem na revisao-base, sem alteracao desse
@@ -112,3 +152,12 @@ Previa sintetica desktop/mobile: default marcado, desmarcacao pontual, retorno
 ao padrao na proxima mensagem, pausa persistente apos recarregar, ficha completa
 e lateral sincronizadas, sem overflow em 390 pixels. Worker e provedor reais
 ausentes da previa. Nenhuma regua de producao e ativada por esta atualizacao.
+
+Revisao de acoes e progresso: 604 testes CRM e 69 HTTP aprovados; 32 suites
+JavaScript aprovadas, com a mesma assercao legada de Facebook excluida.
+Validacao sintetica de quatro formatos, versao e cancelamento de robos,
+resposta durante a fila, pausa individual, expediente, arquivos privados,
+hash alterado, escopo, filtros e contagem sem confundir reserva com aceite.
+Upload real de WAV sintetico, salvar rascunho com audio/imagem/documento/robo,
+filtro do segundo passo e previa desktop/mobile conferidos no navegador.
+Sem provider ou worker real na previa; nenhuma mensagem real enviada.

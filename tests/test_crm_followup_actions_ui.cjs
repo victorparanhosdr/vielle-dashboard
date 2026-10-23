@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const read=name=>fs.readFileSync('static/'+name,'utf8'),ctx={window:{}};vm.createContext(ctx);vm.runInContext(read('crm-followup-contact.js'),ctx);
+const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+const badge=ctx.window.crmFollowupProgressBadge;
+assert.equal(badge({status:'none'},esc,()=>''),'');
+const value=badge({status:'waiting',has_cycle:true,completed_steps:2,accepted_steps:1,total_steps:4,next_step:3,pending_status:'robot',reason:'<script>'},esc,()=>'<svg/>');
+assert.match(value,/Follow-up 2\/4/);assert.match(value,/robô em andamento/);assert.match(value,/leitura não confirmadas/);assert.ok(!value.includes('<script>'));
+const source=read('crm-followups.js');
+for(const kind of ['image','document','video','audio','bot'])assert.ok(source.includes(`"${kind}"`));
+assert.ok(source.includes('data-fu-asset'));assert.ok(source.includes('data-fu-bot'));assert.ok(source.includes('bot_revision=bot?.revision'));
+assert.ok(source.includes('data.enabled || !data.can_manage'));
+assert.ok(source.includes('if(!active(token))return;data.assets='));
+assert.ok(read('crm.html').includes('/crm-followup-media.js?v=1'));
+assert.ok(read('crm.js').includes('followup_status'));assert.ok(read('crm-audience.js').includes('followup_step'));
+console.log('Follow-up actions UI: formats, robot revision, private preview, escaping and completed-step badge OK');

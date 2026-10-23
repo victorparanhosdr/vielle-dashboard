@@ -11,6 +11,8 @@ from crm_followup_settings import TZ, next_window
 
 
 def schema(c):
+    from crm_followup_assets import schema as asset_schema
+    asset_schema(c)
     for name, definition in (("followup_cycle_id", "TEXT NOT NULL DEFAULT ''"), ("followup_attempt", "INTEGER NOT NULL DEFAULT 0")):
         if name not in {r[1] for r in c.execute("PRAGMA table_info(messages)")}:
             c.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
@@ -32,9 +34,16 @@ def schema(c):
             UNIQUE(contact_id,inbound_seq));
         CREATE UNIQUE INDEX IF NOT EXISTS crm_followup_active_contact ON crm_followup_cycles(contact_id) WHERE status='waiting';
         CREATE UNIQUE INDEX IF NOT EXISTS crm_followup_message_attempt ON messages(followup_cycle_id,followup_attempt) WHERE followup_cycle_id<>'';
+        CREATE INDEX IF NOT EXISTS crm_followup_cycle_lead ON crm_followup_cycles(lead_id,doctor_id,pipeline_id,created_at DESC);
+        CREATE INDEX IF NOT EXISTS crm_followup_inbound_contact ON messages(contact_id) WHERE direction='in';
+        CREATE INDEX IF NOT EXISTS crm_followup_robot_messages ON messages(bot_run_id,status) WHERE bot_run_id<>'';
         CREATE TABLE IF NOT EXISTS crm_followup_events(id INTEGER PRIMARY KEY,cycle_id TEXT NOT NULL,
             kind TEXT NOT NULL,reason TEXT NOT NULL,created_at REAL NOT NULL);
     """)
+    if "bot_run_id" not in {r[1] for r in c.execute("PRAGMA table_info(crm_followup_cycles)")}:
+        c.execute("ALTER TABLE crm_followup_cycles ADD COLUMN bot_run_id TEXT NOT NULL DEFAULT ''")
+    from crm_followup_bots import schema as bot_schema
+    bot_schema(c)
 
 
 def inbound(c, contact):
@@ -48,6 +57,8 @@ def log(c, cycle, kind, reason, now):
 def stop(c, cycle, reason, now, status="cancelled"):
     c.execute("UPDATE crm_followup_cycles SET status=?,reason=?,updated_at=? WHERE id=?",(status,reason,now,cycle["id"]))
     c.execute("UPDATE messages SET status='skipped',skip_reason=? WHERE followup_cycle_id=? AND status='queued'",(reason,cycle["id"]))
+    from crm_bots import BotStore
+    BotStore.cancel(c,"id IN (SELECT run_id FROM crm_followup_bot_steps WHERE cycle_id=?)",(cycle["id"],),reason,now)
     log(c,cycle["id"],status,reason,now)
 
 
@@ -128,16 +139,16 @@ def guard(c, store, cycle, now, *, own_message=""):
         return "paused","Envio sem confirmação; não reenviar"
     if c.execute("SELECT 1 FROM crm_reminders WHERE lead_id=? AND status='pending' LIMIT 1",(lead["id"],)).fetchone() or lead["next_action"] and lead["next_action"]>=datetime.fromtimestamp(now,TZ).date().isoformat():
         return "paused","Retorno ou tarefa já combinado na ficha"
-    if c.execute("SELECT 1 FROM bot_runs r JOIN leads l ON l.id=r.lead_id WHERE l.contact_id=? AND r.status NOT IN ('done','failed','cancelled') LIMIT 1",(cycle["contact_id"],)).fetchone():
+    if c.execute("SELECT 1 FROM bot_runs r JOIN leads l ON l.id=r.lead_id WHERE l.contact_id=? AND r.id<>? AND r.status NOT IN ('done','failed','cancelled') LIMIT 1",(cycle["contact_id"],cycle["bot_run_id"])).fetchone():
         return "paused","Outra automação deste contato está em andamento"
     anchor=c.execute("SELECT rowid,* FROM messages WHERE id=?",(cycle["anchor_id"],)).fetchone()
     if not anchor or anchor["origin"]!="crm" or anchor["status"]!="sent" or not anchor["sender_user_id"]:
         return "paused","Resposta humana sem confirmação confiável"
-    if c.execute("SELECT 1 FROM messages WHERE contact_id=? AND direction='out' AND rowid>? AND origin<>'followup' LIMIT 1",(cycle["contact_id"],anchor["rowid"])).fetchone():
+    if c.execute("SELECT 1 FROM messages WHERE contact_id=? AND direction='out' AND rowid>? AND origin<>'followup' AND bot_run_id NOT IN (SELECT run_id FROM crm_followup_bot_steps WHERE cycle_id=?) LIMIT 1",(cycle["contact_id"],anchor["rowid"],cycle["id"])).fetchone():
         return "cancelled","Novo atendimento após o início da régua"
-    if c.execute("SELECT 1 FROM messages WHERE contact_id=? AND id<>? AND status IN ('queued','sending') AND origin<>'followup' LIMIT 1",(cycle["contact_id"],own_message)).fetchone():
+    if c.execute("SELECT 1 FROM messages WHERE contact_id=? AND id<>? AND status IN ('queued','sending') AND origin<>'followup' AND bot_run_id NOT IN (SELECT run_id FROM crm_followup_bot_steps WHERE cycle_id=?) LIMIT 1",(cycle["contact_id"],own_message,cycle["id"])).fetchone():
         return "defer","Outro envio aguardando processamento"
-    rows=c.execute("SELECT body,media_id FROM messages WHERE contact_id=? AND rowid>=? AND origin<>'followup' ORDER BY rowid LIMIT 101",(cycle["contact_id"],cycle["inbound_seq"])).fetchall()
+    rows=c.execute("SELECT body,media_id FROM messages WHERE contact_id=? AND rowid>=? AND origin<>'followup' AND bot_run_id NOT IN (SELECT run_id FROM crm_followup_bot_steps WHERE cycle_id=?) ORDER BY rowid LIMIT 101",(cycle["contact_id"],cycle["inbound_seq"],cycle["id"])).fetchall()
     context=" ".join(r[0] for r in rows)
     normalized=unicodedata.normalize("NFKD",context).encode("ascii","ignore").decode().casefold()
     if len(rows)>100 or any(r[1] for r in rows) or re.search(r"\b(dor|dores|febre|sangramento|necrose|alergia|intercorrencia|complicacao|reclamacao|insatisfeit\w*|pos[- ](?:procedimento|operatorio)|agendad[ao]|consulta confirmada|sem interesse|nao quero|me chame|me ligue|entre em contato depois)\b",normalized) or re.search(r"\[(audio|imagem|video|documento)\]",normalized):
@@ -207,13 +218,17 @@ def permitted(store, auth):
 def settle(c, store, message, now):
     cycle=c.execute("SELECT * FROM crm_followup_cycles WHERE id=? AND message_id=?",(message["followup_cycle_id"],message["id"])).fetchone()
     if not cycle or cycle["status"]!="waiting":return
+    complete_step(c,cycle,now)
+
+
+def complete_step(c,cycle,now):
     steps=json.loads(cycle["config"])["steps"]
     if cycle["attempt"]>=len(steps):
         stop(c,cycle,"Tentativas concluídas; etapa do paciente preservada",now,"completed");return
     config=json.loads(cycle["config"])
     due=next_window(config,now+steps[cycle["attempt"]]["minutes"]*60)
-    c.execute("UPDATE crm_followup_cycles SET message_id='',due_at=?,updated_at=? WHERE id=?",(due,now,cycle["id"]))
-    log(c,cycle["id"],"accepted","Aceita pelo conector; entrega não confirmada",now)
+    c.execute("UPDATE crm_followup_cycles SET message_id='',bot_run_id='',due_at=?,updated_at=? WHERE id=?",(due,now,cycle["id"]))
+    log(c,cycle["id"],"step_completed","Passo concluído; aceite de mensagem não comprova entrega",now)
 
 
 def advance(store, now=None):
@@ -231,6 +246,11 @@ def advance(store, now=None):
             if reason:
                 if reason[0]!="defer":stop(c,cycle,reason[1],now,reason[0])
                 continue
+            if cycle["bot_run_id"]:
+                run=c.execute("SELECT * FROM bot_runs WHERE id=?",(cycle["bot_run_id"],)).fetchone()
+                if run and run["status"]=="done":complete_step(c,cycle,run["updated_at"])
+                elif not run or run["status"] in {"failed","cancelled"}:stop(c,cycle,"Robô interrompido; conferir antes de retomar",now,"paused")
+                continue
             if cycle["message_id"]:
                 message=c.execute("SELECT * FROM messages WHERE id=?",(cycle["message_id"],)).fetchone()
                 if message and message["status"]=="sent":settle(c,store,message,message["sent_at"] or now)
@@ -241,9 +261,26 @@ def advance(store, now=None):
             if due>now:
                 c.execute("UPDATE crm_followup_cycles SET due_at=? WHERE id=?",(due,cycle["id"]));continue
             ident=uuid.uuid4().hex;updated=dict(cycle);updated["attempt"]+=1
+            step=config["steps"][updated["attempt"]-1]
+            if step.get("action")=="bot":
+                from crm_followup_bots import launch
+                try:run=launch(c,store,updated,step,now)
+                except ValueError as exc:
+                    stop(c,cycle,str(exc),now,"paused");continue
+                c.execute("UPDATE crm_followup_cycles SET attempt=?,bot_run_id=?,updated_at=? WHERE id=?",(updated["attempt"],run,now,cycle["id"]))
+                log(c,cycle["id"],"robot_started","Robô reservado na sequência; sem cadência concorrente",now)
+                continue
             body=body_for(c,updated)
             c.execute("""INSERT INTO messages(id,channel_id,contact_id,body,direction,origin,recipient_phone,sender_name,followup_cycle_id,followup_attempt,created_at)
                 VALUES(?,?,?,?,'out','followup',?,'Assistente virtual',?,?,?)""",(ident,cycle["channel_id"],cycle["contact_id"],body,cycle["phone"],cycle["id"],updated["attempt"],now))
+            if step.get("media_id"):
+                from crm_followup_assets import bind
+                try:
+                    media=bind(c,store,cycle,ident,step["media_id"],now)
+                except (ValueError,OSError):
+                    c.execute("UPDATE messages SET status='skipped',skip_reason='Anexo indisponível' WHERE id=?",(ident,))
+                    stop(c,cycle,"Anexo indisponível; confira o passo antes de continuar",now,"paused");continue
+                c.execute("UPDATE messages SET media_id=? WHERE id=?",(media,ident))
             c.execute("UPDATE crm_followup_cycles SET attempt=?,message_id=?,updated_at=? WHERE id=?",(updated["attempt"],ident,now,cycle["id"]))
             log(c,cycle["id"],"queued","Uma tentativa reservada na fila compartilhada",now)
         return bool(cycles)
@@ -264,8 +301,15 @@ def message_allowed(c, store, message, now):
             reason=invalid[1]
         elif cycle["due_at"]>now or next_window(json.loads(cycle["config"]),now)>now:
             return False
-        elif (message["body"],message["channel_id"],message["contact_id"],message["recipient_phone"],message["origin"],message["media_id"],message["sender_user_id"])!=(body_for(c,cycle),cycle["channel_id"],cycle["contact_id"],cycle["phone"],"followup","",""):
+        elif (message["body"],message["channel_id"],message["contact_id"],message["recipient_phone"],message["origin"],message["sender_user_id"])!=(body_for(c,cycle),cycle["channel_id"],cycle["contact_id"],cycle["phone"],"followup",""):
             reason="Conteúdo ou destinatário diferente do acompanhamento autorizado"
+        else:
+            step=json.loads(cycle["config"])["steps"][cycle["attempt"]-1]
+            asset=step.get("media_id","")
+            from crm_followup_assets import matches
+            try:valid=matches(c,cycle,message,asset) if asset else not message["media_id"]
+            except ValueError:valid=False
+            if step.get("action")=="bot" or not valid:reason="Anexo diferente do acompanhamento autorizado"
     if reason:
         if cycle and cycle["status"]=="waiting":stop(c,cycle,reason,now,"paused")
         c.execute("UPDATE messages SET status='skipped',skip_reason=? WHERE id=? AND status IN ('queued','sending')",(reason,message["id"]))

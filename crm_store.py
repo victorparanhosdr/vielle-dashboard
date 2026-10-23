@@ -741,6 +741,8 @@ class CrmStore:
             lead["customer_history"] = history
             if include_search:
                 lead["_experts_search"] += " " + data.get("search_text", "")
+        from crm_followup_progress import attach as attach_followup_progress
+        attach_followup_progress(c,leads)
 
     def appointments(self, key, doctor, scope="doctor", period="all", page=1):
         if scope == "clinic" and CRM_SCOPE.get() is not None:
@@ -1343,8 +1345,9 @@ class CrmStore:
                         continue
                 if r["bot_run_id"]:
                     from crm_bots import message_allowed
-                    if not message_allowed(c, r["bot_run_id"]):
-                        c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (r["id"],))
+                    if not message_allowed(c, r["bot_run_id"],self,now):
+                        deferred=c.execute("SELECT 1 FROM bot_runs r JOIN crm_followup_bot_steps f ON f.run_id=r.id WHERE r.id=? AND r.status='sending'",(r["bot_run_id"],)).fetchone()
+                        if not deferred:c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (r["id"],))
                         continue
                 if r["campaign_id"] and (local.weekday() not in json.loads(r["weekdays"]) or not r["hour_from"]*60+r["minute_from"] <= local.hour*60+local.minute < r["hour_to"]*60+r["minute_to"]):
                     continue

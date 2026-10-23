@@ -25,8 +25,9 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
                     return True
             if item.get("bot_run_id"):
                 from crm_bots import message_allowed
-                if not message_allowed(c, item["bot_run_id"]):
-                    c.execute("UPDATE messages SET status='cancelled',skip_reason='Automacao interrompida' WHERE id=?", (item["id"],))
+                if not message_allowed(c, item["bot_run_id"],store,now):
+                    deferred=c.execute("SELECT 1 FROM bot_runs r JOIN crm_followup_bot_steps f ON f.run_id=r.id WHERE r.id=? AND r.status='sending'",(item["bot_run_id"],)).fetchone()
+                    c.execute("UPDATE messages SET status=?,skip_reason=? WHERE id=? AND status='sending'", ("queued" if deferred else "cancelled","" if deferred else "Automacao interrompida",item["id"]))
                     return True
             current = c.execute("""SELECT coalesce(ca.status,'running') status,ct.opted_out,coalesce(ps.phone,ct.phone) phone,ct.experts_status,ch.state FROM messages m
                 LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN contacts ct ON ct.id=m.contact_id

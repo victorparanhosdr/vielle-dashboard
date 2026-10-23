@@ -24,8 +24,34 @@ window.createCrmFollowupSettings=({state,api,esc,icon,icons,notice})=>{
   function steps(){
     find("#followupSteps").innerHTML=draft.steps.map((step,i)=>{
       const [amount,unit]=duration(step.minutes);
-      return `<article class="followupStep" data-fu-step="${i}"><header><h3>${icon("message-circle")} Follow-up ${i+1}</h3><div class="followupStepActions"><button type="button" class="icon-button" data-fu-up="${i}" aria-label="Mover follow-up ${i+1} para cima" title="Mover para cima" ${i===0?"disabled":""}>${icon("arrow-up")}</button><button type="button" class="icon-button" data-fu-down="${i}" aria-label="Mover follow-up ${i+1} para baixo" title="Mover para baixo" ${i===draft.steps.length-1?"disabled":""}>${icon("arrow-down")}</button><button type="button" class="icon-button" data-fu-remove="${i}" aria-label="Remover follow-up ${i+1}" title="Remover follow-up" ${draft.steps.length===1?"disabled":""}>${icon("trash-2")}</button></div></header><div class="followupTiming"><label>${i?"Após o follow-up anterior":"Após a resposta da equipe"}<span class="followupDuration"><input type="number" min="1" max="43200" step="1" value="${amount}" data-fu-wait="${i}" aria-label="Intervalo do follow-up ${i+1}" required><select data-fu-unit="${i}" aria-label="Unidade do follow-up ${i+1}">${[[1,"Minutos"],[60,"Horas"],[1440,"Dias"]].map(([value,text])=>`<option value="${value}" ${unit===value?"selected":""}>${text}</option>`).join("")}</select></span></label><div class="followupTotal"><span>Prazo acumulado</span><output data-fu-total="${i}"></output></div></div><label>Mensagem<textarea rows="3" maxlength="2000" data-fu-body="${i}" aria-label="Mensagem do follow-up ${i+1}" required>${esc(step.body)}</textarea></label><div class="followupMessageMeta"><span>{nome} · {clinica}</span><span data-fu-chars="${i}">${step.body.length} / 2000</span></div></article>`;
+      const kind=kindFor(step),symbol={text:"message-circle",image:"image",document:"file-text",video:"video",audio:"audio-lines",bot:"workflow"}[kind];
+      return `<article class="followupStep" data-fu-step="${i}"><header><h3>${icon(symbol)} Follow-up ${i+1}</h3><div class="followupStepActions"><button type="button" class="icon-button" data-fu-up="${i}" aria-label="Mover follow-up ${i+1} para cima" title="Mover para cima" ${i===0?"disabled":""}>${icon("arrow-up")}</button><button type="button" class="icon-button" data-fu-down="${i}" aria-label="Mover follow-up ${i+1} para baixo" title="Mover para baixo" ${i===draft.steps.length-1?"disabled":""}>${icon("arrow-down")}</button><button type="button" class="icon-button" data-fu-remove="${i}" aria-label="Remover follow-up ${i+1}" title="Remover follow-up" ${draft.steps.length===1?"disabled":""}>${icon("trash-2")}</button></div></header><div class="followupTiming"><label>${i?"Após o passo anterior terminar":"Após a resposta da equipe"}<span class="followupDuration"><input type="number" min="1" max="43200" step="1" value="${amount}" data-fu-wait="${i}" aria-label="Intervalo do follow-up ${i+1}" required><select data-fu-unit="${i}" aria-label="Unidade do follow-up ${i+1}">${[[1,"Minutos"],[60,"Horas"],[1440,"Dias"]].map(([value,text])=>`<option value="${value}" ${unit===value?"selected":""}>${text}</option>`).join("")}</select></span></label><div class="followupTotal"><span>Intervalos acumulados</span><output data-fu-total="${i}"></output></div></div><label>Ação<select data-fu-kind="${i}" aria-label="Ação do follow-up ${i+1}">${[["text","Mensagem de texto"],["image","Imagem"],["document","Documento"],["video","Vídeo"],["audio","Áudio"],["bot","Acionar robô"]].map(([key,name])=>`<option value="${key}" ${kind===key?"selected":""}>${name}</option>`).join("")}</select></label>${content(step,i,kind)}</article>`;
     }).join("");updateTotals();icons();
+  }
+  function kindFor(step){return step.action==="bot"?"bot":step.media_kind || data.assets?.find(a=>a.id===step.media_id)?.kind || "text";}
+  function content(step,i,kind){
+    if(kind==="bot"){
+      const bots=(data.bots || []).filter(b=>b.eligible || b.id===step.bot_id);
+      return `<label class="followupActionBody">Robô do funil<select data-fu-bot="${i}" aria-label="Robô do follow-up ${i+1}" required><option value="">Selecionar robô</option>${bots.map(b=>`<option value="${esc(b.id)}" ${step.bot_id===b.id?"selected":""} ${!b.eligible?"disabled":""}>${esc(b.name)}${b.eligible?"":" · indisponível"}</option>`).join("")}</select></label>${!bots.length?'<p class="followupAssetState">Nenhum robô compatível ativo neste funil.</p>':""}`;
+    }
+    const media=data.assets?.find(a=>a.id===step.media_id),accept={image:"image/*",video:"video/*",audio:"audio/*",document:".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip"};
+    const attachment=kind==="text"?"":`<div class="followupAssetTools"><label>Arquivo<select data-fu-asset="${i}" aria-label="Arquivo do follow-up ${i+1}" required><option value="">Selecionar arquivo</option>${(data.assets || []).filter(a=>a.kind===kind).map(a=>`<option value="${esc(a.id)}" ${step.media_id===a.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label><button type="button" data-fu-upload="${i}" title="Carregar arquivo">${icon("upload")} Anexar</button><input type="file" data-fu-file="${i}" accept="${accept[kind]}" hidden><span class="followupAssetState">${{image:10,video:16,audio:16,document:25}[kind]} MB máx.</span></div>${media?mediaPreview(media):""}`;
+    const body=kind==="audio"?"":`<label class="followupActionBody">${kind==="text"?"Mensagem":"Legenda (opcional)"}<textarea rows="3" maxlength="2000" data-fu-body="${i}" aria-label="Mensagem do follow-up ${i+1}" ${kind==="text"?"required":""}>${esc(step.body || "")}</textarea></label><div class="followupMessageMeta"><span>{nome} · {clinica}</span><span data-fu-chars="${i}">${(step.body || "").length} / 2000</span></div>`;
+    return attachment+body;
+  }
+  function mediaPreview(media){
+    if(!media.url?.startsWith("/api/crm/followups/media?"))return "";
+    const url=esc(media.url),name=esc(media.name);
+    const view=media.kind==="image"?`<img src="${url}" alt="${name}" loading="lazy">`:media.kind==="audio"?`<audio controls preload="metadata" src="${url}"></audio>`:media.kind==="video"?`<video controls preload="metadata" src="${url}"></video>`:`<a href="${url}" target="_blank" rel="noopener">${icon("file-text")}${name}</a>`;
+    return `<div class="followupAssetPreview">${view}<small>${name} · ${Math.ceil(media.size/1024)} KB</small></div>`;
+  }
+  async function upload(i,file){
+    if(!file || busy || data.enabled || !data.can_manage)return;
+    const token=seq,step=draft.steps[i],kind=kindFor(step);busy=true;lock(true);error();
+    try{
+      const media=await window.crmUploadFollowupMedia({file,kind,doctor:state.doctor,pipeline:state.pipeline,progress:value=>{const button=find(`[data-fu-upload="${i}"]`);if(active(token) && button)button.textContent=`${value}%`;}});
+      if(!active(token))return;data.assets=[media,...(data.assets || []).filter(a=>a.id!==media.id)];step.media_id=media.id;changes();steps();
+    }catch(err){if(active(token))error(err.message);}finally{busy=false;if(active(token)){steps();lock(false);}}
   }
   function previewRows(slots){
     const el=find("#followupSlots");if(el)el.innerHTML=slots.map((stamp,i)=>`<li><span>Envio ${i+1}</span><time>${esc(date(stamp))}</time></li>`).join("");
@@ -48,9 +74,16 @@ window.createCrmFollowupSettings=({state,api,esc,icon,icons,notice})=>{
   }
   function bind(){
     const form=find("#followupForm");
+    form.onchange=event=>{const el=event.target;if(el.dataset.fuFile!==undefined)upload(Number(el.dataset.fuFile),el.files?.[0]);};
     form.oninput=event=>{
       const el=event.target;if(!data.can_manage || busy || el.id==="followupPreviewAt")return;
-      if(el.dataset.fuWait!==undefined || el.dataset.fuUnit!==undefined){
+      if(el.dataset.fuKind!==undefined){
+        const step=draft.steps[Number(el.dataset.fuKind)];step.action=el.value==="bot"?"bot":"message";step.media_kind=el.value;step.media_id="";delete step.bot_id;delete step.bot_revision;
+        if(["audio","bot"].includes(el.value))step.body="";changes();steps();return;
+      }else if(el.dataset.fuBot!==undefined){
+        const step=draft.steps[Number(el.dataset.fuBot)],bot=data.bots.find(b=>b.id===el.value);step.bot_id=el.value;step.bot_revision=bot?.revision;
+      }else if(el.dataset.fuAsset!==undefined){draft.steps[Number(el.dataset.fuAsset)].media_id=el.value;changes();steps();return;
+      }else if(el.dataset.fuWait!==undefined || el.dataset.fuUnit!==undefined){
         const i=Number(el.dataset.fuWait ?? el.dataset.fuUnit);
         draft.steps[i].minutes=Number(find(`[data-fu-wait="${i}"]`).value)*Number(find(`[data-fu-unit="${i}"]`).value);
       }else if(el.dataset.fuBody!==undefined){
@@ -71,6 +104,7 @@ window.createCrmFollowupSettings=({state,api,esc,icon,icons,notice})=>{
         if(!canLeave())return;dirty=false;draft=null;return load();
       }
       if(button.id==="followupPreview")return simulate();
+      if(button.dataset.fuUpload!==undefined){find(`[data-fu-file="${button.dataset.fuUpload}"]`).click();return;}
       if(button.id==="followupAdd"){
         if(draft.steps.length>=data.max_steps)return;
         draft.steps.push({minutes:1440,title:`Follow-up ${draft.steps.length+1}`,body:""});changes();steps();
@@ -142,7 +176,7 @@ window.createCrmFollowupSettings=({state,api,esc,icon,icons,notice})=>{
     if(data && draft){seq++;draw();return;}load();
   }
   function canLeave(){
-    if(busy){notice("Aguarde a conclusão do salvamento da régua.");return false;}
+    if(busy){notice("Aguarde a conclusão do upload ou salvamento.");return false;}
     return !dirty || window.confirm("Há alterações não salvas no follow-up. Sair sem salvar?");
   }
   function unmount(){seq++;previewSeq++;root=null;scope="";data=null;draft=null;dirty=false;busy=false;}

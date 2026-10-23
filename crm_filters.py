@@ -13,6 +13,8 @@ OPTIONS = {
     "course_status": {"", "paid", "pending", "refunded", "none"},
     "appointment_status": {"", "any", "completed", "scheduled", "missed", "none"},
     "service_location": {"", "capelinha", "belo-horizonte", "sao-paulo", "pending"},
+    "followup_status": {"","none","waiting","paused","review","completed","responded","cancelled"},
+    "followup_step": {"",*(str(i) for i in range(21))},
 }
 NUMBERS = {"min_spent_cents", "max_spent_cents", "min_sales"}
 DATES = {"appointment_from", "appointment_to"}
@@ -79,6 +81,15 @@ def appointment_ready(item, filters):
 
 
 def matches(item, filters, extra_search=""):
+    followup=item.get("followup_progress",{})
+    status=filters.get("followup_status","")
+    step=filters.get("followup_step","")
+    if status or step:
+        if not followup:return False
+        if status and not (status==followup["status"] or status=="paused" and followup.get("paused_individually")):
+            return False
+        if step and (not followup["has_cycle"] or followup["completed_steps"]!=int(step)):
+            return False
     if filters.get("journey_review") and not item.get("journey_state", {}).get("needs_review"):
         return False
     course_status = filters["course_status"]

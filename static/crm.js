@@ -108,8 +108,12 @@
   const avatars=window.createCrmAvatars({api,esc,enabled:doc=>state.data?.gateway_configured && (doc===state.doctor || state.mode==="inbox" && state.inboxDoctors?.includes(doc))});
   const clientMode=()=>["board","inbox"].includes(state.mode);
   const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno",course_status:"Pagamento Kiwify"};
+  filterNames.followup_status="Situação do follow-up";filterNames.followup_step="Passos de follow-up concluídos";
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
   filterChoices.course_status={paid:"Pagamento aprovado",pending:"Aguardando pagamento",refunded:"Reembolso / chargeback",none:"Sem pedido localizado"};
+  filterChoices.followup_status={none:"Sem acompanhamento",waiting:"Em acompanhamento",paused:"Pausado",review:"Envio para conferir",completed:"Concluído",responded:"Cliente respondeu",cancelled:"Encerrado"};
+  filterChoices.followup_step=Object.fromEntries(Array.from({length:21},(_,i)=>[String(i),i?`${i} passo(s) concluído(s)`:"Nenhum concluído ainda"]));
+  $("filterFollowupStep").innerHTML=option("","Qualquer quantidade")+Object.entries(filterChoices.followup_step).map(([value,label])=>option(value,label)).join("");
   function appointmentRange(kind) {
     const today=state.data?.today || new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
     const anchor=new Date(`${today}T12:00:00Z`), year=anchor.getUTCFullYear(), month=anchor.getUTCMonth();
@@ -222,7 +226,7 @@
     return `<button class="leadCard" draggable="true" data-tier="${esc(l.customer_value?.tier || "unclassified")}" data-lead="${esc(l.id)}" title="${esc(customerValueDescription(l.customer_value))}" aria-label="${esc(l.name+" · "+customerValueDescription(l.customer_value))}">
       <span class="leadCardHead">${avatars.markup(l.name,l.contact_id,state.doctor,"","leadAvatar")}<span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
       <span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${serviceLocationBadge(l)}</span>${l.journey_state?.disposition==="noncommercial"?'<span class="clinicNoncommercialBadge">Não comercial · fora da conversão</span>':""}${appointmentBadge(agenda,true)}
-      <span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
+      ${window.crmFollowupProgressBadge?.(l.followup_progress,esc,icon) || ""}<span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
   }
   function board() {
     const p=pipeline(), leads=selectedLeads(), data=state.data.kanban;
@@ -617,7 +621,7 @@
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
   const followupCenter=window.createCrmFollowupSettings({state,api,esc,icon,icons,notice});
-  const followupContacts=window.createCrmFollowupContact({api,icon,icons});
+  const followupContacts=window.createCrmFollowupContact({api,icon,icons,esc});
   const facebookCenter=window.createCrmFacebook({state,api,esc,icon,icons,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
   const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});

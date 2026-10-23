@@ -83,14 +83,28 @@ def clean(c, pipeline, raw):
         if not isinstance(step, dict):
             raise ValueError("Tentativa inválida.")
         minutes = number(step.get("minutes"), 15, 43200, f"Intervalo do follow-up {i+1}")
-        body = step.get("body")
-        if not isinstance(body, str) or not body.strip() or len(body) > 2000:
+        action=step.get("action","message")
+        if action not in {"message","bot"}:raise ValueError("Ação de follow-up inválida.")
+        if action=="bot":
+            from crm_followup_bots import selected
+            bot=selected(c,pipeline,step.get("bot_id"),step.get("bot_revision"))
+            result.append({"minutes":minutes,"title":f"Follow-up {i+1}","action":"bot","body":"","bot_id":bot["id"],"bot_revision":bot["revision"]})
+            continue
+        asset_id=step.get("media_id","")
+        if not isinstance(asset_id,str):raise ValueError("Anexo inválido.")
+        asset=None
+        if asset_id:
+            from crm_followup_assets import owned
+            asset=owned(c,asset_id,pipeline)
+        body = step.get("body","")
+        if not isinstance(body, str) or (not body.strip() and not asset) or len(body) > 2000:
             raise ValueError(f"Preencha a mensagem do follow-up {i+1} (até 2000 caracteres).")
+        if asset and asset["kind"]=="audio" and body.strip():raise ValueError("Áudio não aceita legenda. Use outro passo para enviar texto.")
         if re.search(r"[\u200b-\u200f\u202a-\u202e\u2060-\u206f]", body):
             raise ValueError("Não use caracteres invisíveis ou de controle na mensagem.")
         if any(key not in {"nome", "clinica"} for key in re.findall(r"\{([^{}]+)\}", body)):
             raise ValueError("Campos disponíveis na mensagem: {nome} e {clinica}.")
-        result.append({"minutes": minutes, "title": f"Follow-up {i+1}", "body": body.strip()})
+        result.append({"minutes": minutes, "title": f"Follow-up {i+1}", "body": body.strip(),"action":"message","media_id":asset_id})
     if sum(s["minutes"] for s in result) > 180*1440:
         raise ValueError("A régua não pode ultrapassar 180 dias.")
     return {"mode": "send", "stage_ids": stages, "weekdays": sorted(days),
@@ -137,9 +151,13 @@ def snapshot(store, doctor, pipeline):
             ids = journey_config(c, pipeline)
             config["stage_ids"] = [ids[k] for k in ("service", "negotiation")] if ids else [s["id"] for s in stages if s["name"] in {"Em conversa", "Proposta enviada"}]
         metrics = {r[0]: r[1] for r in c.execute("SELECT status,count(*) FROM crm_followup_cycles WHERE pipeline_id=? GROUP BY status",(pipeline,))}
+        from crm_followup_assets import public as public_asset
+        from crm_followup_bots import eligible
+        assets=[public_asset(dict(r)) for r in c.execute("SELECT * FROM crm_followup_assets WHERE pipeline_id=? ORDER BY created_at DESC",(pipeline,))]
+        bots=[{"id":r["id"],"name":r["name"],"revision":r["revision"],"eligible":eligible(r),"status":r["status"]} for r in c.execute("SELECT * FROM crm_bots WHERE pipeline_id=? ORDER BY name",(pipeline,))]
         return {"pipeline_id": pipeline, "pipeline_name": item["name"], "revision": row["revision"] if row else 0,
                 "config": config, "enabled": bool(row["enabled"]) if row else False,
-                "automatic_available": True, "max_steps": MAX_STEPS, "metrics": metrics,
+                "automatic_available": True, "max_steps": MAX_STEPS, "metrics": metrics,"assets":assets,"bots":bots,
                 "updated_at": row["updated_at"] if row else 0,
                 "stages": [{"id": s["id"], "name": s["name"]} for s in stages],
                 "preview": slots(config, time.time())}

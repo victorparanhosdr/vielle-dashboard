@@ -1101,6 +1101,33 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT count(*) FROM followup_policies").fetchone()[0],1)
         self.assertTrue(self.store.list_audit(action="crm_followup_draft_saved")["events"])
 
+    def test_followup_assets_private_scoped_upload_range_and_no_send(self):
+        from crm_api import store_for
+        from urllib.parse import urlencode
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica","Outro funil"]})
+        data=store.listing();doc=data["doctor_id"];pipeline=data["pipelines"][0];other=data["pipelines"][1]
+        cookie=self.master_cookie();raw=b"%PDF-1.4\nsynthetic content"
+        path="/api/crm/followups/media?"+urlencode({"clinic":"vielle","doctor":doc,"pipeline":pipeline["id"],"kind":"document"})
+        headers={"X-DOC4DOCS-Request":"1","X-File-Name":"example.pdf","X-Upload-Id":"synthetic-upload"}
+        self.assertEqual(self.request("POST",path,raw,cookie)[0],403)
+        status,_,body=self.request("POST",path,raw,cookie,headers);self.assertEqual(status,200,body)
+        asset=json.loads(body)["media"]
+        self.assertEqual(self.request("GET",asset["url"])[0],401)
+        status,result,body=self.request("GET",asset["url"],cookie=cookie,headers={"Range":"bytes=0-3"})
+        self.assertEqual(status,206,body);self.assertEqual(body,b"%PDF");self.assertIn("no-store",dict(result)["Cache-Control"])
+        wrong=asset["url"].replace(pipeline["id"],other["id"])
+        self.assertEqual(self.request("GET",wrong,cookie=cookie)[0],400)
+        self.limit_permissions(["crm.view"]);staff=self.login()[0]
+        self.assertEqual(self.request("POST",path,raw,staff,headers)[0],403)
+        self.assertEqual(self.request("GET",asset["url"],cookie=staff)[0],200)
+        self.store.update_user(self.user_id,"Usuario Local","teste",crm_scope={doc:[other["id"]]})
+        staff=self.login()[0]
+        self.assertEqual(self.request("GET",asset["url"],cookie=staff)[0],403)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM crm_followup_cycles").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM followup_policies WHERE enabled=1").fetchone()[0],0)
+
     def test_followup_contact_pause_staff_permissions_csrf_and_no_activation(self):
         from crm_api import store_for
         store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica", "Outro clínico"]})

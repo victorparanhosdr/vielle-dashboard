@@ -10,6 +10,9 @@ def handle(handler, store, action, query, user):
         from crm_followup_contact import handle as contact_handle
         return contact_handle(handler,store,query,user)
     doctor = query.get("doctor", [""])[0]
+    if action=="followups/media":
+        from crm_followup_assets import handle as media_handle
+        return media_handle(handler,store,doctor,query,user)
     if handler.command == "GET" and action == "followups":
         result = settings.snapshot(store, doctor, query.get("pipeline", [""])[0])
         return handler.auth_json({"ok": True, "can_manage": bool(user.get("is_master")), **result})

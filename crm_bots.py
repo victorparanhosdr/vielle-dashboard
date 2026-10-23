@@ -348,6 +348,8 @@ class BotStore:
                 from crm_contact_phone import attach
                 attach(c, [lead])
                 info = json.loads(run["definition"])
+                from crm_followup_bots import gate
+                if not gate(c,self.crm,run["id"],now):continue
                 inbound = c.execute("SELECT coalesce(max(rowid),0) FROM messages WHERE contact_id=? AND direction='in'", (lead["contact_id"],)).fetchone()[0]
                 reason = ""
                 if lead["deleted_at"]:
@@ -399,7 +401,8 @@ class BotStore:
                 if form["status"] != "published":
                     raise ValueError("Formulario pausado ou indisponivel.")
                 body += "\n" + base_url() + "/f/" + form["slug"]
-            body = signed_message(body.strip() + "\n\nPara nao receber mais mensagens, responda SAIR.", "Assistente virtual")
+            linked=c.execute("SELECT 1 FROM crm_followup_bot_steps WHERE run_id=?",(run["id"],)).fetchone()
+            body = body.strip() if linked else signed_message(body.strip() + "\n\nPara nao receber mais mensagens, responda SAIR.", "Assistente virtual")
             ident = uuid.uuid4().hex
             c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,created_at,recipient_phone,sender_name,sender_user_id,origin,bot_run_id) VALUES(?,?,?,?,'out',?,?,?,?,'bot',?)",
                       (ident, channel, lead["contact_id"], body, now, lead["phone"], "Assistente virtual", bot["activated_by"], run["id"]))
@@ -454,7 +457,11 @@ class BotStore:
         c.execute("UPDATE bot_runs SET node=?,status=?,due_at=?,updated_at=?,steps=steps+1,message_id='' WHERE id=?", (target or node["id"], "done" if kind == "end" else "waiting", now, now, run["id"]))
 
 
-def message_allowed(c, run_id):
+def message_allowed(c, run_id, store=None, now=None):
+    linked=c.execute("SELECT 1 FROM crm_followup_bot_steps WHERE run_id=?",(run_id,)).fetchone()
+    if linked:
+        from crm_followup_bots import gate
+        if store is None or not gate(c,store,run_id,now):return False
     row = c.execute("""SELECT r.status,r.expected_stage,r.definition,r.inbound_at,l.stage_id,l.contact_id,b.status bot_status FROM bot_runs r
         JOIN leads l ON l.id=r.lead_id JOIN crm_bots b ON b.id=r.bot_id WHERE r.id=?""", (run_id,)).fetchone()
     if not row or row["status"] != "sending" or row["bot_status"] != "active" or row["stage_id"] != row["expected_stage"]:

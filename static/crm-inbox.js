@@ -8,7 +8,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   mobileScreen.addEventListener("change",()=>{if($("chatPane"))$("chatPane").inert=mobileScreen.matches && $("inboxWorkspace").classList.contains("showContact");});
   let opportunities=[],contextSeq=0;
   let followupReplyOverride=null;
-  const followupContacts=window.createCrmFollowupContact({api,icon,icons});
+  const followupContacts=window.createCrmFollowupContact({api,icon,icons,esc});
   let clockOffset=0;
   let scope="",catalog={channels:[],pipelines:[]};
   const doctors=()=>state.inboxDoctors || [state.doctor];

@@ -15,5 +15,5 @@ assert.match(source,/lead.followup_contact\?\.revision>value.revision/);
 assert.match(source,/pane.isConnected && active\(\)/);
 assert.match(source,/textContent=message/);
 assert.ok(read('crm.js').includes('followupContacts.mount(followupControl,l'));
-assert.ok(read('crm.html').includes('/crm-followup-contact.js?v=1'));
+assert.ok(read('crm.html').includes('/crm-followup-contact.js?v=2'));
 console.log('Follow-up contact UI: default checked, manual override, persistent pause, fail-closed loading and stale-scope guards OK');
