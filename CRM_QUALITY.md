@@ -150,3 +150,10 @@ OGG/Opus, escopo, consentimento, cache, cancelamento e ausencia de nota em falha
 Regressao local: 650 testes do CRM e 70 HTTP aprovados; sete testes da interface
 de monitoria aprovados. Previa desktop/mobile sem chamadas reais de IA.
 Referencia: https://developers.openai.com/api/docs/guides/speech-to-text.
+
+## Reuso pelo Atendimento
+
+`CRM_AUDIO.md` descreve a fila opcional de transcricao para novos audios e lotes
+historicos separados. Compartilha cache e preparacao de audio, sem iniciar
+avaliacoes. Transcricoes prontas aparecem nas conversas permitidas aos atendentes;
+notas, criterios e painel de monitoria continuam exclusivos do Master.

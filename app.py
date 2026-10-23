@@ -7693,6 +7693,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_ad_attribution, args=(auth_store, threading.Event()), daemon=True).start()
     from crm_quality import run_worker as run_quality_worker
     threading.Thread(target=run_quality_worker, args=(auth_store, threading.Event()), daemon=True).start()
+    from crm_audio import run_worker as run_audio_worker
+    threading.Thread(target=run_audio_worker, args=(auth_store, threading.Event()), daemon=True).start()
     if sends_enabled():
         from crm_worker import run as run_crm_worker
         threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()

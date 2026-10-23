@@ -75,6 +75,9 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action=="audio" or action.startswith("audio/"):
+            from crm_audio_api import handle as audio_handle
+            return audio_handle(handler,store,action,query,user)
         if action == "followups" or action.startswith("followups/"):
             from crm_followup_settings_api import handle as followup_settings_handle
             return followup_settings_handle(handler, store, action, query, user)

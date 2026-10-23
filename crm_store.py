@@ -271,6 +271,9 @@ class CrmStore:
         from crm_quality import schema as quality_schema
         with self.db() as c:
             quality_schema(c)
+        from crm_audio import schema as audio_schema
+        with self.db() as c:
+            audio_schema(c)
         from crm_patient_opportunities import schema as patient_opportunities_schema
         with self.db() as c:
             patient_opportunities_schema(c)
@@ -1389,6 +1392,8 @@ class CrmStore:
                     if campaign["tag"]:
                         c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
                 if updated.rowcount:
+                    from crm_audio import received as audio_received
+                    audio_received(c,self,item["id"],now)
                     # Follow-up planning must never roll back the provider's accepted send.
                     c.execute("SAVEPOINT followup_accept")
                     try:
@@ -1478,6 +1483,9 @@ class CrmStore:
                  "WhatsApp / sistema externo" if from_me else "", "external" if from_me else "whatsapp", stamp))
             from crm_media import register_received
             register_received(c, {"id": message_id, "media_id": "", "contact_id": contact["id"], "channel_id": ch["id"], "created_at": stamp or now}, ch, data)
+            if not history:
+                from crm_audio import received as audio_received
+                audio_received(c,self,message_id,now)
             normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().strip().upper()
             if not history:
                 from crm_followup_runtime import stop_contact

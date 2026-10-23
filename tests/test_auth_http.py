@@ -1058,6 +1058,29 @@ class HttpAuthTests(unittest.TestCase):
             row=c.execute("SELECT include_audio,status FROM quality_jobs").fetchone()
             self.assertEqual(tuple(row),(1,"queued"));self.assertEqual(c.execute("SELECT count(*) FROM crm_audio_transcripts").fetchone()[0],0)
 
+    def test_attendance_audio_controls_master_csrf_consent_and_no_paid_calls(self):
+        cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
+        from crm_api import store_for
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica"]})
+        doc=store.listing()["doctor_id"];path=f"/api/crm/audio?clinic=vielle&doctor={doc}"
+        self.limit_permissions(["crm.view"]);staff=self.login()[0]
+        self.assertEqual(self.request("GET",path,cookie=staff)[0],403)
+        status,_,raw=self.request("GET",path,cookie=cookie);self.assertEqual(status,200,raw)
+        self.assertFalse(json.loads(raw)["settings"]["enabled"])
+        p={"doctor_id":doc,"enabled":True,"daily_minutes":60,"revision":0,"confirm":True}
+        settings=path.replace("/audio?","/audio/settings?")
+        with patch("crm_audio_api.provider_ready",return_value=True):
+            self.assertEqual(self.request("POST",settings,p,cookie)[0],403)
+            self.assertEqual(self.request("POST",settings,p,staff,headers)[0],403)
+            self.assertEqual(self.request("POST",settings,{**p,"confirm":False},cookie,headers)[0],400)
+            status,_,raw=self.request("POST",settings,p,cookie,headers);self.assertEqual(status,200,raw)
+            for action in ("retry","batch-apply"):
+                self.assertEqual(self.request("POST",path.replace("/audio?",f"/audio/{action}?"),{"doctor_id":doc,"id":"synthetic"},cookie,headers)[0],400)
+                self.assertEqual(self.request("POST",path.replace("/audio?",f"/audio/{action}?"),{"doctor_id":doc,"id":{},"confirm":True},cookie,headers)[0],400)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM crm_audio_jobs").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM crm_audio_usage").fetchone()[0],0)
+
     def test_clinic_journey_and_nested_opportunities_http_boundaries(self):
         cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
         from crm_api import store_for

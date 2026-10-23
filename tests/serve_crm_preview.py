@@ -382,7 +382,7 @@ if "--bots-fixture" in sys.argv:
         {"id":"5","kind":"end","data":{},"x":900,"y":300,"next":{}}]
     bots.save({"doctor_id":doc["id"],"pipeline_id":pipeline["id"],"name":"Acompanhamento · exemplo","definition":{"nodes":nodes,"trigger":{"kind":"stage","stage_id":pipeline["stages"][0]["id"],"delay_minutes":0},"stop_on_reply":True}},1)
 
-if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv:
+if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv or "--attendance-audio-fixture" in sys.argv:
     import crm_quality as quality
     doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
     channel=store.listing(doc)["channels"][0]["id"]
@@ -395,7 +395,7 @@ if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv:
                 (f"quality-inbound-example-{index}",channel,lead["contact_id"],"Gostaria de combinar meu retorno.","in","received",time.time()-1))
             c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name) VALUES(?,?,?,?,?,?,?,?,?)",
                 (f"quality-example-{index}",channel,lead["contact_id"],"Vamos verificar as opções de horário para seu retorno.","out","sent",time.time(),"1","Equipe Exemplo"))
-        if "--quality-audio-fixture" in sys.argv:
+        if "--quality-audio-fixture" in sys.argv or "--attendance-audio-fixture" in sys.argv:
             from io import BytesIO
             import wave
             import crm_media
@@ -412,7 +412,7 @@ if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv:
                 key=f"quality-audio-message-{index}"
                 c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name,media_id) VALUES(?,?,?,'[Audio]','out','sent',?,'1','Equipe Exemplo',?)",(key,channel,lead["contact_id"],time.time(),media["id"]))
                 c.execute("UPDATE message_media SET message_id=? WHERE id=?",(key,media["id"]))
-        job=quality.request(store,doc,channel,lead["contact_id"],"1",include_audio="--quality-audio-fixture" in sys.argv and index!=2)
+        job=quality.request(store,doc,channel,lead["contact_id"],"1",include_audio=("--quality-audio-fixture" in sys.argv or "--attendance-audio-fixture" in sys.argv) and index!=2)
         if index==2:
             if "--quality-audio-fixture" in sys.argv:
                 with store.db() as c:c.execute("UPDATE quality_jobs SET status='failed',error='Falha legada sem diagnóstico',finished_at=? WHERE id=?",(time.time(),job))
@@ -432,6 +432,17 @@ if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv:
             assessment=quality.detail(store,doc,job)["assessments"][0]
             quality.review(store,doc,assessment["id"],{"revision":1,"failures":["clarity"],"reason":"Revisão sintética aprovada."},"1")
     auth.create_user("Gerente Exemplo","preview-manager",password,clinic_keys=["vielle"],permissions={"vielle":["crm.view"]})
+
+if "--attendance-audio-fixture" in sys.argv:
+    import crm_audio
+    import crm_audio_api
+    crm_audio_api.provider_ready=lambda:True
+    crm_audio.audio_model=lambda:"synthetic-transcriber"
+    crm_audio.save(store,doc,{"enabled":True,"daily_minutes":60,"revision":0,"confirm":True},"1")
+    with store.db() as c:
+        rows=c.execute("SELECT message_id FROM message_media WHERE doctor_id=? AND kind='audio' ORDER BY created_at",(doc,)).fetchall()
+        for row in rows:crm_audio.enqueue(c,store,row[0],time.time())
+    for _ in range(2):crm_audio.tick(store,synthetic_transcriber,lambda _:True)
 
 if "--followup-actions-fixture" in sys.argv:
     from crm_followup_fixture import prepare

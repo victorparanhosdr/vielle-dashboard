@@ -7,9 +7,10 @@
   window.crmMediaMarkup=(media,esc,icon)=>{
     if(!media?.url?.startsWith("/api/crm/media?"))return "";
     const url=esc(media.url),name=esc(media.name);
-    if(media.state==="remote")return `<div class="chatAttachmentPending"><button type="button" data-load-media="${esc(media.id)}">${icon("download")} Carregar ${names[media.kind]?.toLowerCase() || "anexo"}</button><small>${name}${media.size?` · ${size(media.size)}`:""}</small><p data-media-error role="status" hidden></p></div>`;
+    const transcript=window.crmAudioTranscriptMarkup?.(media,esc,icon) || "";
+    if(media.state==="remote")return `<div class="chatAttachmentPending"><button type="button" data-load-media="${esc(media.id)}">${icon("download")} Carregar ${names[media.kind]?.toLowerCase() || "anexo"}</button><small>${name}${media.size?` · ${size(media.size)}`:""}</small><p data-media-error role="status" hidden></p></div>${transcript}`;
     if(media.kind==="image")return `<a class="chatImage" href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${name}" loading="lazy"></a>`;
-    if(media.kind==="audio")return `<audio class="chatAudio" controls preload="metadata" src="${url}" aria-label="${name}"></audio>`;
+    if(media.kind==="audio")return `<audio class="chatAudio" controls preload="metadata" src="${url}" aria-label="${name}"></audio>${transcript}`;
     if(media.kind==="video")return `<video class="chatVideo" controls playsinline preload="metadata" src="${url}" aria-label="${name}"></video>`;
     return `<a class="chatDocument" href="${url}" download="${name}">${icon("file-down")}<span><strong>${name}</strong><small>${size(media.size)}</small></span></a>`;
   };

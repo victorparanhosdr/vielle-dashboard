@@ -25,6 +25,8 @@ ERRORS={
     "audio_empty":"A transcrição não retornou fala utilizável. Confira o áudio antes de avaliar.",
     "audio_pending":"Uma transcrição anterior ficou sem conclusão. Não foi repetida para evitar consumo duplicado.",
     "audio_previous":"Uma transcrição falhou anteriormente. Use Tentar novamente e autorize novo consumo para repeti-la.",
+    "audio_daily_limit":"Limite diário de transcrição atingido. Aguardando o próximo dia, sem consumir a API.",
+    "audio_budget_size":"Este áudio é maior que o limite diário configurado. O gestor precisa revisar o limite antes de autorizar nova tentativa.",
     "scope_changed":"A autorização ou o escopo mudou durante a análise. O resultado não foi utilizado.",
 }
 

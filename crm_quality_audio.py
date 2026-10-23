@@ -58,7 +58,7 @@ def load(store,job,message,gateway):
     return row,data
 
 
-def transcript(store,job,message,provider,gateway,allowed):
+def transcript(store,job,message,provider,gateway,allowed,*,before_call=None):
     if not allowed():raise QualityError("scope_changed")
     row,raw=load(store,job,message,gateway);model=job["_audio_model"];key=(row["id"],row["sha256"],model)
     now=time.time()
@@ -75,6 +75,7 @@ def transcript(store,job,message,provider,gateway,allowed):
         if cached and cached["status"]=="done":return cached["text"],True
         if cached and cached["status"]=="running" and cached["updated_at"]>time.time()-900:raise QualityError("audio_pending")
         if cached and not job["retry_from"]:raise QualityError("audio_previous")
+        if before_call:before_call(c,wav)
         c.execute("""INSERT INTO crm_audio_transcripts(media_id,sha256,model,status,job_id,created_at,updated_at) VALUES(?,?,?,'running',?,?,?)
             ON CONFLICT(media_id,sha256,model) DO UPDATE SET status='running',text='',error_code='',job_id=excluded.job_id,updated_at=excluded.updated_at""",(*key,job["id"],now,now))
     try:

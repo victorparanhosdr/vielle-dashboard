@@ -89,6 +89,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       if(b.id==="createChatReminder"){const l=leadFor();if(l)openReminder(l);}
       if(b.id==="reviewQuality" && selected && state.data.can_manage){const signature=key(selected);openQuality?.({doctor_id:owner,channel_id:selected.channel_id,contact_id:selected.contact_id,name:threadData?.contact.name || leadFor()?.name || "",active:()=>Boolean(root && selected && key(selected)===signature)});}
       if(b.dataset.loadMedia)loadMedia(b);
+      if(b.dataset.copyTranscript){
+        const text=messages.find(m=>m.media?.id===b.dataset.copyTranscript)?.media?.transcript?.text;
+        const signature=selected?key(selected):'';
+        if(text && navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(()=>{if(b.isConnected){b.innerHTML=icon('check');b.setAttribute('aria-label','Transcrição copiada');icons();}}).catch(()=>{if(root && selected && key(selected)===signature)chatError('Não foi possível copiar a transcrição.');});
+        else if(text)chatError('Cópia indisponível neste navegador. Selecione o texto da transcrição.');
+      }
     };
     refreshList();if(selected)select(selected);icons();focus();
   }
@@ -345,6 +351,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       const timeline=$("messageTimeline"), nearBottom=timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<90, height=timeline.scrollHeight, scroll=timeline.scrollTop;
       const playing=[...timeline.querySelectorAll("audio,video")].some(player=>!player.paused && !player.ended);
       if((!playing || around) && (JSON.stringify(messages)!==JSON.stringify(next) || renderedSearch!==chatSearch.term() || !timeline.querySelector(".chatMessages"))){
+        const expanded=new Set([...timeline.querySelectorAll('[data-audio-transcript][open]')].map(node=>node.dataset.audioTranscript));
         messages=next;renderedSearch=chatSearch.term();
         let day="";
         timeline.innerHTML=`${hasOlder?'<button id="olderMessages" class="olderMessages">Mensagens anteriores</button>':""}<div class="chatMessages">${messages.map(m=>{
@@ -352,6 +359,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
           const status=m.origin==="external"?"Enviada externamente":labels[m.status] || m.status;
           return `${divider}<article data-message-seq="${m.seq}" class="chatBubble ${m.direction} ${m.status} ${m.seq===focus?"searchResult":""}">${m.sender_name?`<strong class="messageAuthor">${esc(m.sender_name)}</strong>`:""}${window.crmMediaMarkup(m.media,esc,icon)}${m.media?.kind!=="audio" && messageText(m)?`<p>${chatSearch.highlight(messageText(m))}</p>`:""}<small>${time(m.created_at)} ${m.direction==="out"?`<span title="${esc(status)}">${icon(m.status==="sent"?"check":m.status==="unknown"?"circle-alert":"clock-3")}${esc(status)}</span>`:""}</small></article>`;
         }).join("") || '<p class="inboxEmpty">Nenhuma mensagem neste número</p>'}</div>`;
+        timeline.querySelectorAll('[data-audio-transcript]').forEach(node=>node.open=expanded.has(node.dataset.audioTranscript));
         if(around)timeline.querySelector(`[data-message-seq="${around}"]`)?.scrollIntoView({block:"center",behavior:"instant"});else if(older)timeline.scrollTop=scroll+timeline.scrollHeight-height;else if(!focus && (nearBottom || !height))timeline.scrollTop=timeline.scrollHeight;
         icons();
       }

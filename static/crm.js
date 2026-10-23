@@ -289,6 +289,7 @@
     if(!state.data.can_manage){
       ["editPipeline","newPipeline","newChannel","importKommo"].forEach(id=>{if($(id))$(id).hidden=true;});
     }
+    if(state.mode==="channels" && state.data.can_manage)$("viewActions").insertAdjacentHTML("beforeend",`<button id="audioTranscription">${icon("audio-lines")} Transcrição de áudios</button>`);
     if(state.mode==="board" && state.data.can_manage && pipeline() && !pipeline().course_key && !pipeline().institute_key && !/regen[ -]?code/i.test(pipeline().name)){
       if(!pipeline().clinic_journey)$("viewActions").insertAdjacentHTML("beforeend",`<button id="applyClinicJourney">${icon("git-branch")} Modelo da clínica</button>`);
       else if($("editPipeline"))$("editPipeline").hidden=true;
@@ -617,6 +618,7 @@
   }});
   const engagement=window.createCrmEngagement({api,esc,icon,icons,reminders,getUser:()=>state.session?.user,onTasks:()=>{if(!state.data)return;state.mode="tasks";render();}});
   const qualityCenter=window.createCrmQuality({state,api,esc,icon,icons,modal,error});
+  const audioCenter=window.createCrmAudio({state,api,esc,icon,icons,modal,error});
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder:l=>reminders.open(l),openQuality:context=>qualityCenter.openConversation(context),transferLead:(l,context)=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines:context.pipelines,active:context.active}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
@@ -664,7 +666,7 @@
   };
   $("gameHelp").onclick=()=>engagement.openJourney();$("gameHelp").title="Ver jornada e conquistas";$("gameHelp").setAttribute("aria-label","Ver jornada e conquistas");
   document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{if(state.mode==="forms" && (b.dataset.mode==="forms" || !formsCenter.canLeave()) || state.mode==="bots" && (b.dataset.mode==="bots" || !botsCenter.canLeave()) || state.mode==="followups" && (b.dataset.mode==="followups" || !followupCenter.canLeave()))return;state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
-  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({applyClinicJourney:()=>clinicJourney.migrate(pipeline(),state.doctor),showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},openLeadTrash:()=>bulk.trash(),newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
+  $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({audioTranscription:()=>audioCenter.open(state.doctor),applyClinicJourney:()=>clinicJourney.migrate(pipeline(),state.doctor),showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},openLeadTrash:()=>bulk.trash(),newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="toggleSalesRadar")return toggleRadar();

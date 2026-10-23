@@ -198,6 +198,8 @@ def attach(c, messages, *, legacy=False):
     for message in messages:
         if message.get("media_id") in media:
             message["media"] = media[message["media_id"]]
+    from crm_audio import attach as attach_transcripts
+    attach_transcripts(c,messages)
     return messages
 
 
