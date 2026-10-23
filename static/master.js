@@ -68,7 +68,7 @@ function openUser(user=null) {
   $("masterPromotion")?.remove();
   if(user && !user.is_master && user.status==="active"){
     const section=document.createElement("section");section.id="masterPromotion";
-    section.innerHTML='<h3>Acesso Master</h3><p>Permite administrar todas as clínicas, usuários, permissões e configurações. As sessões deste usuário serão encerradas.</p><label class="check"><input type="checkbox" id="confirmMaster">Confirmo a concessão de acesso administrativo completo</label><button type="button" id="promoteMaster" class="secondary">Tornar Master</button>';
+    section.innerHTML='<h3>Acesso Master</h3><p>Permite administrar todas as clínicas, usuários, permissões e configurações. As sessões deste usuário serão encerradas.</p><label class="checkboxLabel"><input type="checkbox" id="confirmMaster"><span>Confirmo a concessão de acesso administrativo completo</span></label><button type="button" id="promoteMaster" class="secondary">Tornar Master</button>';
     $("userForm").after(section);
     $("promoteMaster").onclick=async event=>{
       if(!$("confirmMaster").checked){$("userFormError").textContent="Confirme o acesso administrativo completo antes de promover.";return;}
