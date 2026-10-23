@@ -76,6 +76,7 @@ CLINIC_SCOPED_CONFIG_KEYS = {
     "CLINICA_WEBHOOK_SECRET",
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
+    "OPENAI_TRANSCRIBE_MODEL",
 }
 SQLITE_BUSY_TIMEOUT_MS = 60000
 SQLITE_RETRY_ATTEMPTS = 8
@@ -174,6 +175,7 @@ CONFIG_DEFAULTS = {
     "MASTER_PASSWORD": os.getenv("MASTER_PASSWORD", ""),
     "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
     "OPENAI_MODEL": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+    "OPENAI_TRANSCRIBE_MODEL": os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-transcribe"),
 }
 
 CLINIC_CONFIG_DEFAULTS = {
@@ -6224,7 +6226,7 @@ def parse_json_response_text(text):
     return json.loads(text)
 
 
-def openai_chat_json(messages):
+def openai_chat_json(messages, schema=None):
     api_key = str(config_value("OPENAI_API_KEY", "") or "").strip()
     if not configured(api_key):
         raise ValueError("OPENAI_API_KEY não configurada. Configure a chave da OpenAI em Configurações ou no Railway para a IA avaliar automaticamente.")
@@ -6233,7 +6235,7 @@ def openai_chat_json(messages):
         "model": model,
         "messages": messages,
         "temperature": 0.1,
-        "response_format": {"type": "json_object"},
+        "response_format": {"type":"json_schema","json_schema":{"name":"crm_quality","strict":True,"schema":schema}} if schema else {"type": "json_object"},
     }
     request = urllib.request.Request(
         "https://api.openai.com/v1/chat/completions",

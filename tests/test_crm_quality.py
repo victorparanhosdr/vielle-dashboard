@@ -114,7 +114,7 @@ class QualityTests(unittest.TestCase):
         description = next(row["description"] for row in payload["rubric"] if row["id"] == "complete")
         self.assertIn("não financeiras", description)
         self.assertIn("fora da avaliação", description)
-        self.assertEqual(snap["version"], "monitoria-native-v2-no-pricing")
+        self.assertEqual(snap["version"], "monitoria-native-v3-audio-no-pricing")
         self.assertTrue(next(row for row in payload["rubric"] if row["id"] == "courtesy")["enabled"])
         self.assertEqual(quality.CATALOG["courtesy"]["penalty"], 50)
 

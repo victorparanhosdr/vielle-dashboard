@@ -1,6 +1,12 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm"),path=require("node:path");
 const source=fs.readFileSync(path.join(__dirname,"../static/crm-quality.js"),"utf8");
+test("audio selection requires explicit consent, escaped transcripts and a new paid retry confirmation",()=>{
+  assert.match(source,/data-quality-audio/);assert.match(source,/include_audio:includeAudio,confirm_audio:includeAudio/);
+  assert.match(source,/data-quality-retry-audio/);assert.match(source,/esc\(m.text\)/);
+  assert.match(source,/Transcrição automática/);assert.match(source,/sem nova transcrição/);
+  assert.match(source,/esc\(when\(m.time\)\)/);
+});
 const esc=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function harness(provider){
   const state={doctor:"doctor-example",mode:"quality",data:{doctors:[{id:"doctor-example",name:"Profissional Exemplo"}]}},calls=[];

@@ -39,7 +39,9 @@ por profissional, numero e contato. Repeticoes reais sao preservadas.
 Somente mensagens humanas aceitas pelo conector e com usuario identificado
 sao atribuidas ao atendente. Bots, campanhas, cliente e autoria desconhecida
 nao sao atribuicoes humanas. Aceite nao comprova entrega ou leitura.
-Audios e anexos nao sao analisados; contexto ausente nao comprova falha.
+Na versao inicial, audios e anexos nao eram analisados. A extensao de audio
+descrita abaixo permite transcrever audios selecionados pelo gestor; outros
+anexos continuam fora da analise. Contexto ausente nao comprova falha.
 
 A base legada Amanda foi adaptada pelo gestor para referencia de atendimento
 humano do profissional de origem, sem herdar a identidade da assistente,
@@ -101,3 +103,50 @@ Gestao. Editar usuario ou criar conta comum nao promove implicitamente.
 
 Precisao semantica real depende de calibracao posterior com amostra autorizada.
 Teste sintetico comprova contratos do software, nao a precisao clinica da IA.
+
+## Transcricao de audio e diagnosticos
+
+Cada analise ou nova tentativa tem opcao explicita de incluir audios e
+confirmacao de envio a OpenAI com consumo adicional. Publicar, abrir painel,
+receber mensagens ou ter a autorizacao anterior de textos nao liga transcricao.
+Reutiliza a chave privada da clinica; OPENAI_TRANSCRIBE_MODEL e independente
+do modelo de avaliacao, com padrao gpt-transcribe, conforme documentacao oficial
+consultada em 23/10/2026. Campo disponivel em Configuracoes, sem mudar credenciais.
+
+Antes da avaliacao, prepara ate oito audios do recorte, de ate dez minutos cada,
+respeitando limite de 16 MB por arquivo no CRM. OGG/Opus e demais formatos
+passam por FFmpeg embarcado em imageio-ffmpeg, sem shell, entrada somente pipe,
+limites de memoria/tempo/tamanho e WAV mono temporario removido ao concluir.
+Nao envia nome original do arquivo, telefone ou dados da ficha. A fala pode
+conter dados pessoais/clinicos e nao e anonima; a autorizacao inclui esse risco.
+
+Arquivos remotos sao obtidos pelo gateway existente, com verificacao de conversa,
+mensagem, escopo e hash. Arquivos de visualizacao unica nao sao incorporados.
+Transcricoes privadas ficam vinculadas ao anexo, hash e modelo, preservando
+autoria/direcao/horario da mensagem. Nunca identificar atendente pela voz.
+Uma transcricao concluida e reutilizada sem nova chamada de audio. Uma falha ou
+chamada incerta nao repete automaticamente; nova tentativa exige confirmacao.
+Resultados nao podem sobreviver a mudanca de escopo ou revogacao da autorizacao.
+
+O texto transcrito compoe o contexto e as evidencias da monitoria e pode ser
+consultado pelo Master na avaliacao. E identificado como automatico e pode ter
+erros. Grafia, pontuacao ou suposto tom de voz nao comprovam desvio; evidencia
+somente de audio nao fundamenta desconto de ortografia/emojis. Arquivo ausente,
+alterado, limite excedido ou falha na transcricao interrompe a avaliacao com
+diagnostico e sem nota, em vez de ignorar silenciosamente o audio solicitado.
+
+Chamadas novas distinguem chave/permissao, cota/saldo informado pela API,
+rate limit, modelo indisponivel, requisicao recusada, rede/timeout e resultado
+que nao passou na validacao. Nenhum corpo bruto de erro e salvo ou exibido.
+Falhas antigas sem diagnostico sao explicitamente inconclusivas; nao presumir
+que foram causadas por audio ou saldo. Historico original permanece no banco.
+
+O provider da monitoria pede JSON Schema estrito; a funcao generica de chat
+conserva o formato anterior para os demais consumidores. Validacao de autoria,
+criterios e calculo de nota continuam no servidor, sem repeticao automatica.
+
+Verificacao da extensao: dados sinteticos, providers simulados, conversao real
+OGG/Opus, escopo, consentimento, cache, cancelamento e ausencia de nota em falha.
+Regressao local: 650 testes do CRM e 70 HTTP aprovados; sete testes da interface
+de monitoria aprovados. Previa desktop/mobile sem chamadas reais de IA.
+Referencia: https://developers.openai.com/api/docs/guides/speech-to-text.

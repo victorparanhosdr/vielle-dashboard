@@ -9,7 +9,7 @@ import uuid
 from crm_store import Conflict, integer
 from crm_appointments import TZ
 
-VERSION = "monitoria-native-v2-no-pricing"
+VERSION = "monitoria-native-v3-audio-no-pricing"
 # Stable identifiers keep historical reviews independent from UI labels.
 RUBRIC = (
     ("promptness", "Prontidão no Atendimento", 100, "Tempo de resposta acima de 10 minutos ou demora no primeiro contato."),
@@ -56,7 +56,11 @@ def schema(c):
     for name in ("context_key", "source"):
         if name not in columns:
             c.execute(f"ALTER TABLE quality_jobs ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+    for name,definition in (("error_code","TEXT NOT NULL DEFAULT ''"),("include_audio","INTEGER NOT NULL DEFAULT 0"),("retry_from","TEXT NOT NULL DEFAULT ''")):
+        if name not in columns:c.execute(f"ALTER TABLE quality_jobs ADD COLUMN {name} {definition}")
     c.execute("CREATE INDEX IF NOT EXISTS quality_jobs_context ON quality_jobs(context_key,created_at)")
+    from crm_quality_audio import schema as audio_schema
+    audio_schema(c)
 
 
 def defaults():
@@ -142,13 +146,14 @@ def snapshot(c, store, doctor, channel, contact, now, *, after=0):
     truncated = len(rows) > 250
     rows = list(reversed(rows[:250]))
     actors, messages, used = {}, [], 0
+    media={r["id"]:dict(r) for r in c.execute("SELECT * FROM message_media WHERE source_channel_id=? AND contact_id=?",(channel,contact))}
     missing = truncated
     for row in rows:
         body = row["body"]
         prefix = f"*{row['sender_name']}*\n\n"
         if row["sender_name"] and body.startswith(prefix):
             body = body[len(prefix):]
-        automated = bool(row["campaign_id"] or row["bot_run_id"])
+        automated = bool(row["campaign_id"] or row["bot_run_id"] or row["origin"]=="followup")
         actor = row["sender_user_id"] if row["direction"] == "out" and not automated else ""
         if actor:
             actors.setdefault(actor, {"id": f"a{len(actors)+1}", "user_id": actor,
@@ -166,30 +171,45 @@ def snapshot(c, store, doctor, channel, contact, now, *, after=0):
             break
         messages.append({"id": f"m{len(messages)+1}", "message_id": row["id"], "kind": kind,
                          "actor": actors[actor]["id"] if actor else "", "text": body,
-                         "media_unavailable": bool(row["media_id"]), "time": row["created_at"]})
+                         "media_unavailable": bool(row["media_id"]), "time": row["created_at"],
+                         "media_id":row["media_id"],"media_kind":media.get(row["media_id"],{}).get("kind",""),
+                         "media_sha256":media.get(row["media_id"],{}).get("sha256","")})
     represented = {m["actor"] for m in messages if m["kind"] == "human" and m["text"]}
     actors = [a for a in actors.values() if a["id"] in represented]
     if not actors or not any(m["kind"] == "customer" for m in messages):
         raise ValueError("É necessário texto do cliente e de um atendente identificado nos últimos 7 dias.")
     if len(actors) > 8:
         raise ValueError("Muitos atendentes neste recorte. Revise o histórico manualmente.")
-    return {"actors": actors, "messages": messages, "partial": missing, "captured_at": now,
+    base_partial=truncated or used>45000 or any(m["kind"]=="unattributed" or "[texto incompleto]" in m["text"] for m in messages)
+    return {"actors": actors, "messages": messages, "partial": missing,"base_partial":base_partial,"captured_at": now,
             "from": messages[0]["time"], "to": messages[-1]["time"], "version": VERSION}
 
 
-def enqueue(c, store, doctor, channel, contact, actor, now, *, retry_from="", request_id=""):
+def context_messages(data):
+    keys={"id","message_id","kind","actor","text","media_unavailable"}
+    return [{k:v for k,v in m.items() if k in keys} for m in data["messages"]]
+
+
+def enqueue(c, store, doctor, channel, contact, actor, now, *, retry_from="", request_id="",include_audio=False):
+    if type(include_audio) is not bool:raise ValueError("Opção de transcrição inválida.")
     policy = settings(c, doctor)
     if not policy["enabled"]:
         raise ValueError("Autorize a avaliação por IA na régua de qualidade primeiro.")
     data = snapshot(c, store, doctor, channel, contact, now)
-    context_key = hashlib.sha256(json.dumps([doctor, channel, contact, policy["revision"],
-        [{k: v for k, v in m.items() if k != "time"} for m in data["messages"]]], sort_keys=True).encode()).hexdigest()
+    parts=[doctor,channel,contact,policy["revision"],context_messages(data)]
+    data["base_context_key"]=hashlib.sha256(json.dumps(parts,sort_keys=True).encode()).hexdigest()
+    if include_audio:parts.append({"include_audio":True,"media":[m["media_id"] for m in data["messages"]]})
+    context_key=hashlib.sha256(json.dumps(parts,sort_keys=True).encode()).hexdigest()
     fingerprint = context_key
     if retry_from:
         if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{16,64}", request_id):
             raise ValueError("Identificador de nova tentativa inválido.")
         old = store.owned(c, "quality_jobs", retry_from, doctor)
-        if old["context_key"] != context_key or old["status"] != "failed":
+        same=(old["channel_id"],old["contact_id"],old["revision"])==(channel,contact,policy["revision"])
+        previous=json.loads(old["snapshot"])
+        old_base=previous.get("base_context_key") or hashlib.sha256(json.dumps([doctor,channel,contact,old["revision"],context_messages(previous)],sort_keys=True).encode()).hexdigest()
+        compatible=old["context_key"]==context_key or (bool(old["include_audio"])!=include_audio and same and old_base==data["base_context_key"])
+        if not compatible or old["status"] != "failed":
             raise ValueError("O contexto mudou ou a análise não falhou. Abra uma nova análise da conversa.")
         fingerprint = hashlib.sha256((context_key+request_id).encode()).hexdigest()
         repeated = c.execute("SELECT id FROM quality_jobs WHERE fingerprint=?", (fingerprint,)).fetchone()
@@ -203,15 +223,15 @@ def enqueue(c, store, doctor, channel, contact, actor, now, *, retry_from="", re
     if count >= policy["daily_limit"]:
         raise ValueError("Limite diário de avaliações atingido para este profissional.")
     ident = uuid.uuid4().hex
-    c.execute("INSERT INTO quality_jobs(id,doctor_id,channel_id,contact_id,fingerprint,context_key,source,revision,settings,snapshot,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-              (ident, doctor, channel, contact, fingerprint, context_key, "manual", policy["revision"], json.dumps(policy), json.dumps(data), str(actor), now))
+    c.execute("INSERT INTO quality_jobs(id,doctor_id,channel_id,contact_id,fingerprint,context_key,source,revision,settings,snapshot,created_by,created_at,include_audio,retry_from) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              (ident, doctor, channel, contact, fingerprint, context_key, "manual", policy["revision"], json.dumps(policy), json.dumps(data), str(actor), now,int(include_audio),retry_from))
     return ident
 
 
-def request(store, doctor, channel, contact, actor, *, retry_from="", request_id=""):
+def request(store, doctor, channel, contact, actor, *, retry_from="", request_id="",include_audio=False):
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
-        return enqueue(c, store, doctor, channel, contact, actor, time.time(), retry_from=retry_from, request_id=request_id)
+        return enqueue(c, store, doctor, channel, contact, actor, time.time(), retry_from=retry_from, request_id=request_id,include_audio=include_audio)
 
 
 def model_messages(data, policy):
@@ -223,7 +243,7 @@ def model_messages(data, policy):
         "Para o limite X, uma interação é um turno de resposta humana após mensagem do cliente; "
         "mensagens consecutivas do mesmo turno não são várias interações."
     )
-    safe_messages = [{**{k: v for k, v in m.items() if k != "message_id"},
+    safe_messages = [{**{k: v for k, v in m.items() if k not in {"message_id","media_id","media_sha256"}},
                       "time": datetime.fromtimestamp(m["time"], TZ).isoformat()} for m in data["messages"]]
     return [{"role": "system", "content": (
         "Você audita a qualidade de atendimento comercial, sem tomar decisões trabalhistas. "
@@ -233,6 +253,9 @@ def model_messages(data, policy):
         "customer, automation ou unattributed a um atendente. Não invente contexto, promessas ou falhas. "
         "Ausência de evidência, áudio/anexo inacessível, conversa incompleta, prazo não definido ou "
         "não vencido resultam em na, nunca em desconto. Não avalie tempo de resposta. "
+        "Transcrições de áudio são automáticas e podem conter erros. Não use pontuação, grafia, "
+        "emoji ausente, falha de reconhecimento ou suposto tom de voz como desvio do atendente. "
+        "Não infira identidade de voz; a autoria vem somente dos metadados human/actor. "
         "Não avalie preços, valores de consulta ou procedimento, taxas, descontos, créditos, "
         "isenções ou elegibilidade financeira de campanhas. A clínica realiza campanhas de isenção: "
         "não existe valor ou cobrança obrigatória de referência nesta monitoria. Presença, ausência "
@@ -297,6 +320,8 @@ def validate_result(raw, data, policy):
                 outcome, reason, evidence = "na", disabled[ident], []
             elif outcome == "fail" and not any(messages[ref]["actor"] == actor and messages[ref]["kind"] == "human" for ref in evidence):
                 raise ValueError("Desconto sem mensagem de autoria do atendente.")
+            if ident=="professionalism" and outcome=="fail" and all(messages[ref].get("transcription") for ref in evidence if messages[ref]["actor"]==actor):
+                outcome,reason,evidence="na","Transcrição automática não comprova ortografia ou uso de emojis do atendente.",[]
             if ident == "resolution" and outcome == "fail":
                 waiting, turns = False, 0
                 for message in data["messages"]:
@@ -315,11 +340,11 @@ def validate_result(raw, data, policy):
     return results
 
 
-def tick(store, provider, permitted, now=None):
+def tick(store, provider, permitted, now=None, *, transcriber=None,gateway=None):
     now = now or time.time()
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
-        c.execute("UPDATE quality_jobs SET status='failed',error='Análise interrompida; não repetida automaticamente',finished_at=? WHERE status='running' AND claimed_at<?", (now, now-300))
+        c.execute("UPDATE quality_jobs SET status='failed',error='Análise interrompida; não repetida automaticamente',error_code='analysis_interrupted',finished_at=? WHERE status='running' AND claimed_at<?-CASE WHEN include_audio=1 THEN 900 ELSE 300 END", (now,now))
         row = c.execute("SELECT * FROM quality_jobs WHERE status='queued' ORDER BY created_at,id LIMIT 1").fetchone()
         if not row:
             return False
@@ -336,10 +361,24 @@ def tick(store, provider, permitted, now=None):
         c.execute("UPDATE quality_jobs SET status='running',claimed_at=? WHERE id=?", (now, job["id"]))
     try:
         data = json.loads(job["snapshot"])
+        from crm_quality_audio import prepare
+        from crm_quality_provider import classify,QualityError
+        def allowed():
+            with store.db() as c:
+                current=settings(c,job["doctor_id"])
+                active=c.execute("SELECT status,claimed_at FROM quality_jobs WHERE id=?",(job["id"],)).fetchone()
+                try:store.conversation_contact(c,job["doctor_id"],job["channel_id"],job["contact_id"])
+                except (ValueError,LookupError,PermissionError):return False
+                return bool(active and active["status"]=="running" and active["claimed_at"]==now and current["enabled"] and current["revision"]==job["revision"] and permitted(job["created_by"]))
+        data=prepare(store,job,data,transcriber,gateway,allowed)
+        if not allowed():raise QualityError("scope_changed")
+        with store.db() as c:c.execute("UPDATE quality_jobs SET snapshot=? WHERE id=? AND status='running'",(json.dumps(data),job["id"]))
         result = validate_result(provider(model_messages(data, policy)), data, policy)
-    except Exception:
+    except Exception as exc:
+        from crm_quality_provider import classify
+        failure=classify(exc)
         with store.db() as c:
-            c.execute("UPDATE quality_jobs SET status='failed',error='Não foi possível validar a análise. Confira a configuração e o saldo da API. Nenhuma nota foi atribuída.',finished_at=? WHERE id=? AND status='running'", (time.time(), job["id"]))
+            c.execute("UPDATE quality_jobs SET status=?,error=?,error_code=?,finished_at=? WHERE id=? AND status='running'", ("cancelled" if failure.code=="scope_changed" else "failed",str(failure),failure.code,time.time(),job["id"]))
         return True
     with store.db() as c:
         c.execute("BEGIN IMMEDIATE")
@@ -368,6 +407,9 @@ def detail(store, doctor, ident):
         data = json.loads(job.pop("snapshot"))
         policy = json.loads(job.pop("settings"))
         job["partial"] = data["partial"]
+        if job["status"]=="failed" and not job["error_code"]:
+            job["error_code"]="legacy_unknown";job["error"]="A tentativa anterior falhou sem diagnóstico detalhado registrado. A causa não foi confirmada. Nenhuma nota foi atribuída."
+        job["audio_summary"]=data.get("audio_summary",{"requested":bool(job["include_audio"]),"transcribed":0,"reused":0})
         job["period"] = {"from": data["from"], "to": data["to"]}
         job["rubric"] = rubric(policy)
         job["messages"] = data["messages"]
@@ -417,8 +459,10 @@ def listing(store, doctor, *, channel="", contact="", page=1):
             args.extend([channel, contact])
         base = " FROM quality_jobs j JOIN channels ch ON ch.id=j.channel_id JOIN contacts ct ON ct.id=j.contact_id WHERE " + where
         total = c.execute("SELECT count(*)" + base, args).fetchone()[0]
-        jobs = [dict(r) for r in c.execute("SELECT j.id,j.status,j.created_at,j.error,j.channel_id,j.contact_id,ct.name, ch.name channel_name" + base + " ORDER BY j.created_at DESC,j.id LIMIT 25 OFFSET ?", (*args, (page-1)*25))]
+        jobs = [dict(r) for r in c.execute("SELECT j.id,j.status,j.created_at,j.error,j.error_code,j.channel_id,j.contact_id,ct.name, ch.name channel_name" + base + " ORDER BY j.created_at DESC,j.id LIMIT 25 OFFSET ?", (*args, (page-1)*25))]
         for job in jobs:
+            if job["status"]=="failed" and not job["error_code"]:
+                job["error_code"]="legacy_unknown";job["error"]="A tentativa anterior falhou sem diagnóstico detalhado. A causa não foi confirmada."
             job["assessments"] = [dict(r) for r in c.execute("SELECT id,actor_id,actor_name,score,reviewed FROM quality_assessments WHERE job_id=? ORDER BY actor_name", (job["id"],))]
         aggregates = c.execute("""SELECT count(*) count,sum(a.reviewed) reviewed,
             avg(CASE WHEN a.reviewed=1 THEN a.score END) average
@@ -433,7 +477,9 @@ def listing(store, doctor, *, channel="", contact="", page=1):
 
 def run_worker(auth, stop):
     import logging
-    from app import clinic_context, openai_chat_json
+    from app import clinic_context
+    from crm_quality_provider import chat,transcribe
+    from crm_gateway import EvolutionGateway
     from crm_api import store_for
     store = store_for(auth)
 
@@ -444,6 +490,6 @@ def run_worker(auth, stop):
     while not stop.wait(3):
         try:
             with clinic_context("vielle"):
-                tick(store, openai_chat_json, permitted)
+                tick(store,chat,permitted,transcriber=transcribe,gateway=EvolutionGateway())
         except Exception:
             logging.warning("CRM quality worker pending; no automatic retry of running analysis")

@@ -382,7 +382,7 @@ if "--bots-fixture" in sys.argv:
         {"id":"5","kind":"end","data":{},"x":900,"y":300,"next":{}}]
     bots.save({"doctor_id":doc["id"],"pipeline_id":pipeline["id"],"name":"Acompanhamento · exemplo","definition":{"nodes":nodes,"trigger":{"kind":"stage","stage_id":pipeline["stages"][0]["id"],"delay_minutes":0},"stop_on_reply":True}},1)
 
-if "--quality-fixture" in sys.argv:
+if "--quality-fixture" in sys.argv or "--quality-audio-fixture" in sys.argv:
     import crm_quality as quality
     doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
     channel=store.listing(doc)["channels"][0]["id"]
@@ -395,8 +395,27 @@ if "--quality-fixture" in sys.argv:
                 (f"quality-inbound-example-{index}",channel,lead["contact_id"],"Gostaria de combinar meu retorno.","in","received",time.time()-1))
             c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name) VALUES(?,?,?,?,?,?,?,?,?)",
                 (f"quality-example-{index}",channel,lead["contact_id"],"Vamos verificar as opções de horário para seu retorno.","out","sent",time.time(),"1","Equipe Exemplo"))
-        job=quality.request(store,doc,channel,lead["contact_id"],"1")
+        if "--quality-audio-fixture" in sys.argv:
+            from io import BytesIO
+            import wave
+            import crm_media
+            import crm_quality_api
+            import crm_quality_audio
+            from crm_quality_provider import QualityError
+            crm_quality_api.provider_ready=lambda:True
+            crm_quality_audio.audio_model=lambda:"synthetic-transcriber"
+            buffer=BytesIO()
+            with wave.open(buffer,"wb") as sound:
+                sound.setparams((1,2,8000,0,"NONE","not compressed"));sound.writeframes(b"\0\0"*8000)
+            media=crm_media.upload(store,doc,channel,lead["contact_id"],"1",f"quality-audio-{index}","audio.wav","audio",buffer.getvalue())
+            with store.db() as c:
+                key=f"quality-audio-message-{index}"
+                c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id,sender_name,media_id) VALUES(?,?,?,'[Audio]','out','sent',?,'1','Equipe Exemplo',?)",(key,channel,lead["contact_id"],time.time(),media["id"]))
+                c.execute("UPDATE message_media SET message_id=? WHERE id=?",(key,media["id"]))
+        job=quality.request(store,doc,channel,lead["contact_id"],"1",include_audio="--quality-audio-fixture" in sys.argv and index!=2)
         if index==2:
+            if "--quality-audio-fixture" in sys.argv:
+                with store.db() as c:c.execute("UPDATE quality_jobs SET status='failed',error='Falha legada sem diagnóstico',finished_at=? WHERE id=?",(time.time(),job))
             continue
         def synthetic_quality(messages):
             data=json.loads(messages[1]["content"])
@@ -405,7 +424,10 @@ if "--quality-fixture" in sys.argv:
                 "items":[{"id":r["id"],"outcome":"na" if not r["enabled"] else "fail" if r["id"]=="clarity" else "pass",
                     "reason":"Evidência fictícia para validar o painel.","evidence":[next(m["id"] for m in data["messages"] if m["kind"]=="human" and m["actor"]==actor)]} for r in data["rubric"]]}
                 for actor in data["actors"]]}
-        quality.tick(store,synthetic_quality,lambda _:True)
+        def synthetic_transcriber(raw,**kwargs):
+            return "Olá! Vamos combinar seu retorno. Você prefere pela manhã ou à tarde?"
+        def synthetic_quota(messages):raise QualityError("api_quota")
+        quality.tick(store,synthetic_quota if "--quality-audio-fixture" in sys.argv and index==1 else synthetic_quality,lambda _:True,transcriber=synthetic_transcriber)
         if index==0:
             assessment=quality.detail(store,doc,job)["assessments"][0]
             quality.review(store,doc,assessment["id"],{"revision":1,"failures":["clarity"],"reason":"Revisão sintética aprovada."},"1")

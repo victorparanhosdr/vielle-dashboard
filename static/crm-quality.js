@@ -35,6 +35,7 @@ window.createCrmQuality = function ({state,api,esc,icon,icons,modal,error}) {
     const token=++dialogSeq;clearTimeout(timer);
     modal("Régua de qualidade e IA",`<form id="qualitySettings" class="qualitySettings"><label class="check"><input name="enabled" type="checkbox" ${settings.enabled?"checked":""}>Habilitar análises manuais por IA</label><label>Limite diário por profissional (São Paulo)<input type="number" name="daily_limit" min="1" max="20" value="${settings.daily_limit}" required></label><p class="qualityScope">Piloto manual · sem análise automática, tempo de resposta ou limite de interações. Valores, descontos e isenções não compõem a nota.</p><label>Padrão de comunicação da clínica<textarea name="scripts" rows="4" maxlength="4000" placeholder="Saudação, linguagem e roteiro esperado">${esc(settings.scripts)}</textarea></label><label>Referência de serviços e procedimentos<textarea name="services" rows="4" maxlength="4000" placeholder="Informações aprovadas pela clínica, sem dados de pacientes">${esc(settings.services)}</textarea></label><details class="qualityRubric"><summary>Critérios e descontos</summary>${[100,50,30].map(p=>`<h3>${p===100?"Gravíssimas":p===50?"Graves":"Moderadas"} · −${p} pontos</h3><ul>${rubric.filter(r=>r.penalty===p).map(r=>`<li><strong>${esc(r.label)}</strong><span>${esc(r.description)}</span>${!r.enabled?`<small>${esc(r.disabled_reason)}</small>`:""}</li>`).join("")}</ul>`).join("")}</details><p class="inlineWarning">Cada análise depende da seleção e confirmação do gestor. Os textos serão processados pela API OpenAI da clínica, com consumo de saldo. Nomes e telefones da ficha não são enviados; o texto livre ainda pode conter dados pessoais. Áudios e anexos não são analisados.</p><label class="check"><input type="checkbox" name="confirm">Confirmo a autorização de processamento e o consumo da API nas análises que eu solicitar</label><div class="formActions"><button type="submit" class="primary">${icon("check")} Salvar régua</button></div></form>`);
     const form=document.getElementById("qualitySettings");
+    form.querySelector('.inlineWarning').textContent="Cada análise exige seleção e confirmação do gestor. Textos e, quando selecionados, áudios serão processados pela OpenAI com consumo da API. Nomes e telefones da ficha não são enviados como cadastro, mas o conteúdo pode conter dados pessoais. Documentos, imagens e vídeos continuam fora da análise.";
     form.onsubmit=async event=>{
       event.preventDefault();const button=form.querySelector('[type="submit"]');button.disabled=true;
       const values=new FormData(form);
@@ -55,12 +56,16 @@ window.createCrmQuality = function ({state,api,esc,icon,icons,modal,error}) {
       const host=document.getElementById("crmQualityDetail");
       host.innerHTML=`<p class="qualityScope">${esc(context.name || "Conversa selecionada")} · textos dos últimos 7 dias, até 250 mensagens</p><p>Notas da IA são provisórias. Critérios sem evidência ficam sem avaliação; áudios e anexos não geram descontos por ausência de contexto.</p>${!data.settings.enabled?'<p class="inlineWarning">A análise por IA está desativada para este profissional.</p>':""}<div class="commands"><button class="primary" data-quality-analyze ${data.settings.enabled && data.provider_ready!==false?"":"disabled"}>${icon("sparkles")} Analisar atendimento</button><button data-quality-configure>${icon("sliders-horizontal")} Régua e IA</button></div><label class="check qualityConsent"><input type="checkbox" data-quality-consent>Confirmo a análise dos textos pela OpenAI e o consumo da API da clínica</label><div class="qualityConversationHistory">${data.jobs.map(j=>`<button type="button" data-quality-job="${esc(j.id)}"><span>${esc(when(j.created_at))}</span><strong>${labels[j.status] || esc(j.status)}</strong>${icon("chevron-right")}</button>`).join("") || '<p>Nenhuma avaliação registrada nesta conversa.</p>'}</div>`;
       host.querySelector("[data-quality-configure]").onclick=()=>configure(doc,data.settings,data.rubric,()=>openConversation(context));
+      const consent=host.querySelector('.qualityConsent');
+      consent.insertAdjacentHTML('beforebegin','<label class="check qualityConsent"><input type="checkbox" data-quality-audio>Transcrever os áudios desta análise pela OpenAI (consumo adicional)</label>');
+      consent.lastChild.textContent="Confirmo o processamento dos textos e dos áudios selecionados pela OpenAI, com consumo da API da clínica";
       host.querySelectorAll("[data-quality-job]").forEach(b=>b.onclick=()=>openJob(doc,b.dataset.qualityJob,context));
       host.querySelector("[data-quality-analyze]").onclick=async event=>{
         if(!host.querySelector("[data-quality-consent]").checked){error("Confirme o processamento pela IA antes de analisar.");return;}
         const button=event.currentTarget;button.disabled=true;
         try{
-          const result=await api("quality/analyze",{doctor_id:doc,channel_id:context.channel_id,contact_id:context.contact_id,confirm:true},{doctor:doc});
+          const includeAudio=host.querySelector('[data-quality-audio]').checked;
+          const result=await api("quality/analyze",{doctor_id:doc,channel_id:context.channel_id,contact_id:context.contact_id,confirm:true,include_audio:includeAudio,confirm_audio:includeAudio},{doctor:doc});
           if(active() && host.isConnected)openJob(doc,result.id,context);
         }catch(e){if(active() && host.isConnected){error(e.message);button.disabled=false;}}
       };icons();
@@ -80,17 +85,25 @@ window.createCrmQuality = function ({state,api,esc,icon,icons,modal,error}) {
           const item=a.result.items.find(i=>i.id===r.id),original=a.original.items.find(i=>i.id===r.id);
           return `<details class="qualityCriterion ${esc(item.outcome)}"><summary><span>${icon(item.outcome==="fail"?"circle-alert":item.outcome==="pass"?"circle-check":"circle-minus")}${esc(r.label)}</span><strong>${item.outcome==="fail"?`−${r.penalty}`:item.outcome==="pass"?"Sem desvio":"Não avaliável"}</strong></summary><p>${esc(item.reason)}</p>${item.evidence.map(ref=>{const m=messageById.get(ref);return m?`<blockquote><span>${esc(when(m.time))} · ${m.kind==="customer"?"Cliente":m.kind==="human"?"Atendente":"Contexto"}</span>${esc(m.text) || "[mídia não analisada]"}</blockquote>`:"";}).join("")}${original.outcome==="fail"?`<label class="check"><input type="checkbox" data-keep-failure="${esc(r.id)}" ${item.outcome==="fail"?"checked":""}>Manter desconto de ${r.penalty} pontos</label>`:""}</details>`;
         }).join("")}</div><form class="qualityReviewForm"><label>Registro da revisão<textarea name="reason" required maxlength="1200" rows="2" placeholder="Motivo da aprovação ou correção dos descontos"></textarea></label><button type="submit" class="primary">${icon("check-check")} Salvar revisão</button></form>${a.history.length?`<details class="qualityReviewHistory"><summary>${a.history.length} revisão(ões) registrada(s)</summary>${a.history.map(h=>`<p><time>${esc(when(h.created_at))}</time> · ${esc(h.reason)}</p>`).join("")}</details>`:""}</section>`).join("")}`;
+        if(job.audio_summary?.requested){
+          const summary=document.createElement('p');summary.className='qualityScope';summary.textContent=`Áudios transcritos: ${Number(job.audio_summary.transcribed)||0} · reutilizados sem nova transcrição: ${Number(job.audio_summary.reused)||0}`;
+          host.querySelector('.qualityScope').after(summary);
+        }
+        const transcripts=job.messages.filter(m=>m.transcription);
+        if(transcripts.length)host.insertAdjacentHTML('beforeend',`<details class="qualityTranscripts"><summary>${transcripts.length} transcrição(ões) de áudio</summary>${transcripts.map(m=>`<blockquote><span>${esc(when(m.time))} · ${m.kind==='customer'?'Cliente':m.kind==='human'?'Atendente':'Contexto'} · Transcrição automática</span><p>${esc(m.text)}</p></blockquote>`).join('')}</details>`);
         if(job.status==="failed"){
           host.insertAdjacentHTML("beforeend",`<div class="qualityRetry"><label class="check"><input type="checkbox" data-quality-retry-consent>Autorizo uma nova tentativa de análise pela OpenAI, com novo consumo da API</label><button type="button" data-quality-retry>${icon("rotate-cw")} Tentar novamente</button></div>`);
           host.querySelector("[data-quality-retry]").onclick=async event=>{
             if(!host.querySelector("[data-quality-retry-consent]").checked){error("Confirme o consumo da API para tentar novamente.");return;}
             const button=event.currentTarget;button.disabled=true;
             try{
-              const result=await api("quality/analyze",{doctor_id:doc,channel_id:job.channel_id,contact_id:job.contact_id,confirm:true,retry_from:id,request_id:retryNonce},{doctor:doc});
+              const includeAudio=host.querySelector('[data-quality-retry-audio]').checked;
+              const result=await api("quality/analyze",{doctor_id:doc,channel_id:job.channel_id,contact_id:job.contact_id,confirm:true,retry_from:id,request_id:retryNonce,include_audio:includeAudio,confirm_audio:includeAudio},{doctor:doc});
               if(token===dialogSeq && host.isConnected)openJob(doc,result.id,context);
             }catch(e){if(token===dialogSeq && host.isConnected){error(e.message);button.disabled=false;}}
           };
         }
+        host.querySelector('.qualityRetry')?.insertAdjacentHTML('afterbegin',`<label class="check"><input type="checkbox" data-quality-retry-audio ${job.include_audio?'checked':''}>Incluir áudios nesta tentativa; transcrições que falharam podem consumir a API novamente</label>`);
         host.querySelectorAll("[data-assessment]").forEach(section=>{
           const a=job.assessments.find(a=>a.id===section.dataset.assessment);
           section.querySelector("form").onsubmit=async event=>{

@@ -1033,6 +1033,31 @@ class HttpAuthTests(unittest.TestCase):
         with store.db() as c:
             self.assertEqual(c.execute("SELECT count(*) FROM quality_jobs").fetchone()[0],0)
 
+    def test_quality_audio_requires_explicit_consent_and_only_queues(self):
+        from crm_api import store_for
+        import crm_quality
+        cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica"]})
+        data=store.listing();doc=data["doctor_id"];pipeline=data["pipelines"][0]
+        ident=store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],"name":"Pessoa Exemplo","phone":"5500000001234","title":"Sintético"},"Equipe")
+        contact=store.detail(ident,doc)["lead"]["contact_id"]
+        channel=store.channel({"doctor_id":doc,"phone":"5500000005678","name":"Comercial"})
+        import time
+        with store.db() as c:
+            for key,direction,actor,body in (("audio-http-in","in","","Olá"),("audio-http-out","out","1","Como podemos ajudar?")):
+                c.execute("INSERT INTO messages(id,channel_id,contact_id,body,direction,status,created_at,sender_user_id) VALUES(?,?,?,?,?,'sent',?,?)",(key,channel,contact,body,direction,time.time()-1,actor))
+        crm_quality.save_settings(store,doc,{**crm_quality.defaults(),"enabled":True,"confirm":True,"revision":0},"1")
+        path=f"/api/crm/quality/analyze?clinic=vielle&doctor={doc}"
+        payload={"doctor_id":doc,"channel_id":channel,"contact_id":contact,"confirm":True,"include_audio":True}
+        with patch("crm_quality_api.provider_ready",return_value=True):
+            self.assertEqual(self.request("POST",path,payload,cookie,headers)[0],400)
+            self.assertEqual(self.request("POST",path,{**payload,"confirm_audio":True},cookie)[0],403)
+            status,_,raw=self.request("POST",path,{**payload,"confirm_audio":True},cookie,headers)
+        self.assertEqual(status,200,raw)
+        with store.db() as c:
+            row=c.execute("SELECT include_audio,status FROM quality_jobs").fetchone()
+            self.assertEqual(tuple(row),(1,"queued"));self.assertEqual(c.execute("SELECT count(*) FROM crm_audio_transcripts").fetchone()[0],0)
+
     def test_clinic_journey_and_nested_opportunities_http_boundaries(self):
         cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
         from crm_api import store_for

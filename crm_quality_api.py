@@ -35,8 +35,11 @@ def handle(handler, store, action, query, user):
             raise ValueError("Confirme a análise e o consumo da API.")
         if not provider_ready():
             raise ValueError("Configure a API OpenAI da clínica antes de solicitar uma avaliação.")
+        include_audio=payload.get("include_audio",False)
+        if type(include_audio) is not bool or include_audio and payload.get("confirm_audio") is not True:
+            raise ValueError("Confirme o envio dos áudios à OpenAI e o consumo de transcrição.")
         result = {"id": quality.request(store, doctor, payload.get("channel_id"), payload.get("contact_id"), user["id"],
-            retry_from=payload.get("retry_from", ""), request_id=payload.get("request_id", ""))}
+            retry_from=payload.get("retry_from", ""), request_id=payload.get("request_id", ""),include_audio=include_audio)}
     elif action == "quality/review":
         quality.review(store, doctor, payload.get("id"), payload, user["id"])
         result = {}
