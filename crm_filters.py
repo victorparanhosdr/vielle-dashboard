@@ -16,7 +16,7 @@ OPTIONS = {
 }
 NUMBERS = {"min_spent_cents", "max_spent_cents", "min_sales"}
 DATES = {"appointment_from", "appointment_to"}
-FLAGS = {"appointment_no_upcoming"}
+FLAGS = {"appointment_no_upcoming", "journey_review"}
 
 
 def parse_filters(value=None):
@@ -79,6 +79,8 @@ def appointment_ready(item, filters):
 
 
 def matches(item, filters, extra_search=""):
+    if filters.get("journey_review") and not item.get("journey_state", {}).get("needs_review"):
+        return False
     course_status = filters["course_status"]
     if course_status:
         course = item.get("course_data", {})

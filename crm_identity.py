@@ -119,7 +119,7 @@ def merge(c, store, contacts, match):
                         tuple(original[k] for k in ("stage_id", "title", "value_cents", "next_action", "created_at",
                               "consent_at", "consent_source", "email", "source_name", "deleted_at", "deleted_by")) + (keep["id"],))
                 c.execute("UPDATE leads SET deleted_at=?,deleted_by='Consolidacao de cadastro',revision=revision+1 WHERE id=?", (now, duplicate["id"]))
-                for table in ("events", "xp", "crm_reminders", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "voice_calls", "kommo_import_refs", "lead_transfers"):
+                for table in ("events", "xp", "crm_reminders", "lead_attributions", "form_responses", "bot_runs", "bot_events", "bot_tasks", "voice_calls", "kommo_import_refs", "lead_transfers", "patient_opportunities", "clinic_journey_events"):
                     if table in tables:
                         c.execute(f"UPDATE {table} SET lead_id=? WHERE lead_id=?", (keep["id"], duplicate["id"]))
                 c.execute("UPDATE leads SET revision=revision+1 WHERE id=?", (keep["id"],))

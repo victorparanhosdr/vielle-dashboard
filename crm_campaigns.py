@@ -74,6 +74,8 @@ def selection(store, payload):
             JOIN pipelines p ON p.id=l.pipeline_id WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id""", (doctor,)) if pipeline_visible(dict(r))]
         from crm_contact_phone import attach
         attach(c, leads)
+        from crm_clinic_journey import attach as journey_attach
+        journey_attach(c, leads)
         store.attach_customer_values(c,leads,doc["name"],bool(filters["search"]))
         if appointment_active(filters):
             store.attach_appointment_filters(leads,doc["name"],filters)
@@ -87,13 +89,16 @@ def selection(store, payload):
         for p in catalog:
             members=[l for l in leads if l["pipeline_id"]==p["id"]]
             p["count"]=len(members)
-            p["stages"]=[{**dict(s),"count":sum(l["stage_id"]==s["id"] for l in members)} for s in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position",(p["id"],))]
+            from crm_clinic_journey import active_stages
+            p["stages"]=[{**s,"count":sum(l["stage_id"]==s["id"] for l in members)} for s in active_stages(c,p["id"])]
         leads=[l for l in leads if in_scope(l)]
         reasons=Counter();selected=[];contacts=set();duplicates=0
         for l in leads:
             reason = "Removido da selecao" if l["contact_id"] in excluded else "Sem telefone" if not l["phone"] else "Descadastrado" if l["opted_out"] else "Cadastro a conferir" if l["experts_status"] == "review" else ""
             if not reason and (l["contact_id"] in uncertain_contacts or l["phone"] in uncertain_phones):
                 reason="Envio anterior em andamento ou sem confirmacao neste numero"
+            if payload.get("channel_id") and l.get("journey_state", {}).get("disposition") == "noncommercial":
+                reason="Contato não comercial"
             duplicate=not reason and l["contact_id"] in contacts
             if reason:
                 reasons[reason]+=1

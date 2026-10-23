@@ -75,6 +75,9 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action.startswith("clinic-journey/"):
+            from crm_clinic_journey_api import handle as clinic_journey_handle
+            return clinic_journey_handle(handler, store, action, query, user)
         if action in {"facebook", "facebook-sync"}:
             from crm_whatsapp_attribution import handle as facebook_handle
             return facebook_handle(handler, store, action, query)
@@ -84,6 +87,9 @@ def _dispatch(handler, parsed, store, query, user, action):
         if action == "quality" or action.startswith("quality/"):
             from crm_quality_api import handle as quality_handle
             return quality_handle(handler, store, action, query, user)
+        if action == "patient-opportunities":
+            from crm_patient_opportunities_api import handle as patient_opportunities_handle
+            return patient_opportunities_handle(handler, store, query, user)
         if action == "engagement" and handler.command == "GET":
             from crm_engagement import snapshot
             return handler.auth_json({"ok": True, **snapshot(store, user, query)})

@@ -124,13 +124,18 @@
             target.disabled=!items.length;stages();
           };
           doc.onchange=pipelines;target.onchange=stages;pipelines();
-          form.onsubmit=e=>{e.preventDefault();if(submit.disabled || seq!==request)return;prepare(stage.value,{target_doctor_id:doc.value,target_pipeline_id:target.value});};
+          form.onsubmit=async e=>{e.preventDefault();if(submit.disabled || seq!==request)return;
+            try{const journey=window.createCrmClinicJourney({api,esc,icon,icons,modal,error});
+              const closure=await journey.choose({stage_id:"",name:"Contatos selecionados"},stage.value,data.pipelines.find(p=>p.id===target.value));
+              if(seq===request && current())prepare(stage.value,{target_doctor_id:doc.value,target_pipeline_id:target.value,closure});
+            }catch(err){if(current())error(err.message);}};
         }catch(err){if(seq===request && dialog().open)error(err.message);}
         return;
       }
       if(action!=="move")return prepare();
       modal("Mover leads de etapa",`<form id="crmBulkStage"><p class="connectionNote">${esc(pipeline.name)}</p><label>Etapa de destino<select name="stage" required><option value="">Selecionar etapa</option>${pipeline.stages.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")}</select></label><div class="formActions"><button type="submit" class="primary">${icon("arrow-right")} Conferir movimentação</button></div></form>`);
-      document.getElementById("crmBulkStage").onsubmit=e=>{e.preventDefault();prepare(e.currentTarget.elements.stage.value);};
+      const stageForm=document.getElementById("crmBulkStage"),journey=window.createCrmClinicJourney({api,esc,icon,icons,modal,error}),closure=journey.bind(stageForm,stageForm.elements.stage,pipeline);
+      stageForm.onsubmit=e=>{e.preventDefault();prepare(e.currentTarget.elements.stage.value,{closure:closure.read()});};
     }
     async function trash(page=1){
       const scope=getScope(),seq=++request;let selected=new Set();

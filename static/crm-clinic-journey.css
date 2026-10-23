@@ -1,0 +1,10 @@
+.clinicClosureFields{border:0;border-top:1px solid var(--ui-line);padding:14px 0;margin:12px 0;min-width:0}
+.clinicClosureFields legend{font-size:14px;font-weight:600;padding:0 8px 0 0}
+.clinicClosureFields label{display:grid;gap:7px;margin:10px 0}
+.clinicClosureFields .check{display:flex;align-items:flex-start;gap:9px}
+.clinicClosureFields [hidden]{display:none!important}
+.clinicClosureFields select,.clinicClosureFields textarea{width:100%;min-width:0}
+.clinicMigrationRows>div{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--ui-line)}
+.clinicReviewBadge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#8a6220}
+.clinicNoncommercialBadge{color:#697878;font-size:11px}
+.clinicClosureDialog{width:min(540px,calc(100% - 24px))!important}

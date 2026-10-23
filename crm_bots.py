@@ -44,6 +44,9 @@ def emit(c, lead, kind, now, *, channel="", message="", root="", hop=0):
     row = c.execute("SELECT stage_id FROM leads WHERE id=? AND deleted_at=0", (lead,)).fetchone()
     if not row or hop > 5:
         return
+    if c.execute("SELECT 1 FROM sqlite_master WHERE name='clinic_card_state'").fetchone() and c.execute(
+            "SELECT 1 FROM clinic_card_state WHERE lead_id=? AND disposition='noncommercial'", (lead,)).fetchone():
+        return
     unique = message + ":" + lead if message else uuid.uuid4().hex
     c.execute("INSERT OR IGNORE INTO bot_events(lead_id,kind,stage_id,channel_id,message_id,created_at,root,hop,unique_key) VALUES(?,?,?,?,?,?,?,?,?)",
               (lead, kind, row[0], channel, message, now, root or uuid.uuid4().hex, hop, unique))
@@ -167,7 +170,8 @@ class BotStore:
         return dict(row)
 
     def validate_scope(self, c, info, pipeline, doctor, *, publish=False):
-        stages = {r[0] for r in c.execute("SELECT id FROM stages WHERE pipeline_id=?", (pipeline,))}
+        from crm_clinic_journey import active_stages
+        stages = {r["id"] for r in active_stages(c, pipeline)}
         trigger = info["trigger"]
         if trigger["stage_id"] and trigger["stage_id"] not in stages:
             raise ValueError("A fase do gatilho nao pertence a este funil.")
@@ -293,6 +297,8 @@ class BotStore:
     def enqueue(self, c, bot, lead, event_key, now, channel, root, hop):
         if lead.get("deleted_at"):
             return ""
+        if c.execute("SELECT 1 FROM clinic_card_state WHERE lead_id=? AND disposition='noncommercial'", (lead["id"],)).fetchone():
+            return ""
         if c.execute("SELECT 1 FROM contacts WHERE id=? AND opted_out=1", (lead["contact_id"],)).fetchone():
             return ""
         if c.execute("SELECT 1 FROM bot_runs WHERE bot_id=? AND lead_id=? AND status NOT IN ('done','cancelled','failed')", (bot["id"], lead["id"])).fetchone():
@@ -417,6 +423,8 @@ class BotStore:
             target = node["next"]["yes" if match else "no"]
         elif kind == "move":
             stage = self.crm.row(c, "stages", data["stage_id"])
+            from crm_clinic_journey import prepare as journey_prepare
+            journey_prepare(c, lead, stage)
             if stage["pipeline_id"] != lead["pipeline_id"]:
                 raise ValueError("Fase de outro funil.")
             c.execute("UPDATE leads SET stage_id=?,revision=revision+1,updated_at=? WHERE id=?", (stage["id"], now, lead["id"]))

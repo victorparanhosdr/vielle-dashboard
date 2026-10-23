@@ -37,9 +37,11 @@ def validate_target(store, c, doctor, pipeline, stage):
         return "", ""
     store.owned(c, "pipelines", pipeline, doctor)
     row = store.row(c, "stages", stage) if stage else c.execute(
-        "SELECT * FROM stages WHERE pipeline_id=? AND kind='open' ORDER BY position LIMIT 1", (pipeline,)).fetchone()
+        "SELECT * FROM stages WHERE pipeline_id=? AND kind='open' AND id NOT IN (SELECT stage_id FROM clinic_archived_stages) ORDER BY position LIMIT 1", (pipeline,)).fetchone()
     if not row or row["pipeline_id"] != pipeline or row["kind"] != "open":
         raise ValueError("Escolha uma etapa aberta do funil selecionado.")
+    if c.execute("SELECT 1 FROM clinic_archived_stages WHERE stage_id=?", (row["id"],)).fetchone():
+        raise ValueError("A etapa de entrada foi arquivada. Atualize a seleção.")
     return pipeline, row["id"]
 
 
@@ -83,7 +85,8 @@ def transfer_options(store, ident, doctor):
         doctors = [dict(r) for r in c.execute("SELECT * FROM doctors WHERE id<>? ORDER BY name", (doctor,))]
         pipelines = [dict(r) for r in c.execute("SELECT id,doctor_id,name FROM pipelines WHERE doctor_id<>? ORDER BY name", (doctor,))]
         for pipeline in pipelines:
-            pipeline["stages"] = [dict(r) for r in c.execute("SELECT id,name FROM stages WHERE pipeline_id=? AND kind='open' ORDER BY position", (pipeline["id"],))]
+            from crm_clinic_journey import active_stages
+            pipeline["stages"] = [r for r in active_stages(c,pipeline["id"]) if r["kind"] == "open"]
         return {"channel": channel, "doctors": doctors, "pipelines": pipelines, "impact": _impact(c, ident)}
 
 
@@ -183,9 +186,9 @@ def inbound_target(c, channel):
     channel = dict(channel)
     if channel.get("inbound_pipeline_id"):
         row = c.execute("""SELECT s.id,s.pipeline_id,p.course_key FROM stages s JOIN pipelines p ON p.id=s.pipeline_id
-            WHERE p.doctor_id=? AND p.id=? AND s.id=? AND s.kind='open'""",
+            WHERE p.doctor_id=? AND p.id=? AND s.id=? AND s.kind='open' AND s.id NOT IN (SELECT stage_id FROM clinic_archived_stages)""",
             (channel["doctor_id"], channel["inbound_pipeline_id"], channel["inbound_stage_id"])).fetchone()
     else:
         row = c.execute("""SELECT s.id,s.pipeline_id,p.course_key FROM stages s JOIN pipelines p ON p.id=s.pipeline_id
-            WHERE p.doctor_id=? AND s.kind='open' ORDER BY p.name,s.position LIMIT 1""", (channel["doctor_id"],)).fetchone()
+            WHERE p.doctor_id=? AND s.kind='open' AND s.id NOT IN (SELECT stage_id FROM clinic_archived_stages) ORDER BY p.name,s.position LIMIT 1""", (channel["doctor_id"],)).fetchone()
     return dict(row) if row else None

@@ -230,7 +230,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   async function changeStage(lead,id){
     const signature=key(selected),doc=owner;
-    await moveLead(lead,id);
+    await moveLead(lead,id,{},catalog.pipelines.find(p=>p.id===lead.pipeline_id));
     const data=await api("lead",undefined,{doctor:doc,id:lead.id});
     if(root && selected && signature===key(selected) && selected.lead_id===lead.id){selectedRecord=data.lead;drawInfo();loadOpportunities();}
   }
@@ -241,7 +241,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   }
   function contextPicker(panel){
     if(!opportunities.length)return;
-    panel.insertAdjacentHTML("afterbegin",`<label class="opportunityContext">Oportunidade<select id="opportunityContext">${opportunities.map(o=>`<option value="${esc(o.id)}" ${o.id===selected.lead_id?"selected":""}>${esc(o.course_key?"Curso":"Clínica")} · ${esc(o.pipeline_name)} · ${esc(o.stage_name)}</option>`).join("")}</select></label>`);
+    panel.insertAdjacentHTML("afterbegin",`<label class="opportunityContext">${opportunities.every(o=>o.course_key)?"Oportunidade":"Ficha / funil"}<select id="opportunityContext">${opportunities.map(o=>`<option value="${esc(o.id)}" ${o.id===selected.lead_id?"selected":""}>${esc(o.course_key?"Curso":"Clínica")} · ${esc(o.pipeline_name)} · ${esc(o.stage_name)}</option>`).join("")}</select></label>`);
     $("opportunityContext").onchange=async()=>{
       const id=$("opportunityContext").value,request=++contextSeq,signature=key(selected),doc=owner;
       try{const data=await api("lead",undefined,{doctor:doc,id});if(root && selected && signature===key(selected) && request===contextSeq){selected.lead_id=id;selectedRecord=data.lead;drawInfo();}}

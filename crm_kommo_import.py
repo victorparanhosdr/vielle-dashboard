@@ -160,6 +160,8 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
     existing = {r["contact_id"]: r["id"] for r in c.execute("SELECT id,contact_id FROM leads WHERE pipeline_id=?", (pipeline,))}
     refs = {r[0] for r in c.execute("SELECT source_lead FROM kommo_import_refs WHERE source_pipeline=?", (pack["source_pipeline"],))}
     stages = {(search_key(r["name"]), r["kind"]): r["id"] for r in c.execute("SELECT * FROM stages WHERE pipeline_id=?", (pipeline,))}
+    from crm_clinic_journey import config as journey_config, mapping as journey_mapping, record as journey_record
+    journey = journey_config(c, pipeline)
     report = {"total": len(pack["records"]), "created": 0, "reused": 0, "duplicates": 0,
               "already": 0, "linked": 0, "new": 0, "resolved": 0, "review": 0, "issues": [], "reviews": [], "course_contacts": 0}
     whatsapp_only = search_key(pack["source_name"].strip()) == "trafego paranhos"
@@ -244,6 +246,9 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
             report["reused"] += 1
         else:
             sidkey = (search_key(record["stage"]["name"]), record["stage"]["kind"])
+            migrated = journey_mapping(record["stage"]) if journey else None
+            if migrated:
+                stages[sidkey] = journey[migrated[0]]
             if sidkey not in stages:
                 stages[sidkey] = uuid.uuid4().hex
                 if apply:
@@ -258,6 +263,10 @@ def process(store, c, pack, doctor, pipeline, actor="", job="", apply=False):
                     VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (lid, doctor, pipeline, stages[sidkey], cid, record["title"], record["value_cents"],
                                                   stamp(record["created_at"]), stamp(record["updated_at"]), record.get("email", ""), record["name"] if course else ""))
                 store.event(c, lid, actor, "kommo_import", f"Importado do Kommo · {pack['source_name']} · oportunidade {record['source_id']}", now)
+                if migrated:
+                    key, reason_id, review = migrated
+                    journey_record(c, store, {"id": lid}, {"disposition": "noncommercial" if key == "noncommercial" else "commercial",
+                        "reason_id": reason_id, "note": "Etapa importada: " + record["stage"]["name"], "needs_review": int(review)}, actor, now)
                 if unlinked:
                     store.event(c, lid, actor, "kommo_identity", "Telefone compartilhado. Nenhuma ficha clinica foi vinculada automaticamente.", now)
             report["created"] += 1

@@ -39,7 +39,9 @@ def destinations(store, doctor):
         store.row(c, "doctors", doctor)
         pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines ORDER BY name") if pipeline_visible(dict(r))]
         for pipeline in pipelines:
-            pipeline["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (pipeline["id"],))]
+            from crm_clinic_journey import active_stages, catalog
+            pipeline["stages"] = active_stages(c, pipeline["id"])
+            pipeline["clinic_journey"] = catalog(c, pipeline["id"])
         owners = {p["doctor_id"] for p in pipelines if p["stages"]}
         doctors = [dict(r) for r in c.execute("SELECT * FROM doctors ORDER BY name") if r["id"] in owners and doctor_visible(r["id"])]
         return {"doctors": doctors, "pipelines": [p for p in pipelines if p["stages"]]}
@@ -135,6 +137,9 @@ def preview(store, payload, actor):
         frozen, sample = [], []
         for row in rows:
             item = lead(c, store, row["id"], doctor, pipeline, action == "restore")
+            if target:
+                from crm_clinic_journey import prepare as journey_prepare
+                journey_prepare(c, item if action == "move" else None, target, payload.get("closure"))
             if item["revision"] != row["revision"]:
                 from crm_store import Conflict
                 raise Conflict("Uma oportunidade mudou durante a selecao. Confira novamente.")
@@ -156,6 +161,8 @@ def preview(store, payload, actor):
         if action == "transfer":
             c.execute("UPDATE lead_bulk_batches SET target_doctor_id=?,target_pipeline_id=?,target_pipeline_revision=? WHERE id=?",
                       (destination["doctor_id"], destination["id"], destination["revision"], ident))
+        if target:
+            c.execute("INSERT INTO clinic_bulk_context VALUES(?,?)", (ident, json.dumps(payload.get("closure"))))
         target_doctor = store.row(c, "doctors", destination["doctor_id"])
     return {"id": ident, "action": action, "count": len(frozen), "selected": len(rows), "sample": sample,
             "pipeline": owner["name"], "stage": target["name"] if target else "", "automations": bots,
@@ -220,11 +227,18 @@ def apply(store, payload, actor):
                         AND NOT EXISTS(SELECT 1 FROM campaign_audiences a WHERE a.campaign_id=ca.id))""", (reason, row["contact_id"], row["doctor_id"]))
             source_doctor = store.row(c, "doctors", pipeline["doctor_id"])
             target_doctor = store.row(c, "doctors", destination["doctor_id"])
+        from crm_clinic_journey import prepare as journey_prepare, record as journey_record
+        context = c.execute("SELECT payload FROM clinic_bulk_context WHERE batch_id=?", (batch["id"],)).fetchone()
+        closure = json.loads(context[0]) if context else None
+        classifications = {row["id"]: journey_prepare(c, row if action == "move" else None, target, closure)
+                           for row in rows} if target else {}
         for row in rows:
             if action == "move":
                 c.execute("UPDATE leads SET stage_id=?,updated_at=?,revision=revision+1 WHERE id=?", (target["id"], now, row["id"]))
                 store.stage_event(c, row, target, actor["nome"], now)
             elif action == "transfer":
+                if destination["course_key"] and c.execute("SELECT 1 FROM patient_opportunities WHERE lead_id=?", (row["id"],)).fetchone():
+                    raise ValueError("Uma ficha clínica com negociações não pode ser convertida em oportunidade de curso. Crie o interesse no curso separadamente.")
                 c.execute("""INSERT INTO lead_transfers VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (uuid.uuid4().hex, batch["id"], row["id"], row["contact_id"], row["doctor_id"], row["pipeline_id"], row["stage_id"],
                      destination["doctor_id"], destination["id"], target["id"], str(actor["id"]), actor["nome"], now, json.dumps(row)))
@@ -237,6 +251,8 @@ def apply(store, payload, actor):
                 c.execute("UPDATE leads SET deleted_at=?,deleted_by=?,updated_at=?,revision=revision+1 WHERE id=?",
                           (now if action == "delete" else 0, actor["nome"] if action == "delete" else "", now, row["id"]))
                 store.event(c, row["id"], actor["nome"], action, "Enviado para a lixeira" if action == "delete" else "Restaurado da lixeira", now)
+            if target:
+                journey_record(c, store, row, classifications[row["id"]], actor["nome"], now)
         if action == "delete":
             stop_automations(c, rows, now)
         result = {"action": action, "count": len(rows), "pipeline_id": destination["id"], "doctor_id": destination["doctor_id"]}

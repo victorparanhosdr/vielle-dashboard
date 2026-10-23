@@ -41,7 +41,9 @@ def combined(store, doctors, user, channel="", kind="all", search="", filters=No
                 pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name", (doctor,))
                              if pipeline_visible(dict(r))]
                 for p in pipelines:
-                    p["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (p["id"],))]
+                    from crm_clinic_journey import active_stages, catalog as journey_catalog
+                    p["stages"] = active_stages(c, p["id"])
+                    p["clinic_journey"] = journey_catalog(c, p["id"])
                 catalog.extend(pipelines)
                 channels.extend(dict(r) for r in c.execute("SELECT id,doctor_id,name,phone,state,archived_at FROM channels WHERE doctor_id=? ORDER BY name", (doctor,)))
     selected_channel = next((c for c in channels if c["id"] == channel), None)

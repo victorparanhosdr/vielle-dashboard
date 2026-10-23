@@ -419,6 +419,10 @@ class FormStore:
             if config["enabled"]:
                 pipeline=self.crm.owned(c,"pipelines",config["pipeline_id"],row["doctor_id"])
                 stage=self.crm.row(c,"stages",config["stage_id"])
+                from crm_clinic_journey import config as journey_config
+                journey = journey_config(c, pipeline["id"])
+                if journey and c.execute("SELECT 1 FROM clinic_archived_stages WHERE stage_id=?", (stage["id"],)).fetchone():
+                    stage = self.crm.row(c, "stages", journey["new"])
                 if stage["pipeline_id"]!=pipeline["id"]:
                     raise ValueError("O funil do formulario precisa ser revisado.")
                 name=answers[config["name_field"]];number=answers[config["phone_field"]]

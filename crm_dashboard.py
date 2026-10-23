@@ -52,10 +52,13 @@ def dashboard(store, doctor, days=7, *, include_operators=False, now=None):
             op["replies"] += 1
             op["contacts"].add(row["contact_id"])
             op["last_reply_at"] = max(op["last_reply_at"], row["sent_at"])
-        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,p.doctor_id,p.institute_key,count(l.id) total,
-            sum(CASE WHEN s.kind='won' THEN 1 ELSE 0 END) won,
-            sum(CASE WHEN s.kind='lost' THEN 1 ELSE 0 END) lost
+        funnels = [dict(r) for r in c.execute("""SELECT p.id,p.name,p.doctor_id,p.institute_key,
+            sum(CASE WHEN l.id IS NOT NULL AND coalesce(cs.disposition,'commercial')<>'noncommercial' THEN 1 ELSE 0 END) total,
+            sum(CASE WHEN cs.disposition='noncommercial' THEN 1 ELSE 0 END) noncommercial,
+            sum(CASE WHEN s.kind='won' AND coalesce(cs.disposition,'commercial')<>'noncommercial' THEN 1 ELSE 0 END) won,
+            sum(CASE WHEN s.kind='lost' AND coalesce(cs.disposition,'commercial')<>'noncommercial' THEN 1 ELSE 0 END) lost
             FROM pipelines p LEFT JOIN leads l ON l.pipeline_id=p.id AND l.deleted_at=0 LEFT JOIN stages s ON s.id=l.stage_id
+            LEFT JOIN clinic_card_state cs ON cs.lead_id=l.id
             WHERE p.doctor_id=? GROUP BY p.id ORDER BY p.name""", (doctor,)) if pipeline_visible(dict(r))]
         overdue = sum(r[0] in {p["id"] for p in funnels} for r in c.execute("""SELECT l.pipeline_id FROM leads l JOIN stages s ON s.id=l.stage_id
             WHERE l.doctor_id=? AND l.deleted_at=0 AND s.kind='open' AND l.next_action<>'' AND l.next_action<?""", (doctor, today.isoformat())))

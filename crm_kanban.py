@@ -9,7 +9,7 @@ PAGE_SIZE = 20
 
 
 def quotes(items):
-    contacts = {l["contact_id"]: l for l in items}.values()
+    contacts = {l["contact_id"]: l for l in items if l.get("journey_state", {}).get("disposition") != "noncommercial"}.values()
     cents = pending = 0
     for lead in contacts:
         history = lead.get("customer_history", {})
@@ -46,9 +46,10 @@ def page(items, scope, cursor=""):
 
 def overview(leads, pipeline, doctor, filters, today):
     items = [l for l in leads if pipeline and l["pipeline_id"] == pipeline["id"]]
-    customers = list({l["contact_id"]: l for l in items}.values())
+    commercial = [l for l in items if l.get("journey_state", {}).get("disposition") != "noncommercial"]
+    customers = list({l["contact_id"]: l for l in commercial}.values())
     tiers = {tier: sum(l.get("customer_value", {}).get("tier") == tier for l in customers) for tier in ("gold", "silver", "bronze")}
-    active = [l for l in items if l["kind"] == "open"]
+    active = [l for l in commercial if l["kind"] == "open"]
     columns, visible = [], []
     for stage in pipeline["stages"] if pipeline else []:
         members = [l for l in items if l["stage_id"] == stage["id"]]
@@ -56,11 +57,13 @@ def overview(leads, pipeline, doctor, filters, today):
         visible.extend(batch.pop("leads"))
         columns.append({"stage_id": stage["id"], **batch, "quotes": quotes(members), "value_cents": sum(l.get("value_cents",0) for l in members)})
     return visible, {"pipeline_id": pipeline["id"] if pipeline else "", "columns": columns,
-        "summary": {"total": len(items), "won": sum(l["kind"] == "won" for l in items), "quotes": quotes(customers),
+        "summary": {"total": len(items), "commercial_total": len(commercial), "noncommercial": len(items)-len(commercial),
+                    "review": sum(bool(l.get("journey_state", {}).get("needs_review")) for l in items),
+                    "won": sum(l["kind"] == "won" for l in commercial), "quotes": quotes(customers),
                     "overdue": sum(bool(l["next_action"] and l["next_action"] < today) for l in active),
                     "stale": sum(time.time() - l["updated_at"] > 7 * 86400 for l in active),
                     "tiers": tiers, "unclassified": len(customers) - sum(tiers.values()),
-                    "value_cents": sum(l.get("value_cents",0) for l in items),
+                    "value_cents": sum(l.get("value_cents",0) for l in commercial),
                     "course": {"paid_students": sum(l.get("course_data", {}).get("paid_count", 0) > 0 for l in customers),
                                "paid_cents": sum(l.get("course_data", {}).get("paid_cents", 0) for l in customers),
                                "pending": sum(l.get("course_data", {}).get("pending_count", 0) for l in customers),

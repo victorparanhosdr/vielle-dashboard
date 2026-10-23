@@ -1033,6 +1033,30 @@ class HttpAuthTests(unittest.TestCase):
         with store.db() as c:
             self.assertEqual(c.execute("SELECT count(*) FROM quality_jobs").fetchone()[0],0)
 
+    def test_clinic_journey_and_nested_opportunities_http_boundaries(self):
+        cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
+        from crm_api import store_for
+        store=store_for(self.store)
+        store.bootstrap({"Profissional Exemplo":["Clínica", "RegenCode"]})
+        data=store.listing();doc=data["doctor_id"];pipeline=next(p for p in data["pipelines"] if p["name"]=="Clínica")
+        ident=store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],
+            "name":"Pessoa Exemplo","phone":"5500000000007","title":"Negociação de exemplo"},"Equipe")
+        path=f"/api/crm/clinic-journey/preview?clinic=vielle&doctor={doc}"
+        payload={"doctor_id":doc,"pipeline_id":pipeline["id"]}
+        self.assertEqual(self.request("POST",path,payload,cookie)[0],403)
+        status,_,raw=self.request("POST",path,payload,cookie,headers)
+        self.assertEqual(status,200,raw)
+        preview=json.loads(raw)
+        status,_,raw=self.request("POST",path.replace("/preview?","/apply?"),{"doctor_id":doc,"id":preview["id"],"confirm":True},cookie,headers)
+        self.assertEqual(status,200,raw)
+        deal_path=f"/api/crm/patient-opportunities?clinic=vielle&doctor={doc}"
+        self.assertEqual(self.request("GET",deal_path+"&lead="+ident,cookie=cookie)[0],200)
+        self.assertEqual(self.request("POST",deal_path,{"doctor_id":doc,"lead_id":{}},cookie,headers)[0],400)
+        self.limit_permissions(["crm.view"])
+        staff=self.login()[0]
+        self.assertEqual(self.request("POST",path,payload,staff,headers)[0],403)
+        self.assertEqual(self.request("GET",deal_path+"&lead="+ident,cookie=staff)[0],200)
+
     def test_admin_refuses_last_master_deactivation(self):
         cookie=self.master_cookie();uid=self.store.get_user_by_login("master")["id"]
         self.assertEqual(self.request("POST",f"/api/master/users/{uid}/status",{"active":False},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)

@@ -270,6 +270,12 @@ class CrmStore:
         from crm_quality import schema as quality_schema
         with self.db() as c:
             quality_schema(c)
+        from crm_patient_opportunities import schema as patient_opportunities_schema
+        with self.db() as c:
+            patient_opportunities_schema(c)
+        from crm_clinic_journey import schema as journey_schema
+        with self.db() as c:
+            journey_schema(c)
         from crm_identity import schema as identity_schema, backup as identity_backup
         with self.db() as c:
             identity_schema(c)
@@ -419,6 +425,9 @@ class CrmStore:
             self.row(c, "doctors", doctor)
             if p.get("id"):
                 previous = self.owned(c, "pipelines", key, doctor)
+                from crm_clinic_journey import config
+                if config(c, key):
+                    raise ValueError("O modelo da clínica possui etapas padronizadas. Preserve a jornada e use os motivos de encerramento.")
                 if previous["revision"] != p.get("revision"):
                     raise Conflict("O funil mudou. Atualize antes de salvar.")
                 old = {r[0] for r in c.execute("SELECT id FROM stages WHERE pipeline_id=?", (key,))}
@@ -476,6 +485,12 @@ class CrmStore:
             if p.get("email") and not address:
                 raise ValueError("Informe um e-mail valido.")
             target = self.row(c, "stages", stage)
+            from crm_clinic_journey import config as journey_config, prepare as journey_prepare, record as journey_record
+            if not p.get("id") and journey_config(c, pipeline):
+                # Previously published forms retain valid legacy IDs, but new contacts start at entry.
+                if c.execute("SELECT 1 FROM clinic_archived_stages WHERE stage_id=?", (stage,)).fetchone():
+                    stage = journey_config(c, pipeline)["new"]
+                    target = self.row(c, "stages", stage)
             if target["pipeline_id"] != pipeline:
                 raise ValueError("A fase nao pertence a este funil.")
             if p.get("id"):
@@ -487,12 +502,15 @@ class CrmStore:
                     raise ValueError("O cliente pertence a outro funil.")
                 if old["revision"] != p.get("revision"):
                     raise Conflict("O cliente foi alterado por outra pessoa. Atualize e tente novamente.")
+                classification = journey_prepare(c, old, target, p.get("closure"))
                 c.execute("UPDATE leads SET title=?,stage_id=?,value_cents=?,next_action=?,updated_at=?,revision=revision+1 WHERE id=?",
                           (text(p.get("title")), stage, value, due, now, key))
                 if destination["course_key"] and "email" in p:
                     c.execute("UPDATE leads SET email=? WHERE id=?", (address, key))
                 self.stage_event(c, old, target, actor, now)
+                journey_record(c, self, old, classification, actor, now)
             else:
+                classification = journey_prepare(c, None, target, p.get("closure"))
                 number, name = phone(p.get("phone")), text(p.get("name"))
                 selected_patient = p.get("experts_uuid", "")
                 if selected_patient and destination["institute_key"]:
@@ -515,6 +533,7 @@ class CrmStore:
                 c.execute("INSERT INTO leads(id,doctor_id,pipeline_id,stage_id,contact_id,title,value_cents,consent_at,consent_source,next_action,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                           (key, doctor, pipeline, stage, contact["id"], text(p.get("title")), value, now if consent else None, source, due, now, now))
                 self.event(c, key, actor, "created", "Oportunidade criada", now)
+                journey_record(c, self, self.owned(c, "leads", key, doctor), classification, actor, now)
                 from crm_bots import emit
                 emit(c, key, "created", now)
                 if destination["course_key"]:
@@ -598,6 +617,8 @@ class CrmStore:
                 lead["name"] = lead["source_name"]
             self.attach_appointments([lead], self.row(c, "doctors", doctor)["name"])
             self.attach_customer_values(c, [lead], self.row(c, "doctors", doctor)["name"])
+            from crm_clinic_journey import attach as journey_attach
+            journey_attach(c, [lead])
             preferred = c.execute("""SELECT m.channel_id FROM messages m JOIN channels ch ON ch.id=m.channel_id
                 WHERE m.contact_id=? AND ch.doctor_id=? AND m.direction='in' ORDER BY m.rowid DESC LIMIT 1""", (contact["id"], doctor)).fetchone()
             return {"lead": lead, "events": [dict(r) for r in c.execute("SELECT * FROM events WHERE lead_id=? ORDER BY id DESC LIMIT 100", (key,))],
@@ -751,6 +772,8 @@ class CrmStore:
         leads = [dict(r) for r in c.execute("SELECT l.*,t.name,t.phone,t.opted_out,t.experts_uuid,t.experts_status,t.service_location,t.service_location_source,t.service_location_revision,s.kind FROM leads l JOIN contacts t ON t.id=l.contact_id JOIN stages s ON s.id=l.stage_id WHERE l.doctor_id=? AND l.deleted_at=0 ORDER BY l.updated_at DESC,l.id", (doctor,)) if pipeline_visible(catalog[r["pipeline_id"]])]
         from crm_contact_phone import attach
         attach(c, leads)
+        from crm_clinic_journey import attach as journey_attach
+        journey_attach(c, leads)
         location_pending = {}
         for lead in leads:
             if not catalog[lead["pipeline_id"]]["course_key"] and not lead["service_location"]:
@@ -789,7 +812,9 @@ class CrmStore:
                                     doctors[0]["id"] if doctors else "")
             pipelines = [dict(r) for r in c.execute("SELECT * FROM pipelines WHERE doctor_id=? ORDER BY name", (doctor,)) if pipeline_visible(dict(r))]
             for p in pipelines:
-                p["stages"] = [dict(r) for r in c.execute("SELECT * FROM stages WHERE pipeline_id=? ORDER BY position", (p["id"],))]
+                from crm_clinic_journey import active_stages, catalog
+                p["stages"] = active_stages(c, p["id"])
+                p["clinic_journey"] = catalog(c, p["id"])
             name = next((d["name"] for d in doctors if d["id"] == doctor), "")
             leads, incomplete, location_pending = self.filtered_leads(c, doctor, name, filters)
             location_pending = {p["id"]: location_pending.get(p["id"], 0) for p in pipelines}
@@ -1137,6 +1162,9 @@ class CrmStore:
             recipients, institutes = {}, set()
             for lead_id in set(ids):
                 lead = self.owned(c, "leads", lead_id, doctor)
+                from crm_clinic_journey import state as journey_state
+                if journey_state(c, lead_id)["disposition"] == "noncommercial":
+                    raise ValueError("Contatos não comerciais não podem entrar em campanhas de pacientes.")
                 scope = self.row(c, "pipelines", lead["pipeline_id"])
                 if scope["institute_key"]:
                     institutes.add(scope["institute_key"])
@@ -1277,6 +1305,16 @@ class CrmStore:
                 ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
+                if r["campaign_id"]:
+                    snapshot = c.execute("SELECT payload FROM campaign_audiences WHERE campaign_id=?", (r["campaign_id"],)).fetchone()
+                    selected_ids = set(json.loads(snapshot[0]).get("ids", [])) if snapshot else None
+                    contexts = [dict(v) for v in c.execute("""SELECT l.id,coalesce(cs.disposition,'commercial') disposition
+                        FROM leads l LEFT JOIN clinic_card_state cs ON cs.lead_id=l.id
+                        WHERE l.doctor_id=? AND l.contact_id=? AND l.deleted_at=0""", (r["doctor_id"], r["contact_id"]))
+                        if selected_ids is None or v["id"] in selected_ids]
+                    if contexts and all(v["disposition"] == "noncommercial" for v in contexts):
+                        c.execute("UPDATE messages SET status='skipped',skip_reason='Contato não comercial' WHERE id=?", (r["id"],))
+                        continue
                 if r["independent_manual_send"] and not r["campaign_id"] and not r["bot_run_id"]:
                     logical = c.execute("""SELECT m.* FROM messages m JOIN reply_requests reply ON reply.message_id=m.id
                         WHERE m.id=? OR m.depends_on=? ORDER BY (m.id=?) DESC LIMIT 1""", (r["id"], r["id"], r["id"])).fetchone()
