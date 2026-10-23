@@ -27,10 +27,6 @@ window.createCrmClinicJourney=function({api,esc,icon,icons,modal,error,load,noti
       }
     }
     select.addEventListener("change",draw);draw();
-    if(lead?.journey_state?.needs_review){
-      const check=document.createElement("label");check.className="check";
-      check.innerHTML='<input type="checkbox" name="journey_confirm">Etapa atual conferida';host.after(check);
-    }
     return {read:()=>host.childElementCount?read(form):form.elements.journey_confirm?.checked?{review_confirmed:true}:undefined};
   }
   async function choose(lead,stage,pipeline){

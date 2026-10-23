@@ -8,7 +8,7 @@
   const money = value => (Number(value || 0) / 100).toLocaleString("pt-BR", {style:"currency",currency:"BRL",maximumFractionDigits:0});
   const date = value => value ? new Date(typeof value === "number" ? value * 1000 : value + "T12:00:00").toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"}) : "Sem data";
   const requestedMode=new URLSearchParams(location.search).get("mode");
-  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots","facebook","quality"].includes(requestedMode)?requestedMode:"inbox",seq:0,search:"",filters:{},sort:"updated",session:null};
+  const state = {data:null,doctor:new URLSearchParams(location.search).get("doctor") || "",inboxDoctors:null,pipeline:new URLSearchParams(location.search).get("pipeline") || "",business:"all",mode:["dashboard","board","inbox","tasks","campaigns","channels","templates","forms","bots","followups","facebook","quality"].includes(requestedMode)?requestedMode:"inbox",seq:0,search:"",filters:{},sort:"updated",session:null};
   const inboxPreference=()=>`doc4docs.crm.inboxDoctors.${state.session?.user.id}`;
   const inboxScope=window.createCrmInboxScope({esc,icon,icons,onChange:ids=>{
     state.inboxDoctors=ids;
@@ -109,7 +109,6 @@
   const clientMode=()=>["board","inbox"].includes(state.mode);
   const filterNames={tier:"Classificação",identity:"Cadastro",service_location:"Local de Atendimento",sales:"Vendas",quotes:"Orçamentos",min_spent_cents:"Comprado a partir de",max_spent_cents:"Comprado até",min_sales:"Mínimo de vendas",appointment_status:"Agendamentos",appointment_from:"Agenda de",appointment_to:"Agenda até",appointment_no_upcoming:"Retorno",course_status:"Pagamento Kiwify"};
   const filterChoices={tier:tierLabels,service_location:{...locationLabels,pending:"Pendente de definição"},identity:{matched:"Vinculado",new:"Novo",review:"A conferir"},sales:{yes:"Com venda fechada",no:"Sem venda fechada"},quotes:{active:"Em aberto",pending:"Pendentes",expired:"Vencidos",lost:"Perdidos",none:"Sem pendentes"},appointment_status:{any:"Com agendamento",completed:"Realizados",scheduled:"Agendados",missed:"Não compareceu",none:"Sem agendamento"},appointment_no_upcoming:{true:"Sem próximo agendamento"}};
-  filterNames.journey_review="Revisão da migração";filterChoices.journey_review={true:"Pendente"};
   filterChoices.course_status={paid:"Pagamento aprovado",pending:"Aguardando pagamento",refunded:"Reembolso / chargeback",none:"Sem pedido localizado"};
   function appointmentRange(kind) {
     const today=state.data?.today || new Date().toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
@@ -222,7 +221,7 @@
     const agenda=l.appointment_filter?.item?l.appointment_filter:l.appointment;
     return `<button class="leadCard" draggable="true" data-tier="${esc(l.customer_value?.tier || "unclassified")}" data-lead="${esc(l.id)}" title="${esc(customerValueDescription(l.customer_value))}" aria-label="${esc(l.name+" · "+customerValueDescription(l.customer_value))}">
       <span class="leadCardHead">${avatars.markup(l.name,l.contact_id,state.doctor,"","leadAvatar")}<span class="leadPerson"><strong>${esc(l.name)}</strong><span class="patientIdentity ${l.experts_status==="matched"?"matched":""}" title="${esc(patientLabel(l.experts_status))}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${l.experts_status==="matched"?"Clínica Experts":l.experts_status==="new"?"Primeiro contato":"Cadastro a conferir"}</span></span><span class="leadCardAside">${customerValueBadge(l.customer_value)}${pendingQuotesValue(l,true)}</span></span>
-      <span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${serviceLocationBadge(l)}</span>${l.journey_state?.needs_review?`<span class="clinicReviewBadge">${icon("circle-help")} Revisar etapa anterior</span>`:""}${l.journey_state?.disposition==="noncommercial"?'<span class="clinicNoncommercialBadge">Não comercial · fora da conversão</span>':""}${appointmentBadge(agenda,true)}
+      <span class="leadMeta"><span class="leadTitle" title="${esc(l.title)}">${esc(l.title)}</span>${serviceLocationBadge(l)}</span>${l.journey_state?.disposition==="noncommercial"?'<span class="clinicNoncommercialBadge">Não comercial · fora da conversão</span>':""}${appointmentBadge(agenda,true)}
       <span class="cardBottom"><small title="Próximo contato comercial" class="${l.next_action && l.next_action<state.data.today?"overdue":""}">${icon("phone-forwarded")}Contato ${date(l.next_action)}</small><small title="${l.opted_out?"Descadastrado · mensagens bloqueadas":"Mensagens disponíveis · padrão da clínica"}">${icon(l.opted_out?"shield-off":"shield-check")}</small></span></button>`;
   }
   function board() {
@@ -268,7 +267,7 @@
     const sortChoices=courseScope()?[["updated","Mais recentes"],["course_paid","Maior valor pago · Kiwify"],["course_value","Maior valor da oportunidade"]]:[["updated","Mais recentes"],["spent","Maior total comprado"],["sales","Mais vendas fechadas"]];
     if(!sortChoices.some(([key])=>key===state.sort))state.sort="updated";
     $("crmSort").innerHTML=sortChoices.map(([key,label])=>option(key,label,key===state.sort)).join("");
-    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",facebook:"Integração Facebook",quality:"Monitoria"})[state.mode];
+    $("crmModeTitle").textContent=({dashboard:"Dashboard",board:"Funis",inbox:"Atendimento",tasks:"Tarefas",campaigns:"Campanhas",channels:"Números",templates:"Modelos de mensagens",forms:"Formulários",bots:"Automações",followups:"Follow up",facebook:"Integração Facebook",quality:"Monitoria"})[state.mode];
     const url=new URL(location.href);url.searchParams.set("mode",state.mode);url.searchParams.set("doctor",state.doctor);if(state.pipeline)url.searchParams.set("pipeline",state.pipeline);history.replaceState(null,"",url);
     $("newLead").innerHTML=`${icon("user-round-plus")} ${courseScope()?"Oportunidade":"Paciente"}`;$("newLead").setAttribute("aria-label",courseScope()?"Nova oportunidade":"Novo paciente");$("newLead").title=courseScope()?"Nova oportunidade":"Novo paciente";
     $("newLead").hidden=!["board","inbox"].includes(state.mode);
@@ -276,7 +275,7 @@
     kanban.destroy();
     if(listPicker){listSeed=listPicker.payload();listPicker.destroy();listPicker=null;}
     const oldBoard=$("crmView").querySelector(".crmBoard"), oldPipeline=oldBoard?.dataset.pipeline, scrollX=oldBoard?.scrollLeft || 0;
-    $("pipelineField").hidden=state.mode!=="board";$("newLead").disabled=!pipeline();
+    $("pipelineField").hidden=!["board","followups"].includes(state.mode);$("newLead").disabled=!pipeline();
     $("crmSearchTools").hidden=!clientMode();
     document.querySelector('.journey').hidden=!document.body.classList.contains("crmJourneyOpen");
     document.querySelector('.crmSort').hidden=state.mode==="board" && presentation==="list";
@@ -293,7 +292,7 @@
     if(state.mode==="inbox") inbox.mount($("crmView"));
     else {
       inbox.unmount();
-    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard","quality"].includes(state.mode)?"":state.mode==="facebook"?'<div id="crmFacebookHost"></div>':state.mode==="tasks"?'<div id="crmRemindersHost" class="crmRemindersPage"></div>':state.mode==="forms"?'<div id="crmFormsHost"></div>':state.mode==="bots"?'<div id="crmBotsHost"></div>':state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
+    $("crmView").innerHTML=state.mode==="board"?presentation==="list"?'<div id="crmFunnelList"></div>':board():["campaigns","dashboard","quality"].includes(state.mode)?"":state.mode==="followups"?'<div id="crmFollowupsHost"></div>':state.mode==="facebook"?'<div id="crmFacebookHost"></div>':state.mode==="tasks"?'<div id="crmRemindersHost" class="crmRemindersPage"></div>':state.mode==="forms"?'<div id="crmFormsHost"></div>':state.mode==="bots"?'<div id="crmBotsHost"></div>':state.mode==="templates"?'<div id="crmTemplatesLibrary" class="crmTemplatesLibrary"></div>':channels();
     if(!state.data.can_manage)$("crmView").querySelectorAll("[data-connect]").forEach(button=>button.hidden=true);
     if(state.mode==="board" && presentation==="list"){
       const filters={...state.filters,search:state.search,sort:state.sort},key=JSON.stringify([state.doctor,state.pipeline,filters]);
@@ -304,7 +303,7 @@
     if(newBoard && pipeline()?.clinic_journey){
       const summary=state.data.kanban.summary,bar=$("crmView").querySelector(".boardSummary");
       bar.firstElementChild.innerHTML=`${icon("users-round")}<span><strong>${summary.commercial_total}</strong> cadastros comerciais</span>`;
-      const excluded=document.createElement("span");excluded.textContent=`${summary.noncommercial} não comerciais · ${summary.review} para revisão`;bar.querySelector("button").before(excluded);
+      const excluded=document.createElement("span");excluded.textContent=`${summary.noncommercial} não comerciais`;bar.querySelector("button").before(excluded);
     }
     if(newBoard)bulk.mountBoard(newBoard);else bulk.reset();
     if(state.mode==="board" && pipeline())$("viewActions").insertAdjacentHTML("beforeend",`<button id="openLeadTrash" class="icon-button" title="Lixeira do funil" aria-label="Lixeira do funil">${icon("trash-2")}</button>`);
@@ -317,6 +316,7 @@
     if(state.mode==="templates")templateLibrary.manage($("crmTemplatesLibrary"));else templateLibrary.destroy();
     if(state.mode==="forms")formsCenter.mount($("crmFormsHost"));else formsCenter.unmount();
     if(state.mode==="bots")botsCenter.mount($("crmBotsHost"));else botsCenter.unmount();
+    if(state.mode==="followups")followupCenter.mount($("crmFollowupsHost"));else followupCenter.unmount();
     if(state.mode==="tasks")reminders.mount($("crmRemindersHost"));else reminders.unmount();
     if(state.mode==="quality")qualityCenter.mount($("crmView"));else qualityCenter.unmount();
     if(state.mode==="facebook")facebookCenter.mount($("crmFacebookHost"));else facebookCenter.unmount();
@@ -553,7 +553,6 @@
       };
       const record=$("modalBody").querySelector(".leadDetail");record.id="profileRecord";
       const closureEditor=clinicJourney.bind($("leadEdit"),$("leadEdit").elements.stage_id,p,l);
-      if(l.journey_state?.needs_review){const warning=document.createElement("p");warning.className="inlineWarning";warning.textContent=`Revisão pendente · ${l.journey_state.note || "Etapa anterior preservada no histórico"}`;$("leadEdit").before(warning);}
       const tabs=document.createElement("div");tabs.className="profileTabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Ficha do cliente");
       tabs.innerHTML=(isCourse?[["record","notebook-pen","Ficha do curso"],["orders","shopping-bag","Pedidos Kiwify"],["calls","phone-call","Ligações"]]:[["record","notebook-pen","Ficha"],["opportunities","briefcase-business","Oportunidades"],["sales","shopping-bag","Vendas fechadas"],["quotes","file-clock","Orçamentos pendentes"],["appointments","calendar-days","Agendamentos"],["calls","phone-call","Ligações"]]).map(([key,symbol,label])=>`<button role="tab" data-profile-tab="${key}">${icon(symbol)} ${label}</button>`).join("");
       const commerce=document.createElement("section");commerce.id="profileCommerce";commerce.hidden=true;
@@ -616,6 +615,7 @@
   const inbox=window.createCrmInbox({state,api,esc,icon,icons,patientLabel,money,date,profile,moveLead,editPhone,openReminder:l=>reminders.open(l),openQuality:context=>qualityCenter.openConversation(context),transferLead:(l,context)=>bulk.open("transfer",{lead_ids:[l.id]},{doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines:context.pipelines,active:context.active}),appointmentBadge,customerValueBadge,customerValuePanel,pendingQuotesValue,serviceLocationBadge,refreshPatient,patientRefreshMessage,patientRefreshes,voice,avatars,courses,onBusinessChange:()=>{state.filters={};fillFilterForm();paintFilters();}});
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
+  const followupCenter=window.createCrmFollowupSettings({state,api,esc,icon,icons,notice});
   const facebookCenter=window.createCrmFacebook({state,api,esc,icon,icons,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
   const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});
@@ -628,8 +628,8 @@
   $("crmDialog").addEventListener("close",()=>$("crmDialog").querySelectorAll("audio").forEach(audio=>audio.pause()));
   $("addDoctor").onclick=doctorForm;$("newLead").onclick=leadForm;$("reload").onclick=load;
   $("bootstrap").onclick=async e=>{e.currentTarget.disabled=true;try{await api("bootstrap",{});await load();}catch(err){notice(err.message);}finally{e.target.disabled=false;}};
-  $("doctor").onchange=()=>{if(state.mode==="forms" && !formsCenter.canLeave() || state.mode==="bots" && !botsCenter.canLeave()){$("doctor").value=state.doctor;return;}inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
-  $("pipeline").onchange=()=>{state.pipeline=$("pipeline").value;state.filters={};state.sort="updated";fillFilterForm();if(presentation==="board")load();else{render();paintFilters();}};
+  $("doctor").onchange=()=>{if(state.mode==="forms" && !formsCenter.canLeave() || state.mode==="bots" && !botsCenter.canLeave() || state.mode==="followups" && !followupCenter.canLeave()){$("doctor").value=state.doctor;return;}inbox.unmount();$("crmView").replaceChildren();state.doctor=$("doctor").value;state.pipeline="";load();};
+  $("pipeline").onchange=()=>{if(state.mode==="followups" && !followupCenter.canLeave()){$("pipeline").value=state.pipeline;return;}state.pipeline=$("pipeline").value;state.filters={};state.sort="updated";fillFilterForm();if(presentation==="board" || state.mode==="followups")load();else{render();paintFilters();}};
   $("customerTierRules").onclick=customerTierForm;
   let searchTimer;
   $("search").oninput=()=>{state.search=$("search").value.trim();clearTimeout(searchTimer);searchTimer=setTimeout(load,300);};
@@ -657,7 +657,7 @@
     $("crmFilterError").hidden=true;clearTimeout(searchTimer);state.filters=next;paintFilters();$("crmFilterPanel").hidden=true;$("toggleCrmFilters").setAttribute("aria-expanded","false");load();
   };
   $("gameHelp").onclick=()=>engagement.openJourney();$("gameHelp").title="Ver jornada e conquistas";$("gameHelp").setAttribute("aria-label","Ver jornada e conquistas");
-  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{if(state.mode==="forms" && (b.dataset.mode==="forms" || !formsCenter.canLeave()) || state.mode==="bots" && (b.dataset.mode==="bots" || !botsCenter.canLeave()))return;state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
+  document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=()=>{if(state.mode==="forms" && (b.dataset.mode==="forms" || !formsCenter.canLeave()) || state.mode==="bots" && (b.dataset.mode==="bots" || !botsCenter.canLeave()) || state.mode==="followups" && (b.dataset.mode==="followups" || !followupCenter.canLeave()))return;state.mode=b.dataset.mode;state.filters={};fillFilterForm();render();paintFilters();if(state.mode==="inbox")inbox.focus();load();});
   $("viewActions").onclick=e=>{const b=e.target.closest("button");if(!b)return;({applyClinicJourney:()=>clinicJourney.migrate(pipeline(),state.doctor),showKanban:()=>{presentation="board";load();},showList:()=>{presentation="list";render();},openLeadTrash:()=>bulk.trash(),newPipeline:()=>pipelineForm(),editPipeline:()=>pipelineForm(true),newCampaign:campaignForm,newChannel:channelForm,importKommo:()=>importer.open(state.doctor,state.pipeline,pipeline()?.name)}[b.id])?.();};
   $("crmView").onclick=async e=>{
     const b=e.target.closest("button");if(!b)return;
@@ -680,14 +680,14 @@
   function session(data){
     const changed=state.session && (state.session.user.id!==data.user.id || state.session.user.is_master!==data.user.is_master || JSON.stringify(state.session.user.crm_scope)!==JSON.stringify(data.user.crm_scope));
     state.session=data;
-    if(changed){qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.inboxDoctors=null;state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
-    if(!sessionAllowed(data)){qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();inboxScope.hide();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
+    if(changed){followupCenter.unmount();qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();dashboard.unmount();kanban.destroy();state.data=null;state.doctor="";state.inboxDoctors=null;state.pipeline="";$("crmDialog").close();$("crmView").replaceChildren();}
+    if(!sessionAllowed(data)){followupCenter.unmount();qualityCenter.unmount();engagement.stop();reminders.reset();inbox.unmount();inboxScope.hide();dashboard.unmount();templateLibrary.destroy();state.data=null;$("crmApp").hidden=true;$("setup").hidden=true;$("addDoctor").disabled=true;$("newLead").disabled=true;notice("CRM não liberado para seu usuário na Vielle. Consulte o Master.");return;}
     engagement.start(data.user);
     $("newLead").disabled=false;$("addDoctor").disabled=!data.user.is_master;if(!state.data)load();
   }
   window.addEventListener("doc4docs-session",e=>session(e.detail));
   if(window.doc4docsSession)session(window.doc4docsSession);
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden && !["forms","bots"].includes(state.mode) && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden && !["forms","bots","followups"].includes(state.mode) && sessionAllowed(state.session) && !$("crmDialog").open && !kanban.interacting())load();});
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && state.data && state.mode==="campaigns")load();},15000);
   setInterval(()=>{if(!document.hidden && !$("crmDialog").open && !dragging && !bulk.isSelecting() && !kanban.interacting() && state.data && ["board","inbox"].includes(state.mode))load();},60000);
   icons();

@@ -75,6 +75,9 @@ def handle_request(handler, parsed):
 
 def _dispatch(handler, parsed, store, query, user, action):
     try:
+        if action == "followups" or action.startswith("followups/"):
+            from crm_followup_settings_api import handle as followup_settings_handle
+            return followup_settings_handle(handler, store, action, query, user)
         if action.startswith("clinic-journey/"):
             from crm_clinic_journey_api import handle as clinic_journey_handle
             return clinic_journey_handle(handler, store, action, query, user)

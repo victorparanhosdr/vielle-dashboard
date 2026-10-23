@@ -11,11 +11,18 @@ from crm_store import CrmStore
 
 
 def tick(store, gateway, now=None, *, allow_campaigns=True):
+    from crm_followup_runtime import advance
+    advance(store,now)
     item = store.claim(now, allow_campaigns=allow_campaigns)
     if item is None:
         return False
     try:
         with store.db() as c:
+            if item.get("followup_cycle_id"):
+                from crm_followup_runtime import message_allowed
+                if not message_allowed(c,store,item,time.time() if now is None else now):
+                    c.execute("UPDATE messages SET status='queued' WHERE id=? AND status='sending'",(item["id"],))
+                    return True
             if item.get("bot_run_id"):
                 from crm_bots import message_allowed
                 if not message_allowed(c, item["bot_run_id"]):
@@ -54,6 +61,8 @@ def run(auth, stop):
                 continue
             if store is None:
                 store = store_for(auth)
+                from crm_followup_runtime import permitted
+                store.followup_permissions=permitted(store,auth)
             store.heartbeat()
             with store.db() as c:
                 channels = [dict(r) for r in c.execute("SELECT * FROM channels WHERE state='open'")]

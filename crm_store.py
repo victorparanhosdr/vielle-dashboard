@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import logging
 import math
 from pathlib import Path
 import re
@@ -276,6 +277,12 @@ class CrmStore:
         from crm_clinic_journey import schema as journey_schema
         with self.db() as c:
             journey_schema(c)
+        from crm_followup_settings import schema as followup_settings_schema
+        with self.db() as c:
+            followup_settings_schema(c)
+        from crm_followup_runtime import schema as followup_runtime_schema
+        with self.db() as c:
+            followup_runtime_schema(c)
         from crm_identity import schema as identity_schema, backup as identity_backup
         with self.db() as c:
             identity_schema(c)
@@ -815,6 +822,8 @@ class CrmStore:
                 from crm_clinic_journey import active_stages, catalog
                 p["stages"] = active_stages(c, p["id"])
                 p["clinic_journey"] = catalog(c, p["id"])
+                rule=c.execute("SELECT enabled FROM followup_policies WHERE pipeline_id=?",(p["id"],)).fetchone()
+                p["followup_enabled"]=bool(rule and rule[0])
             name = next((d["name"] for d in doctors if d["id"] == doctor), "")
             leads, incomplete, location_pending = self.filtered_leads(c, doctor, name, filters)
             location_pending = {p["id"]: location_pending.get(p["id"], 0) for p in pipelines}
@@ -1104,6 +1113,8 @@ class CrmStore:
                 c.execute("UPDATE message_media SET message_id=? WHERE id=?", (key, media_id))
             c.execute("INSERT INTO reply_requests(request_id,message_id,user_id,source_channel_id,inbound_cursor) VALUES(?,?,?,?,?)",
                       (request, key, str(user), source, marker))
+            from crm_followup_runtime import requested
+            requested(c,self,key,p,doctor)
             return key
 
     def campaign(self, p, actor, actor_id=""):
@@ -1293,18 +1304,21 @@ class CrmStore:
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
-                AND ch.state='open' AND ch.archived_at=0 AND ((m.campaign_id IS NULL AND m.bot_run_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
+                AND ch.state='open' AND ch.archived_at=0 AND ((m.campaign_id IS NULL AND m.bot_run_id='' AND m.followup_cycle_id='') OR ch.next_send_at<=?) AND ct.opted_out=0
                 AND (? OR m.campaign_id IS NULL)
                 AND (m.depends_on='' OR EXISTS(SELECT 1 FROM messages parent WHERE parent.id=m.depends_on AND parent.status='sent'))
                 AND NOT EXISTS(SELECT 1 FROM messages pending WHERE pending.channel_id=ch.id
                     AND (pending.status='sending' OR (pending.status='unknown'
                         AND (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.independent_manual_send=0)
-                        AND ((pending.automation_excluded_at=0 AND (m.campaign_id IS NULL OR ca.recipient_uncertainty_guard=0))
+                        AND ((pending.automation_excluded_at=0 AND m.followup_cycle_id='' AND (m.campaign_id IS NULL OR ca.recipient_uncertainty_guard=0))
                             OR pending.contact_id=m.contact_id
                             OR (pending.recipient_phone<>'' AND pending.recipient_phone=coalesce(nullif(m.recipient_phone,''),ct.phone))))))
-                ORDER BY (m.campaign_id IS NOT NULL),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
+                ORDER BY (m.campaign_id IS NOT NULL OR m.bot_run_id<>'' OR m.followup_cycle_id<>''),m.created_at,m.id""", (now, now, bool(allow_campaigns))).fetchall()
             for row in rows:
                 r = dict(row)
+                if r["followup_cycle_id"]:
+                    from crm_followup_runtime import message_allowed
+                    if not message_allowed(c,self,r,now):continue
                 if r["campaign_id"]:
                     snapshot = c.execute("SELECT payload FROM campaign_audiences WHERE campaign_id=?", (r["campaign_id"],)).fetchone()
                     selected_ids = set(json.loads(snapshot[0]).get("ids", [])) if snapshot else None
@@ -1329,12 +1343,17 @@ class CrmStore:
                         continue
                 if r["campaign_id"] and (local.weekday() not in json.loads(r["weekdays"]) or not r["hour_from"]*60+r["minute_from"] <= local.hour*60+local.minute < r["hour_to"]*60+r["minute_to"]):
                     continue
-                if r["campaign_id"] or r["bot_run_id"]:
-                    used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND (campaign_id IS NOT NULL OR bot_run_id<>'') AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
+                if r["campaign_id"] or r["bot_run_id"] or r["followup_cycle_id"]:
+                    from crm_followup_runtime import channel_gap
+                    baseline=r["interval_seconds"];r["interval_seconds"]=channel_gap(c,r["doctor_id"],baseline)
+                    if r["followup_cycle_id"] or r["interval_seconds"]>baseline:
+                        previous=c.execute("SELECT max(max(coalesce(sent_at,0),coalesce(claimed_at,0))) FROM messages WHERE channel_id=? AND (campaign_id IS NOT NULL OR bot_run_id<>'' OR followup_cycle_id<>'') AND id<>?",(r["channel_id"],r["id"])).fetchone()[0]
+                        if previous and previous+r["interval_seconds"]>now:continue
+                    used = c.execute("SELECT count(*) FROM messages WHERE channel_id=? AND (campaign_id IS NOT NULL OR bot_run_id<>'' OR followup_cycle_id<>'') AND direction='out' AND (sent_at>=? OR claimed_at>=?)", (r["channel_id"], midnight, midnight)).fetchone()[0]
                     if used >= r["daily_limit"]:
                         continue
                 c.execute("UPDATE messages SET status='sending',claimed_at=? WHERE id=?", (now, r["id"]))
-                if r["campaign_id"] or r["bot_run_id"]:
+                if r["campaign_id"] or r["bot_run_id"] or r["followup_cycle_id"]:
                     c.execute("UPDATE channels SET next_send_at=? WHERE id=?", (now + r["interval_seconds"], r["channel_id"]))
                 return r
         return None
@@ -1361,6 +1380,18 @@ class CrmStore:
                     campaign = self.row(c, "campaigns", item["campaign_id"])
                     if campaign["tag"]:
                         c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
+                if updated.rowcount:
+                    # Follow-up planning must never roll back the provider's accepted send.
+                    c.execute("SAVEPOINT followup_accept")
+                    try:
+                        from crm_followup_runtime import accepted, settle
+                        current=c.execute("SELECT * FROM messages WHERE id=?",(item["id"],)).fetchone()
+                        if current["followup_cycle_id"]:settle(c,self,current,now)
+                        else:accepted(c,self,item["id"],now)
+                    except Exception:
+                        c.execute("ROLLBACK TO followup_accept")
+                        logging.warning("CRM follow-up planning deferred; accepted send preserved")
+                    finally:c.execute("RELEASE followup_accept")
 
     def receive(self, instance, data, event, *, expected_contact=None, history=False):
         if not isinstance(data, dict) or not isinstance(event, str):
@@ -1381,6 +1412,9 @@ class CrmStore:
                 c.execute("UPDATE channels SET state=? WHERE id=?", (state, ch["id"]))
                 if state != "open":
                     c.execute("UPDATE campaigns SET status='paused',last_error='Numero desconectado.' WHERE channel_id=? AND status='running'", (ch["id"],))
+                    from crm_followup_runtime import stop
+                    for cycle in c.execute("SELECT * FROM crm_followup_cycles WHERE channel_id=? AND status='waiting'",(ch["id"],)).fetchall():
+                        stop(c,cycle,"Número desconectado; sem retomada automática",now,"paused")
                 return
             if event not in {"messages.upsert", "send.message"}:
                 return False
@@ -1415,7 +1449,7 @@ class CrmStore:
                 return False
             if from_me:
                 # An echo can arrive before the sendText HTTP response returns its ID.
-                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin IN ('crm','bot')
+                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin IN ('crm','bot','followup')
                     AND status IN ('sending','unknown') AND provider_id IS NULL AND recipient_phone=? AND body=?
                     AND claimed_at>=? AND claimed_at<=?""", (ch["id"], number, body, (stamp or now)-120, (stamp or now)+120)).fetchall()
                 if len(pending) == 1:
@@ -1437,7 +1471,11 @@ class CrmStore:
             from crm_media import register_received
             register_received(c, {"id": message_id, "media_id": "", "contact_id": contact["id"], "channel_id": ch["id"], "created_at": stamp or now}, ch, data)
             normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().strip().upper()
-            if not from_me and normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"}:
+            if not history:
+                from crm_followup_runtime import stop_contact
+                stop_contact(c,contact["id"],"Cliente respondeu" if not from_me else "Atendimento externo retomado",now)
+            if not from_me and (normalized in {"SAIR", "PARAR", "STOP", "CANCELAR", "NAO QUERO RECEBER MAIS MENSAGENS"} or
+                    re.search(r"\b(?:NAO ME (?:ENVIE|MANDE) (?:MAIS )?MENSAGENS|NAO (?:ENTRE|ENTREM) MAIS EM CONTATO|RETIRE MEU NUMERO)\b", normalized)):
                 c.execute("UPDATE contacts SET opted_out=1 WHERE id=?", (contact["id"],))
                 c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE contact_id=? AND status='queued'", (contact["id"],))
             if from_me and stamp:

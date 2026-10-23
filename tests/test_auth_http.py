@@ -1057,6 +1057,50 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(self.request("POST",path,payload,staff,headers)[0],403)
         self.assertEqual(self.request("GET",deal_path+"&lead="+ident,cookie=staff)[0],200)
 
+    def test_followup_drafts_http_permissions_csrf_revision_and_no_send(self):
+        cookie=self.master_cookie();headers={"X-DOC4DOCS-Request":"1"}
+        from crm_api import store_for
+        from crm_followup_settings import defaults
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica", "Outro funil"]})
+        data=store.listing();doc=data["doctor_id"];pipeline=data["pipelines"][0]
+        path=f"/api/crm/followups?clinic=vielle&doctor={doc}&pipeline={pipeline['id']}"
+        self.assertEqual(self.request("GET",path)[0],401)
+        status,_,raw=self.request("GET",path,cookie=cookie)
+        self.assertEqual(status,200,raw)
+        initial=json.loads(raw);self.assertFalse(initial["enabled"]);self.assertEqual(initial["max_steps"],20)
+        settings=f"/api/crm/followups/settings?clinic=vielle&doctor={doc}"
+        payload={"doctor_id":doc,"pipeline_id":pipeline["id"],"revision":0,"config":defaults()}
+        payload["config"]["stage_ids"]=[pipeline["stages"][0]["id"]]
+        self.assertEqual(self.request("POST",settings,payload,cookie)[0],403)
+        self.assertEqual(self.request("POST",settings,{**payload,"doctor_id":"wrong"},cookie,headers)[0],400)
+        status,_,raw=self.request("POST",settings,payload,cookie,headers)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["enabled"])
+        self.assertEqual(self.request("POST",settings,payload,cookie,headers)[0],409)
+        self.assertEqual(self.request("POST",settings,{**payload,"revision":1,"enabled":True},cookie,headers)[0],400)
+        preview=settings.replace("/settings?","/preview?")
+        status,_,raw=self.request("POST",preview,{**payload,"at_local":"2026-10-26T08:00"},cookie,headers)
+        self.assertEqual(status,200,raw);self.assertEqual(json.loads(raw)["scheduled"],0)
+        toggle=settings.replace("/settings?","/toggle?")
+        change={"doctor_id":doc,"pipeline_id":pipeline["id"],"revision":1,"enabled":True,"confirm":True}
+        self.assertEqual(self.request("POST",toggle,change,cookie)[0],403)
+        status,_,raw=self.request("POST",toggle,change,cookie,headers)
+        self.assertEqual(status,200,raw);self.assertTrue(json.loads(raw)["enabled"])
+        self.assertEqual(self.request("POST",toggle,change,cookie,headers)[0],409)
+        change.update(revision=2,enabled=False)
+        status,_,raw=self.request("POST",toggle,change,cookie,headers)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["enabled"])
+        self.assertEqual(self.request("GET",path.replace("clinic=vielle","clinic=other"),cookie=cookie)[0],400)
+        self.limit_permissions(["crm.view"]);staff=self.login()[0]
+        status,_,raw=self.request("GET",path,cookie=staff)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["can_manage"])
+        self.assertEqual(self.request("POST",settings,{**payload,"revision":1},staff,headers)[0],403)
+        self.assertEqual(self.request("POST",preview,payload,staff,headers)[0],403)
+        self.assertEqual(self.request("POST",toggle,{**change,"revision":3},staff,headers)[0],403)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM messages").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM followup_policies").fetchone()[0],1)
+        self.assertTrue(self.store.list_audit(action="crm_followup_draft_saved")["events"])
+
     def test_admin_refuses_last_master_deactivation(self):
         cookie=self.master_cookie();uid=self.store.get_user_by_login("master")["id"]
         self.assertEqual(self.request("POST",f"/api/master/users/{uid}/status",{"active":False},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)

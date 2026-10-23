@@ -178,6 +178,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     templates.mount($("messageTemplateTools"),$("replyBody"));
     media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
+    $("replyForm").insertAdjacentHTML("beforebegin",'<label id="followupReplyOption" class="check" hidden><input type="checkbox" id="followupReplyRequested">Acompanhar se ficar sem resposta</label>');
     if(mobileScreen.matches && draft?.body)$("replyBody").style.height=`${Math.min(112,$("replyBody").scrollHeight)}px`;
     drawInfo();drawList();loadOpportunities();refreshThread().then(()=>syncExternalMessages());icons();
     if(!selectedRecord && selected.lead_id){
@@ -278,6 +279,12 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const ch=channels().find(c=>c.id===replyChannel);
     const archived=Boolean(threadData?.channel?.archived_at);
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
+    const followup=$('followupReplyOption'),lead=leadFor(),rule=catalog.pipelines.find(p=>p.id===lead?.pipeline_id);
+    if(followup){
+      followup.hidden=!available || media.hasDraft() || !rule?.followup_stage_ids?.includes(lead?.stage_id);
+      if(followup.hidden)$('followupReplyRequested').checked=false;
+      $('followupReplyRequested').disabled=sending;
+    }
     $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
     media.availability(available && !sending);
     templates.availability(!sending && !archived);
@@ -363,11 +370,11 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     draft.requests ||= {};draft.requests[sender] ||= crypto.randomUUID();
     drafts.set(signature,draft);sending=true;syncSend();chatError();
     try {
-      await api("reply",{doctor_id:doc,channel_id:sender,source_channel_id:target.channel_id,contact_id:target.contact_id,cursor,phone,body,media_id:attachment?.id || "",request_id:draft.requests[sender]});
+      await api("reply",{doctor_id:doc,channel_id:sender,source_channel_id:target.channel_id,contact_id:target.contact_id,cursor,phone,body,media_id:attachment?.id || "",request_id:draft.requests[sender],followup_requested:Boolean($('followupReplyRequested')?.checked),followup_lead_id:leadFor()?.id || ""});
       drafts.delete(signature);
       if(root && selected && signature===key(selected)){
         if(sender!==target.channel_id)select({...target,channel_id:sender});
-        else{chatSearch.close(false);$("replyBody").value="";media.clear();drafts.delete(signature);messages=[];await refreshThread();}
+        else{chatSearch.close(false);$("replyBody").value="";if($('followupReplyRequested'))$('followupReplyRequested').checked=false;media.clear();drafts.delete(signature);messages=[];await refreshThread();}
         refreshList();
       }
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}

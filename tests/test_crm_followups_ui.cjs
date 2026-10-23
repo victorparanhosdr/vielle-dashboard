@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const read=name=>fs.readFileSync(path.join(__dirname,'..','static',name),'utf8');
+const source=read('crm-followups.js'),html=read('crm.html'),crm=read('crm.js');
+const context={};vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('  const duration='),source.indexOf('  const date='))+';tools={duration,label};',context);
+for(const [minutes,n,unit,text] of [[120,2,60,'2h'],[1320,22,60,'22h'],[2880,2,1440,'2 dias'],[5760,4,1440,'4 dias'],[1440,1,1440,'24h']]){
+  assert.deepEqual(Array.from(context.tools.duration(minutes)),[n,unit]);assert.equal(context.tools.label(minutes),text);
+}
+assert.equal(context.tools.label(4320),'3 dias');assert.equal(context.tools.label(10080),'7 dias');
+const scoped={root:{isConnected:true},seq:4,scope:'doctor:pipeline',state:{mode:'followups',doctor:'doctor',pipeline:'pipeline'}};
+vm.createContext(scoped);vm.runInContext(source.slice(source.indexOf('  const active='),source.indexOf('  const duration='))+';check=active;',scoped);
+assert.equal(scoped.check(4),true);assert.equal(scoped.check(3),false);
+scoped.state.pipeline='other';assert.equal(scoped.check(4),false);
+scoped.state.pipeline='pipeline';scoped.state.mode='inbox';assert.equal(scoped.check(4),false);
+const notices=[],leaving={dirty:false,busy:false,notice:text=>notices.push(text),window:{confirm:()=>false}};
+vm.createContext(leaving);vm.runInContext(source.slice(source.indexOf('  function canLeave()'),source.indexOf('  function unmount()'))+';leave=canLeave;',leaving);
+assert.equal(leaving.leave(),true);leaving.dirty=true;assert.equal(leaving.leave(),false);
+leaving.window.confirm=()=>true;assert.equal(leaving.leave(),true);leaving.busy=true;assert.equal(leaving.leave(),false);assert.equal(notices.length,1);
+assert.equal((html.match(/data-mode="followups"/g)||[]).length,2);
+assert.ok(crm.includes('followups:"Follow up"'));assert.ok(crm.includes('followupCenter.canLeave()'));
+assert.ok(source.includes('draft.steps.length>=data.max_steps'));
+assert.ok(source.includes('role="switch"'));assert.ok(source.includes('followups/toggle'));
+assert.ok(source.includes('esc(step.body)'));assert.ok(source.includes('simulation===previewSeq'));
+assert.ok(source.includes('data.enabled && button.type==="submit"'));
+assert.ok(!crm.includes('clinicReviewBadge'));assert.ok(!crm.includes('summary.review} para revisão'));
+assert.ok(!read('crm-clinic-journey.js').includes('Etapa atual conferida'));
+console.log('Follow-up UI: timing, scope guards, unsaved changes, 20-step limit, power control, escaped messages and migration clutter checks passed');

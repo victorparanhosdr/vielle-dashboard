@@ -44,6 +44,8 @@ def combined(store, doctors, user, channel="", kind="all", search="", filters=No
                     from crm_clinic_journey import active_stages, catalog as journey_catalog
                     p["stages"] = active_stages(c, p["id"])
                     p["clinic_journey"] = journey_catalog(c, p["id"])
+                    rule=c.execute("SELECT enabled,config FROM followup_policies WHERE pipeline_id=?",(p["id"],)).fetchone()
+                    p["followup_stage_ids"]=json.loads(rule["config"])["stage_ids"] if rule and rule["enabled"] else []
                 catalog.extend(pipelines)
                 channels.extend(dict(r) for r in c.execute("SELECT id,doctor_id,name,phone,state,archived_at FROM channels WHERE doctor_id=? ORDER BY name", (doctor,)))
     selected_channel = next((c for c in channels if c["id"] == channel), None)
