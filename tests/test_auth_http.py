@@ -1058,7 +1058,7 @@ class HttpAuthTests(unittest.TestCase):
         status,headers,raw=self.request("GET",media["url"],cookie=staff)
         self.assertEqual(status,200);self.assertEqual(raw,STATIC)
         self.assertEqual(dict(headers)["Content-Type"],"image/webp")
-        self.store.update_user(self.user_id,"Usuario Local","teste",crm_scope={doc:[]})
+        self.store.update_user(self.user_id,"Usuario Local","teste",crm_scope={})
         self.assertEqual(self.request("GET",media["url"],cookie=staff)[0],403)
 
     def test_quality_employee_ack_and_one_appeal_with_manager_resolution(self):
