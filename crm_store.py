@@ -23,6 +23,25 @@ DEFAULT_DOCTOR_NAME = "Victor Paranhos de Andrade"
 SERVICE_LOCATIONS = {"capelinha": "Capelinha", "belo-horizonte": "Belo Horizonte", "sao-paulo": "São Paulo"}
 LOCATION_DDDS = {"33": "capelinha", "38": "capelinha", "31": "belo-horizonte", "11": "sao-paulo"}
 THREAD_VISIBLE = "(direction='in' OR status IN ('sent','sending','unknown') OR (campaign_id IS NULL AND status='queued'))"
+SEND_FAILURES = {
+    "timeout": "Tempo limite do conector; aceite nao confirmado.",
+    "network_error": "Falha de comunicacao com o conector; aceite nao confirmado.",
+    "http_auth": "Conector recusou a autenticacao; revise a integracao.",
+    "http_limit": "Conector informou limite de requisicoes; revise antes de continuar.",
+    "http_400": "Conector recusou a solicitacao (HTTP 400); revise o destinatario e o envio.",
+    "http_404": "Conector nao encontrou a operacao ou instancia (HTTP 404).",
+    "http_server": "Erro interno do conector (HTTP 5xx); aceite nao confirmado.",
+    "http_error": "Conector retornou erro HTTP; aceite nao confirmado.",
+    "invalid_response": "Resposta invalida do conector; aceite nao confirmado.",
+    "missing_confirmation": "Conector respondeu sem identificador de aceite.",
+    "duplicate_confirmation": "Conector reutilizou identificador de outra mensagem; aceite nao confirmado.",
+    "unconfirmed": "Falha ou envio sem confirmacao. Confira o numero antes de continuar.",
+}
+# An isolated attempt is not a broken channel. Repeated uncertainty still stops it.
+RECIPIENT_SEND_FAILURES = {"timeout", "http_400", "invalid_response", "missing_confirmation"}
+CAMPAIGN_FAILURE_STREAK = 3
+CAMPAIGN_FAILURE_WINDOW = 15 * 60
+CAMPAIGN_FAILURE_STREAK_REASON = "Tres envios consecutivos sem confirmacao em ate 15 minutos. Campanha pausada para revisar o conector."
 
 
 def location_from_phone(number):
@@ -1288,10 +1307,9 @@ class CrmStore:
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
             # A worker crash after dispatch must never cause an automatic duplicate.
-            stale = [r[0] for r in c.execute("SELECT DISTINCT campaign_id FROM messages WHERE status='sending' AND claimed_at<?", (now - 120,))]
-            c.execute("UPDATE messages SET status='unknown' WHERE status='sending' AND claimed_at<?", (now - 120,))
-            for key in stale:
-                c.execute("UPDATE campaigns SET status='paused',last_error='Envio sem confirmacao. Revisao necessaria.' WHERE id=?", (key,))
+            stale = c.execute("SELECT * FROM messages WHERE status='sending' AND claimed_at<?", (now - 120,)).fetchall()
+            for item in stale:
+                self._unconfirmed_message(c, item, "unconfirmed")
             c.execute("UPDATE messages SET status='skipped',skip_reason='Descadastrado' WHERE status='queued' AND contact_id IN (SELECT id FROM contacts WHERE opted_out=1)")
             c.execute("UPDATE messages SET status='skipped',skip_reason='Telefone removido da ficha' WHERE status='queued' AND contact_id IN (SELECT contact_id FROM contact_phone_settings WHERE phone='')")
             c.execute("""UPDATE messages SET status='skipped',skip_reason='Oportunidade indisponivel para este doutor'
@@ -1311,7 +1329,9 @@ class CrmStore:
                       AND current.status='running' AND current.recipient_uncertainty_guard=1))
                  AND (pending.contact_id=messages.contact_id
                      OR (pending.recipient_phone<>'' AND pending.recipient_phone=messages.recipient_phone)))""")
-            c.execute("UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS(SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND (status IN ('queued','sending') OR (status='unknown' AND automation_excluded_at=0)))")
+            c.execute("""UPDATE campaigns SET status='done' WHERE status='running' AND NOT EXISTS
+                (SELECT 1 FROM messages WHERE campaign_id=campaigns.id AND
+                 (status IN ('queued','sending') OR (status='unknown' AND automation_excluded_at=0 AND campaigns.recipient_uncertainty_guard=0)))""")
             rows = c.execute("""SELECT m.*,ch.instance,ch.daily_limit,ch.doctor_id,coalesce(nullif(m.recipient_phone,''),ct.phone) phone,coalesce(ca.interval_seconds,30) interval_seconds,ca.hour_from,ca.hour_to,ca.minute_from,ca.minute_to,ca.weekdays
                 FROM messages m LEFT JOIN campaigns ca ON ca.id=m.campaign_id JOIN channels ch ON ch.id=m.channel_id
                 JOIN contacts ct ON ct.id=m.contact_id WHERE m.status='queued' AND (m.campaign_id IS NULL OR (ca.status='running' AND ca.start_at<=?))
@@ -1370,42 +1390,87 @@ class CrmStore:
                 return r
         return None
 
-    def finish(self, item, provider_id=None, error=False):
+    def _unconfirmed_message(self, c, item, error_code):
+        reason = SEND_FAILURES.get(error_code, SEND_FAILURES["unconfirmed"])
+        updated = c.execute("UPDATE messages SET status='unknown',skip_reason=? WHERE id=? AND status='sending'", (reason, item["id"]))
+        if not updated.rowcount or not item["campaign_id"]:
+            return False
+        campaign = self.row(c, "campaigns", item["campaign_id"])
+        if campaign["status"] != "running":
+            return False
+        if campaign["recipient_uncertainty_guard"] and error_code in RECIPIENT_SEND_FAILURES:
+            recent = c.execute("""SELECT status,skip_reason,automation_excluded_at FROM messages
+                WHERE channel_id=? AND direction='out' AND claimed_at BETWEEN ? AND ?
+                  AND status IN ('sent','unknown','sending') ORDER BY claimed_at DESC,id DESC LIMIT ?""",
+                (item["channel_id"], item["claimed_at"] - CAMPAIGN_FAILURE_WINDOW,
+                 item["claimed_at"], CAMPAIGN_FAILURE_STREAK)).fetchall()
+            local_reasons = {SEND_FAILURES[code] for code in RECIPIENT_SEND_FAILURES}
+            if len(recent) < CAMPAIGN_FAILURE_STREAK or any(
+                    r["status"] != "unknown" or r["skip_reason"] not in local_reasons or r["automation_excluded_at"] for r in recent):
+                return False
+            reason = CAMPAIGN_FAILURE_STREAK_REASON
+        c.execute("UPDATE campaigns SET status='paused',last_error=? WHERE id=? AND status='running'", (reason, item["campaign_id"]))
+        return False
+
+    def _accept_message(self, c, item, provider_id, now):
+        echo = c.execute("SELECT id,contact_id,direction,origin,provider_timestamp FROM messages WHERE channel_id=? AND provider_id=? AND id<>?", (item["channel_id"], provider_id, item["id"])).fetchone()
+        if echo and (echo["contact_id"], echo["direction"], echo["origin"]) != (item["contact_id"], "out", "external"):
+            return self._unconfirmed_message(c, item, "duplicate_confirmation")
+        if echo and (echo["contact_id"], echo["direction"], echo["origin"]) == (item["contact_id"], "out", "external"):
+            c.execute("DELETE FROM message_media WHERE message_id=? AND download_state='remote'", (echo["id"],))
+            c.execute("DELETE FROM messages WHERE id=?", (echo["id"],))
+            c.execute("UPDATE messages SET provider_timestamp=? WHERE id=?", (echo["provider_timestamp"], item["id"]))
+        updated = c.execute("UPDATE messages SET status='sent',provider_id=?,sent_at=?,skip_reason='' WHERE id=? AND status IN ('sending','unknown')", (provider_id, now, item["id"]))
+        if not updated.rowcount:
+            return False
+        if item["campaign_id"] and item["status"] == "unknown":
+            campaign = self.row(c, "campaigns", item["campaign_id"])
+            recoverable = {*SEND_FAILURES.values(), "Envio sem confirmacao. Revisao necessaria."}
+            remaining = c.execute("SELECT 1 FROM messages WHERE campaign_id=? AND status='unknown' AND automation_excluded_at=0 LIMIT 1", (item["campaign_id"],)).fetchone()
+            if campaign["status"] == "paused" and campaign["last_error"] in recoverable and not remaining:
+                c.execute("UPDATE campaigns SET last_error='Conector confirmou o envio pendente. Campanha mantida pausada; revise antes de retomar.' WHERE id=?", (item["campaign_id"],))
+        reply = c.execute("""SELECT r.*,m.contact_id FROM reply_requests r JOIN messages m ON m.id=r.message_id
+            WHERE r.message_id=? AND m.campaign_id IS NULL""", (item["id"],)).fetchone()
+        if reply and reply["source_channel_id"]:
+            self.resolve_conversation(c, reply["source_channel_id"], reply["contact_id"], reply["inbound_cursor"], "replied", reply["user_id"])
+        if item["campaign_id"]:
+            campaign = self.row(c, "campaigns", item["campaign_id"])
+            if campaign["tag"]:
+                c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
+        from crm_audio import received as audio_received
+        audio_received(c, self, item["id"], now)
+        # Follow-up planning must never roll back the provider's accepted send.
+        c.execute("SAVEPOINT followup_accept")
+        try:
+            from crm_followup_runtime import accepted, settle, stop_contact
+            current = c.execute("SELECT * FROM messages WHERE id=?", (item["id"],)).fetchone()
+            if item["status"] == "unknown":
+                stop_contact(c, item["contact_id"], "Confirmacao tardia; acompanhamento exige novo atendimento", now)
+            elif current["followup_cycle_id"]:
+                settle(c, self, current, now)
+            else:
+                accepted(c, self, item["id"], now)
+        except Exception:
+            c.execute("ROLLBACK TO followup_accept")
+            logging.warning("CRM follow-up planning deferred; accepted send preserved")
+        finally:
+            c.execute("RELEASE followup_accept")
+        return True
+
+    def finish(self, item, provider_id=None, error=False, *, error_code="unconfirmed"):
         now = time.time()
         with self.db() as c:
             c.execute("BEGIN IMMEDIATE")
-            if error or not provider_id:
-                c.execute("UPDATE messages SET status='unknown' WHERE id=? AND status='sending'", (item["id"],))
-                c.execute("UPDATE campaigns SET status='paused',last_error='Falha ou envio sem confirmacao. Confira o numero antes de continuar.' WHERE id=? AND status<>'cancelled'", (item["campaign_id"],))
-            else:
-                echo = c.execute("SELECT id,contact_id,direction,origin,provider_timestamp FROM messages WHERE channel_id=? AND provider_id=? AND id<>?", (item["channel_id"], provider_id, item["id"])).fetchone()
-                if echo and (echo["contact_id"], echo["direction"], echo["origin"]) == (item["contact_id"], "out", "external"):
-                    c.execute("DELETE FROM message_media WHERE message_id=? AND download_state='remote'", (echo["id"],))
-                    c.execute("DELETE FROM messages WHERE id=?", (echo["id"],))
-                    c.execute("UPDATE messages SET provider_timestamp=? WHERE id=?", (echo["provider_timestamp"], item["id"]))
-                updated = c.execute("UPDATE messages SET status='sent',provider_id=?,sent_at=? WHERE id=? AND status='sending'", (provider_id, now, item["id"]))
-                reply = c.execute("""SELECT r.*,m.contact_id FROM reply_requests r JOIN messages m ON m.id=r.message_id
-                    WHERE r.message_id=? AND m.campaign_id IS NULL""", (item["id"],)).fetchone()
-                if updated.rowcount and reply and reply["source_channel_id"]:
-                    self.resolve_conversation(c, reply["source_channel_id"], reply["contact_id"], reply["inbound_cursor"], "replied", reply["user_id"])
-                if updated.rowcount and item["campaign_id"]:
-                    campaign = self.row(c, "campaigns", item["campaign_id"])
-                    if campaign["tag"]:
-                        c.execute("INSERT OR IGNORE INTO contact_tags VALUES(?,?,?,?)", (campaign["doctor_id"], item["contact_id"], campaign["tag"], now))
-                if updated.rowcount:
-                    from crm_audio import received as audio_received
-                    audio_received(c,self,item["id"],now)
-                    # Follow-up planning must never roll back the provider's accepted send.
-                    c.execute("SAVEPOINT followup_accept")
-                    try:
-                        from crm_followup_runtime import accepted, settle
-                        current=c.execute("SELECT * FROM messages WHERE id=?",(item["id"],)).fetchone()
-                        if current["followup_cycle_id"]:settle(c,self,current,now)
-                        else:accepted(c,self,item["id"],now)
-                    except Exception:
-                        c.execute("ROLLBACK TO followup_accept")
-                        logging.warning("CRM follow-up planning deferred; accepted send preserved")
-                    finally:c.execute("RELEASE followup_accept")
+            current = self.row(c, "messages", item["id"])
+            if current["status"] == "sent":
+                return True
+            if current["status"] not in {"sending", "unknown"}:
+                return False
+            # A signed webhook may have confirmed acceptance before HTTP timed out.
+            confirmed = current["provider_id"] or (provider_id if not error else None)
+            if isinstance(confirmed, str) and 1 <= len(confirmed) <= 200:
+                return self._accept_message(c, current, confirmed, now)
+            return self._unconfirmed_message(c, current, error_code)
 
     def receive(self, instance, data, event, *, expected_contact=None, history=False):
         if not isinstance(data, dict) or not isinstance(event, str):
@@ -1456,18 +1521,25 @@ class CrmStore:
                 return False
             existing_message = c.execute("SELECT * FROM messages WHERE channel_id=? AND provider_id=?", (ch["id"], provider_id)).fetchone()
             if existing_message:
+                if (from_me and not history and stamp and not existing_message["media_id"]
+                        and existing_message["direction"] == "out" and existing_message["origin"] in {"crm", "bot", "followup"}
+                        and existing_message["status"] in {"sending", "unknown"}
+                        and existing_message["recipient_phone"] == number and existing_message["body"] == body
+                        and stamp - 120 <= (existing_message["claimed_at"] or 0) <= stamp + 120):
+                    self._accept_message(c, existing_message, provider_id, now)
                 from crm_media import register_received
                 register_received(c, dict(existing_message), ch, data)
                 return False
             if history and not from_me:
                 return False
-            if from_me:
+            if from_me and not history and stamp:
                 # An echo can arrive before the sendText HTTP response returns its ID.
-                pending = c.execute("""SELECT id FROM messages WHERE channel_id=? AND direction='out' AND origin IN ('crm','bot','followup')
-                    AND status IN ('sending','unknown') AND provider_id IS NULL AND recipient_phone=? AND body=?
-                    AND claimed_at>=? AND claimed_at<=?""", (ch["id"], number, body, (stamp or now)-120, (stamp or now)+120)).fetchall()
+                pending = c.execute("""SELECT * FROM messages WHERE channel_id=? AND direction='out' AND origin IN ('crm','bot','followup')
+                    AND status IN ('sending','unknown') AND provider_id IS NULL AND media_id='' AND recipient_phone=? AND body=?
+                    AND claimed_at>=? AND claimed_at<=?""", (ch["id"], number, body, stamp-120, stamp+120)).fetchall()
                 if len(pending) == 1:
                     c.execute("UPDATE messages SET provider_id=?,provider_timestamp=? WHERE id=?", (provider_id, stamp, pending[0]["id"]))
+                    self._accept_message(c, pending[0], provider_id, now)
                     return False
             name = (known["name"] if known else number) if from_me else str(data.get("pushName") or number)[:160]
             from crm_channels import inbound_target

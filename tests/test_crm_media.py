@@ -98,9 +98,10 @@ class MediaTests(unittest.TestCase):
                                  ("document", "matricula.pdf", PDF), ("audio", "audio-data.wav", WAV)):
             with self.subTest(kind=kind):
                 media = self.upload(kind, name, data, request="upload-" + kind)
-                self.reply(media, request="reply-" + kind)
+                message_id = self.reply(media, request="reply-" + kind)
                 gateway = EvolutionGateway()
-                with patch.object(gateway, "request", return_value={"key": {"id": "accepted-" + kind}}) as request:
+                responses = [{"key": {"id": f"accepted-{kind}-{i}"}} for i in range(2)]
+                with patch.object(gateway, "request", side_effect=responses) as request:
                     self.assertTrue(tick(self.store, gateway))
                     payload = request.call_args.args[2]
                     if kind == "audio":
@@ -115,6 +116,8 @@ class MediaTests(unittest.TestCase):
                     else:
                         self.assertEqual(payload["caption"], "*Jane Equipe*")
                         self.assertEqual(payload["fileName"], name)
+                with self.store.db() as c:
+                    self.assertEqual(self.store.row(c, "messages", message_id)["status"], "sent")
                 thread = self.store.inbox(self.a, "operator")["conversations"][0]
                 self.assertEqual(thread["media_kind"], kind)
                 self.assertEqual(thread["body"], "*Jane Equipe*")
@@ -128,11 +131,13 @@ class MediaTests(unittest.TestCase):
                 with self.store.db() as c:
                     self.assertEqual(self.store.row(c, "messages", key)["body"], "*Jane Equipe*\n\nSegue o material solicitado.")
                 gateway = Mock()
-                gateway.send.return_value = "accepted-" + kind
+                gateway.send.side_effect = [f"accepted-{kind}-{i}" for i in range(2)]
                 self.assertTrue(tick(self.store, gateway))
                 self.assertEqual(gateway.send.call_args.args[0]["body"], "*Jane Equipe*\n\nSegue o material solicitado.")
                 if kind == "audio":
                     self.assertTrue(tick(self.store, gateway))
+                with self.store.db() as c:
+                    self.assertEqual(self.store.row(c, "messages", key)["status"], "sent")
 
     def test_pre_fix_attachment_request_retries_keep_original_message_without_resending(self):
         from crm_media import LABELS

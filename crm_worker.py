@@ -6,8 +6,8 @@ import sqlite3
 import threading
 import time
 
-from crm_gateway import EvolutionGateway, campaigns_enabled, sends_enabled
-from crm_store import CrmStore
+from crm_gateway import EvolutionGateway, GatewayError, campaigns_enabled, sends_enabled
+from crm_store import CrmStore, SEND_FAILURES
 
 
 def tick(store, gateway, now=None, *, allow_campaigns=True):
@@ -43,9 +43,15 @@ def tick(store, gateway, now=None, *, allow_campaigns=True):
         if item.get("media_id"):
             from crm_media import for_send
             item["media"] = for_send(store, item)
-        store.finish(item, gateway.send(item))
-    except Exception:
-        store.finish(item, error=True)
+        provider_id = gateway.send(item)
+    except Exception as error:
+        code = error.code if isinstance(error, GatewayError) else "timeout" if isinstance(error, TimeoutError) else "unconfirmed"
+        confirmed = store.finish(item, error=True, error_code=code)
+        if not confirmed:
+            logging.warning("CRM WhatsApp send confirmation unavailable: %s", code if code in SEND_FAILURES else "unconfirmed")
+    else:
+        # A database/finalization error is not a second provider send failure.
+        store.finish(item, provider_id)
     return True
 
 

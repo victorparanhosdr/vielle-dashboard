@@ -9,6 +9,7 @@ window.createCrmCampaigns=function({state,api,esc,icon,icons,modal,error,load,au
   let root=null,seq=0,status="",page=1,from="",to="";
   const call=(action,payload,query={})=>api(action,payload,{doctor:state.doctor,...query});
   function waitLabel(c) {
+    if(c.status==="done"&&c.counts.unknown)return "Concluída com pendências";
     if(c.status!=="running")return names[c.status];
     if(c.channel_state!=="open")return "Número desconectado";
     if(c.start_at>Date.now()/1000)return "Início agendado";
@@ -33,7 +34,7 @@ window.createCrmCampaigns=function({state,api,esc,icon,icons,modal,error,load,au
       <progress max="100" value="${c.progress}" aria-label="${c.progress}% processado"></progress>
       <div class="campaignCounts"><strong>${c.progress}%</strong><span>${c.counts.sent||0} aceitas</span><span>${c.counts.queued||0} na fila</span><span>${c.counts.unknown||0} sem confirmação</span><span>${(c.counts.skipped||0)+(c.counts.cancelled||0)} não enviadas</span></div>
       <div class="campaignSchedule"><span>${c.interval_seconds}s entre envios</span><span>${c.weekdays.map(d=>days[d]).join(', ')} · ${clock(c.hour_from,c.minute_from)}–${clock(c.hour_to,c.minute_to)}</span><span>Limite do número: ${c.daily_limit}/dia</span>${c.tag?`<span>${icon("tag")} ${esc(c.tag)}</span>`:""}</div>
-      ${reconnected?`<p class="connectionNote campaignConnection" role="status">${icon("circle-check")}<span>Número conectado. A campanha continua pausada até você confirmar a retomada.</span></p><p class="connectionNote">Motivo da pausa anterior: o número estava desconectado.</p>`:""}${lastError?`<p class="inlineWarning">${esc(lastError)}</p>`:""}${resumable&&blocked&&!finish?`<p class="connectionNote">${esc(blocked)}</p>`:""}${c.resume_excluded?`<p class="connectionNote">${c.resume_excluded} envio(s) sem confirmação mantidos fora da retomada.</p>`:""}
+      ${reconnected?`<p class="connectionNote campaignConnection" role="status">${icon("circle-check")}<span>Número conectado. A campanha continua pausada até você confirmar a retomada.</span></p><p class="connectionNote">Motivo da pausa anterior: o número estava desconectado.</p>`:""}${lastError?`<p class="inlineWarning">${esc(lastError)}</p>`:""}${c.status==="running"&&c.counts.unknown?'<p class="connectionNote" role="status">A fila segue para os demais destinatários. Envios sem confirmação não serão repetidos automaticamente.</p>':""}${c.status==="done"&&c.counts.unknown?'<p class="connectionNote" role="status">Fila concluída. Confira os destinatários sem confirmação em Acompanhar envios; eles não foram reenviados.</p>':""}${resumable&&blocked&&!finish?`<p class="connectionNote">${esc(blocked)}</p>`:""}${c.resume_excluded?`<p class="connectionNote">${c.resume_excluded} envio(s) sem confirmação mantidos fora da retomada.</p>`:""}
       <footer><button data-campaign-detail="${c.id}">${icon("list-checks")} Acompanhar envios</button><div class="commands">
         ${resumable&&activeChannel?`<button data-campaign-state="${c.id}" class="icon-button" title="Conferir conexão do número" aria-label="Conferir conexão ${esc(c.channel_name)}" ${state.data.gateway_configured?"":"disabled"}>${icon("refresh-cw")}</button>`:""}
         <button data-campaign-template="${c.id}" data-edit="false" class="icon-button" title="Duplicar campanha" aria-label="Duplicar campanha">${icon("copy")}</button>

@@ -118,3 +118,27 @@ test("connection checks are disabled if no gateway is configured",async()=>{
   h.center.mount(h.root);await settle();
   assert.equal(h.button.disabled,true);
 });
+
+test("a running queue explains individual uncertainty without presenting a pause",async()=>{
+  const h=await harness({status:"running",last_error:"",counts:{queued:3,unknown:1},resume_unconfirmed:1});
+  assert.match(h.root.innerHTML,/A fila segue para os demais destinatários/);
+  assert.match(h.root.innerHTML,/não serão repetidos automaticamente/);
+  assert.doesNotMatch(h.root.innerHTML,/data-campaign-command="start"/);
+  assert.match(h.root.innerHTML,/data-campaign-command="pause"/);
+});
+
+test("finished pending sends are not misrepresented as confirmed or silently removed",async()=>{
+  const h=await harness({status:"done",last_error:"",counts:{sent:7,unknown:1},resume_unconfirmed:1,progress:100});
+  assert.match(h.root.innerHTML,/Concluída com pendências/);
+  assert.match(h.root.innerHTML,/7 aceitas/);
+  assert.match(h.root.innerHTML,/1 sem confirmação/);
+  assert.match(h.root.innerHTML,/Confira os destinatários sem confirmação/);
+  assert.doesNotMatch(h.root.innerHTML,/data-campaign-command="start"/);
+  assert.deepEqual(h.calls.map(c=>c.action),["campaign-dashboard"]);
+});
+
+test("a fully accepted campaign still uses the usual finished label",async()=>{
+  const h=await harness({status:"done",last_error:"",counts:{sent:8},progress:100});
+  assert.match(h.root.innerHTML,/<span class="statusPill done">Concluída<\/span>/);
+  assert.doesNotMatch(h.root.innerHTML,/Concluída com pendências/);
+});

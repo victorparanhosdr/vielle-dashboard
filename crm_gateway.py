@@ -11,6 +11,13 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+class GatewayError(ValueError):
+    """Only a static category crosses the adapter boundary, never provider text."""
+    def __init__(self, code):
+        super().__init__("Nao foi possivel confirmar a operacao no servidor WhatsApp.")
+        self.code = code
+
+
 class EvolutionGateway:
     def __init__(self):
         self.url = os.environ.get("CRM_EVOLUTION_URL", "").rstrip("/")
@@ -32,16 +39,26 @@ class EvolutionGateway:
             with build_opener(NoRedirect()).open(req, timeout=30) as response:
                 raw = response.read(maximum + 1)
                 if len(raw) > maximum:
-                    raise ValueError("Resposta WhatsApp muito grande.")
+                    raise GatewayError("invalid_response")
                 return json.loads(raw)
         except HTTPError as error:
             # Evolution returns 404, not an empty list, for a new instance name.
             if error.code == 404 and missing_ok and method == "GET":
                 return []
-            raise ValueError("Nao foi possivel confirmar a operacao no servidor WhatsApp.") from None
-        except (URLError, TimeoutError, json.JSONDecodeError, OSError):
+            code = {400: "http_400", 401: "http_auth", 403: "http_auth", 404: "http_404",
+                    408: "timeout", 429: "http_limit"}.get(error.code, "http_error")
+            if 500 <= error.code <= 599:
+                code = "http_server"
+            raise GatewayError(code) from None
+        except TimeoutError:
+            raise GatewayError("timeout") from None
+        except URLError as error:
+            raise GatewayError("timeout" if isinstance(error.reason, TimeoutError) else "network_error") from None
+        except (json.JSONDecodeError, UnicodeError):
+            raise GatewayError("invalid_response") from None
+        except OSError:
             # Provider error bodies may contain credentials or patient content.
-            raise ValueError("Nao foi possivel confirmar a operacao no servidor WhatsApp.") from None
+            raise GatewayError("network_error") from None
 
     @staticmethod
     def webhook_payload():
@@ -84,8 +101,11 @@ class EvolutionGateway:
         else:
             path, payload = "sendText", {"number": item["phone"], "text": item["body"]}
         data = self.request("POST", "/message/" + path + "/" + quote(item["instance"], safe=""), payload)
-        key = data.get("key") or {}
-        return key.get("id")
+        key = data.get("key") if isinstance(data, dict) else None
+        provider_id = key.get("id") if isinstance(key, dict) else None
+        if not isinstance(provider_id, str) or not 1 <= len(provider_id) <= 200:
+            raise GatewayError("missing_confirmation")
+        return provider_id
 
     def history(self, channel, number):
         data = self.request("POST", "/chat/findMessages/" + quote(channel["instance"], safe=""),
