@@ -30,13 +30,29 @@ historico ou filas interrompidas. Auditoria preserva configuracao e autor.
 
 ## Entrada explicita e contexto
 
-Somente nova resposta manual nativa, marcada pela equipe como Acompanhar se
-ficar sem resposta, pode iniciar um ciclo depois do aceite do conector. O
-controle aparece apenas se a regua estiver ligada e a etapa for elegivel.
+Somente nova resposta manual nativa com Acompanhar se ficar sem resposta pode
+iniciar um ciclo depois do aceite do conector. A partir da revisao de pausa
+individual, a opcao ja vem marcada nos atendimentos elegiveis. A equipe pode
+desmarcar para uma resposta; depois do envio o padrao e restaurado. O controle
+aparece apenas se a regua estiver ligada, a etapa for elegivel e o contato
+nao estiver pausado. Sem metadados de pausa carregados, nao presume liberacao.
 Mensagens de campanha, robo, provedor externo ou historico importado nao
 iniciam ciclos. Anexos nao iniciam acompanhamento generico. Uma resposta de
-despedida sem essa marcacao nao dispara follow-up. Marcacao nao substitui
+despedida com a opcao desmarcada nao dispara follow-up. Marcacao nao substitui
 autorizacao de contato documentada na ficha.
+
+Pausar follow-ups fica na ficha lateral do atendimento e na ficha completa.
+Pausa persistente por contato, compartilhada pelos funis clinicos, com revisao
+otimista e auditoria. Nao descadastra a pessoa, nao bloqueia respostas manuais
+ou campanhas e nao altera consentimento. Contato compartilhado com escopos
+fora do acesso exige Master; o controle nao concede novas permissoes.
+
+Pausar interrompe os ciclos e suas mensagens ainda na fila. Remover a pausa
+nao retoma ciclos antigos nem inclui respostas humanas enfileiradas antes da
+alteracao: reply_requests congela tambem a revisao da preferencia. Uma nova
+resposta do cliente permite um novo turno elegivel. Claim e preflight conferem
+a pausa novamente, inclusive quando a interface do atendente esta desatualizada.
+Mensagem que ja iniciou chamada externa pode nao ser recolhida.
 
 Unicidade por contato/turno e um ciclo ativo por contato impedem concorrencia
 entre funis e profissionais. Fragmentos humanos do mesmo turno nao zeram as
@@ -89,3 +105,10 @@ no navegador em desktop e larguras de 320 e 390 pixels, sem overflow; salvar,
 limite de vinte, simulacao e ligar/desligar conferidos com dados sinteticos.
 O teste Playwright legado separado requer dependencia nao instalada; a
 verificacao visual foi realizada pela sessao de navegador controlada.
+
+Revisao de pausa individual: 571 testes CRM e 68 HTTP aprovados; 31 suites
+JavaScript do CRM aprovadas (mesma assercao legada de Facebook excluida).
+Previa sintetica desktop/mobile: default marcado, desmarcacao pontual, retorno
+ao padrao na proxima mensagem, pausa persistente apos recarregar, ficha completa
+e lateral sincronizadas, sem overflow em 390 pixels. Worker e provedor reais
+ausentes da previa. Nenhuma regua de producao e ativada por esta atualizacao.

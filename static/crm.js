@@ -517,6 +517,7 @@
       phoneControls.querySelector("[data-edit-phone]").onclick=()=>editPhone(l,context);
       phoneControls.querySelector("[data-remove-phone]")?.addEventListener("click",()=>editPhone(l,context,true));
       phoneControls.querySelectorAll("button").forEach(button=>{button.disabled=!l.can_edit_phone;if(button.disabled)button.title="Contato compartilhado fora do seu acesso; solicite ao Master.";});
+      if(!isCourse){const followupControl=document.createElement("div");identity.after(followupControl);followupContacts.mount(followupControl,l,{active:()=>$("crmDialog").open && active(),changed:preference=>context?.onFollowupChanged?.(preference)});}
       const runBot=document.createElement("button");runBot.type="button";runBot.innerHTML=`${icon("workflow")} Iniciar robô`;$("leadEdit").after(runBot);runBot.onclick=()=>botsCenter.startForLead(l).catch(e=>error(e.message));
       const reminderButton=document.createElement("button");reminderButton.type="button";reminderButton.innerHTML=`${icon("alarm-clock-plus")} Criar lembrete`;runBot.before(reminderButton);reminderButton.onclick=()=>reminders.open(l);
       const bulkContext={doctor:l.doctor_id,pipeline:l.pipeline_id,pipelines,active};
@@ -616,6 +617,7 @@
   const formsCenter=window.createCrmForms({state,api,esc,icon,icons,notice,profile});
   const botsCenter=window.createCrmBots({state,api,esc,icon,icons,notice,profile});
   const followupCenter=window.createCrmFollowupSettings({state,api,esc,icon,icons,notice});
+  const followupContacts=window.createCrmFollowupContact({api,icon,icons});
   const facebookCenter=window.createCrmFacebook({state,api,esc,icon,icons,profile});
   const templateLibrary=window.createCrmMessageTemplates({api,esc,icon,icons,getContext:()=>({doctor:doctor()?.name || ""}),onError:notice});
   const dashboard=window.createCrmDashboard({api,esc,icon,icons,onWaiting:()=>{state.mode="inbox";render();inbox.setFilter("waiting");load();}});

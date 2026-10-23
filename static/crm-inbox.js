@@ -7,12 +7,14 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
   const mobileScreen=matchMedia("(max-width:760px)");
   mobileScreen.addEventListener("change",()=>{if($("chatPane"))$("chatPane").inert=mobileScreen.matches && $("inboxWorkspace").classList.contains("showContact");});
   let opportunities=[],contextSeq=0;
+  let followupReplyOverride=null;
+  const followupContacts=window.createCrmFollowupContact({api,icon,icons});
   let clockOffset=0;
   let scope="",catalog={channels:[],pipelines:[]};
   const doctors=()=>state.inboxDoctors || [state.doctor];
   const scopeKey=()=>JSON.stringify(doctors());
   const channels=()=>catalog.channels.filter(c=>c.doctor_id===owner);
-  const profileContext=()=>{const signature=key(selected);return {doctor:owner,pipelines:catalog.pipelines,active:()=>Boolean(root && selected && signature===key(selected))};};
+  const profileContext=()=>{const signature=key(selected);return {doctor:owner,pipelines:catalog.pipelines,active:()=>Boolean(root && selected && signature===key(selected)),onFollowupChanged:preference=>{if(!root || !selected || signature!==key(selected))return;const lead=leadFor();if(lead && preference.revision>(lead.followup_contact?.revision || 0)){lead.followup_contact=preference;drawInfo();syncSend();}}};};
   const $=id=>root?.querySelector(`#${id}`);
   const key=s=>`${owner}:${s.channel_id}:${s.contact_id}`;
   const media=window.createCrmMedia({esc,icon,icons,onError:chatError,onBusy:()=>syncSend(),onChange:value=>{
@@ -155,7 +157,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     owner=doc;
     selected={doctor_id:doc,contact_id:item.contact_id,channel_id:item.channel_id,lead_id:item.lead_id};opportunities=[];contextSeq++;
     selectedRecord=item._lead || state.data.leads.find(l=>l.id===item.lead_id) || (previous?.id===item.lead_id?previous:null);
-    replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;
+    replyChannel=selected.channel_id;threadSeq++;messages=[];threadData=null;sending=false;followupReplyOverride=null;
     const l=leadFor(), ch=channels().find(c=>c.id===selected.channel_id), draft=drafts.get(key(selected));
     $("inboxWorkspace").classList.add("chatActive");$("inboxWorkspace").classList.remove("showContact","mobileFiltersOpen");$("mobileInboxFilters")?.setAttribute("aria-expanded","false");$("chatPane").inert=false;
     $("chatPane").innerHTML=`<header class="chatHeader"><button id="chatBack" class="icon-button" aria-label="Voltar às conversas" title="Voltar às conversas">${icon("arrow-left")}</button>${avatars.markup(l?.name || "Cliente",selected.contact_id,owner,selected.channel_id)}<div class="chatIdentity"><h2 id="chatName">${esc(l?.name || "Cliente")}</h2><span>${esc(ch?.name || "WhatsApp")} · +${esc(ch?.phone || "")}</span></div><button id="toggleChatSearch" class="icon-button" aria-label="Buscar nesta conversa" title="Buscar nesta conversa" aria-expanded="false" aria-controls="chatSearch">${icon("search")}</button><button id="toggleContact" class="icon-button" aria-label="Ficha comercial" title="Ficha comercial" aria-expanded="false">${icon("panel-right")}</button></header><div id="chatSearch" class="chatSearch" role="search" aria-label="Busca no histórico desta conversa" hidden></div><div class="messageTimeline" id="messageTimeline" tabindex="0" aria-label="Histórico de mensagens"><p class="inboxEmpty">Carregando conversa…</p></div><div class="chatComposer"><div class="replyOptions"><label>Responder por<select id="replyChannel"></select></label><div class="replySignature"><span>Atendente</span><strong id="replySignature">${esc(senderName())}</strong></div></div><p id="replyState" class="replyState"></p><p id="chatError" role="alert" hidden></p><div id="mediaPreview" class="mediaPreview" hidden></div><form id="replyForm"><div id="mediaTools"></div><textarea id="replyBody" name="body" rows="2" maxlength="3000" aria-label="Mensagem para o cliente" placeholder="Escreva uma mensagem…">${esc(draft?.body || "")}</textarea><button id="sendReply" type="submit" class="primary icon-button" aria-label="Enviar mensagem" title="Enviar mensagem" disabled>${icon("send")}</button></form></div>`;
@@ -178,7 +180,8 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     templates.mount($("messageTemplateTools"),$("replyBody"));
     media.mount($("mediaTools"),$("mediaPreview"),{doctor:owner,channel:selected.channel_id,contact:selected.contact_id},draft?.media || null);
     $("replyForm").onsubmit=send;
-    $("replyForm").insertAdjacentHTML("beforebegin",'<label id="followupReplyOption" class="check" hidden><input type="checkbox" id="followupReplyRequested">Acompanhar se ficar sem resposta</label>');
+    $("replyForm").insertAdjacentHTML("beforebegin",'<label id="followupReplyOption" class="check" hidden><input type="checkbox" id="followupReplyRequested" checked>Acompanhar se ficar sem resposta</label>');
+    $("followupReplyRequested").onchange=()=>{followupReplyOverride=$("followupReplyRequested").checked;};
     if(mobileScreen.matches && draft?.body)$("replyBody").style.height=`${Math.min(112,$("replyBody").scrollHeight)}px`;
     drawInfo();drawList();loadOpportunities();refreshThread().then(()=>syncExternalMessages());icons();
     if(!selectedRecord && selected.lead_id){
@@ -209,6 +212,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     panel.innerHTML=l?`<div class="contactSummary"><span class="eyebrow">FICHA COMERCIAL</span><h3>${esc(l.name)}</h3><p>+${esc(l.phone)}</p><span class="identityTag ${l.experts_status=== "matched"?"matched":""}">${icon(l.experts_status==="matched"?"user-check":"user-round")}${esc(patientLabel(l.experts_status))}</span></div><div class="contactOpportunity"><span class="eyebrow">${esc(p?.name)}</span><h3>${esc(l.title)}</h3><strong class="opportunityValue">${money(l.value_cents)}</strong><form id="quickStage"><label>Fase da jornada<select name="stage_id">${(p?.stages || []).map(s=>`<option value="${s.id}" ${s.id===l.stage_id?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><button type="submit">${icon("route")} Mover fase</button></form><p class="nextContact">${icon("calendar-days")} Próximo contato · ${date(l.next_action)}</p></div><button id="openProfile">${icon("notebook-pen")} Ficha e histórico</button>`:'<p class="connectionNote">Conversa sem oportunidade no funil.</p>';
     if(l){transferControl(panel,l);panel.querySelector(".opportunityValue").outerHTML=pendingQuotesValue(l);panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",serviceLocationBadge(l));}
     if(l)phoneControl(panel,l);
+    if(l)followupContacts.mount(panel.querySelector(".contactSummary"),l,{active:()=>Boolean(root && selected && leadFor()?.id===l.id),changed:()=>syncSend()});
     if(l){const calls=document.createElement("button");calls.dataset.commercial="calls";calls.innerHTML=`${icon("phone-call")} Ligações e gravações`;panel.append(calls);}
     if($("quickStage"))$("quickStage").onsubmit=async e=>{e.preventDefault();const id=new FormData(e.currentTarget).get("stage_id"),b=e.currentTarget.querySelector("button");b.disabled=true;try{await changeStage(l,id);}catch(err){chatError(err.message);}finally{b.disabled=false;}};
     if(l){panel.querySelector(".contactSummary").insertAdjacentHTML("beforeend",customerValuePanel(l.customer_value));$("chatName").parentElement.insertAdjacentHTML("beforeend",`<span class="chatCustomerTier">${customerValueBadge(l.customer_value)}</span>`);const booking=document.createElement("div");booking.className="contactAppointment";booking.innerHTML=appointmentBadge(l.appointment);panel.querySelector("#openProfile").before(booking);const shortcuts=document.createElement("div");shortcuts.className="commercialShortcuts";shortcuts.innerHTML=`<button data-commercial="sales">${icon("shopping-bag")} Vendas fechadas</button><button data-commercial="quotes">${icon("file-clock")} Orçamentos pendentes</button><button data-commercial="appointments">${icon("calendar-days")} Agendamentos</button>`;panel.append(shortcuts);}
@@ -281,8 +285,9 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
     const available=state.data.sends_enabled && ch?.state==="open" && threadData?.reply_allowed;
     const followup=$('followupReplyOption'),lead=leadFor(),rule=catalog.pipelines.find(p=>p.id===lead?.pipeline_id);
     if(followup){
-      followup.hidden=!available || media.hasDraft() || !rule?.followup_stage_ids?.includes(lead?.stage_id);
-      if(followup.hidden)$('followupReplyRequested').checked=false;
+      const preference=lead?.followup_contact;
+      followup.hidden=!available || media.hasDraft() || !rule?.followup_stage_ids?.includes(lead?.stage_id) || !preference || preference.paused;
+      $('followupReplyRequested').checked=window.crmFollowupReplyChecked(!followup.hidden,preference,followupReplyOverride);
       $('followupReplyRequested').disabled=sending;
     }
     $("sendReply").disabled=sending || media.busy() || !available || (!$("replyBody").value.trim() && !media.value()) || (media.hasDraft() && !media.value());
@@ -351,6 +356,10 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
         icons();
       }
       $("chatName").textContent=data.contact.name;
+      const record=leadFor(),preference=data.contact.followup_contact;
+      if(record && preference && (!record.followup_contact || record.followup_contact.revision<preference.revision)){
+        record.followup_contact=preference;drawInfo();
+      }
       $("chatName").nextElementSibling.textContent=`${data.channel.name} · ${data.reply_phone?"Cliente +"+data.reply_phone:"Telefone removido da ficha"}`;
       syncSend();
     }catch(e){if(root && request===threadSeq)chatError(e.message);}
@@ -374,7 +383,7 @@ window.createCrmInbox = function ({state,api,esc,icon,icons,patientLabel,money,d
       drafts.delete(signature);
       if(root && selected && signature===key(selected)){
         if(sender!==target.channel_id)select({...target,channel_id:sender});
-        else{chatSearch.close(false);$("replyBody").value="";if($('followupReplyRequested'))$('followupReplyRequested').checked=false;media.clear();drafts.delete(signature);messages=[];await refreshThread();}
+        else{chatSearch.close(false);$("replyBody").value="";followupReplyOverride=null;media.clear();drafts.delete(signature);messages=[];await refreshThread();}
         refreshList();
       }
     }catch(e){if(root && selected && signature===key(selected))chatError(e.message);}

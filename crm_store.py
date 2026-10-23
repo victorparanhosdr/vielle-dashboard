@@ -620,6 +620,9 @@ class CrmStore:
                                                "service_location", "service_location_source", "service_location_revision", "phone_revision", "phone_removed")})
             from crm_contact_phone import editable
             lead["can_edit_phone"] = editable(c, contact["id"])
+            if not binding["course_key"] and not binding["institute_key"]:
+                from crm_followup_contact import state as followup_contact_state
+                lead["followup_contact"]=followup_contact_state(c,contact["id"])
             if lead["course_key"] and lead["source_name"]:
                 lead["name"] = lead["source_name"]
             self.attach_appointments([lead], self.row(c, "doctors", doctor)["name"])
@@ -999,6 +1002,8 @@ class CrmStore:
             reply_phone = self.conversation_peer(c, channel, contact, ct["phone"])
             # Default WhatsApp availability is not evidence of patient consent.
             allowed = not ct["opted_out"] and not ch["archived_at"] and bool(ct["phone"])
+            from crm_followup_contact import state as followup_contact_state
+            ct["followup_contact"]=followup_contact_state(c,contact)
             return {"contact": ct, "channel": ch, "messages": messages, "has_older": has_older,
                     "inbound_cursor": max((m["seq"] for m in messages if m["direction"] == "in"), default=0),
                     **self.conversation_status(c, channel, contact),

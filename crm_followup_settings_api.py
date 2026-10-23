@@ -6,6 +6,9 @@ from task_api import read_body
 
 
 def handle(handler, store, action, query, user):
+    if action=="followups/contact":
+        from crm_followup_contact import handle as contact_handle
+        return contact_handle(handler,store,query,user)
     doctor = query.get("doctor", [""])[0]
     if handler.command == "GET" and action == "followups":
         result = settings.snapshot(store, doctor, query.get("pipeline", [""])[0])

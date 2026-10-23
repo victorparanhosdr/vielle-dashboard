@@ -411,6 +411,27 @@ if "--quality-fixture" in sys.argv:
             quality.review(store,doc,assessment["id"],{"revision":1,"failures":["clarity"],"reason":"Revisão sintética aprovada."},"1")
     auth.create_user("Gerente Exemplo","preview-manager",password,clinic_keys=["vielle"],permissions={"vielle":["crm.view"]})
 
+if "--followup-contact-fixture" in sys.argv:
+    import crm_api
+    import crm_followup_settings as followup_settings
+    from crm_gateway import EvolutionGateway
+
+    class FollowupPreviewGateway(EvolutionGateway):
+        @property
+        def configured(self):return True
+        def history(self,*_):return [],False
+        def send(self,*_):raise RuntimeError("Synthetic follow-up preview has no sending provider")
+
+    crm_api.EvolutionGateway=FollowupPreviewGateway
+    crm_api.sends_enabled=lambda:True
+    store.worker_online=lambda:True  # UI-only fixture; no worker is started.
+    with store.db() as c:c.execute("UPDATE channels SET state='open'")
+    doc=next(d["id"] for d in store.listing()["doctors"] if d["name"].startswith("Victor Paranhos"))
+    pipeline=store.listing(doc)["pipelines"][0]
+    config=followup_settings.snapshot(store,doc,pipeline["id"])["config"]
+    followup_settings.save(store,doc,{"pipeline_id":pipeline["id"],"revision":0,"config":config},{"id":"1","is_master":True})
+    followup_settings.toggle(store,doc,{"pipeline_id":pipeline["id"],"revision":1,"enabled":True,"confirm":True},{"id":"1","is_master":True})
+
 if "--staff-fixture" in sys.argv:
     auth.create_user("Jane Teste", "preview-staff", password, clinic_keys=["vielle"], permissions={"vielle": ["crm.view"]})
     token = auth.login("preview-staff", password)

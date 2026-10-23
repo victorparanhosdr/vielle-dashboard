@@ -1,4 +1,5 @@
 """Combined inbox; each doctor's existing permissions and history remain separate."""
+import json
 import time
 
 from crm_access import CRM_SCOPE, crm_access, pipeline_visible

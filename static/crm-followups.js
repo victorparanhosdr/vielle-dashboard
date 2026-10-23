@@ -98,7 +98,7 @@ window.createCrmFollowupSettings=({state,api,esc,icon,icons,notice})=>{
   async function toggle(){
     const enabled=find("#followupPower").checked;find("#followupPower").checked=Boolean(data.enabled);
     if(busy)return;
-    if(enabled && (!find("#followupForm").reportValidity() || !window.confirm("Ligar o follow-up deste funil? Apenas novos atendimentos marcados pela equipe serão acompanhados. Contatos antigos e tentativas interrompidas não serão retomados.")))return;
+    if(enabled && (!find("#followupForm").reportValidity() || !window.confirm("Ligar o follow-up deste funil? O acompanhamento virá marcado nos novos atendimentos elegíveis, exceto contatos pausados. Contatos antigos e tentativas interrompidas não serão retomados.")))return;
     if(enabled && (dirty || !data.revision) && !await persist())return;
     const token=seq;busy=true;lock(true);error();
     try{

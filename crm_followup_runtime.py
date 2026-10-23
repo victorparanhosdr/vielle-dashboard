@@ -1,4 +1,4 @@
-"""Native, explicitly requested follow-up on the shared WhatsApp queue."""
+"""Native follow-up eligibility and contact pause on the shared WhatsApp queue."""
 import json
 import logging
 import re
@@ -14,9 +14,11 @@ def schema(c):
     for name, definition in (("followup_cycle_id", "TEXT NOT NULL DEFAULT ''"), ("followup_attempt", "INTEGER NOT NULL DEFAULT 0")):
         if name not in {r[1] for r in c.execute("PRAGMA table_info(messages)")}:
             c.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
-    for name, definition in (("followup_requested", "INTEGER NOT NULL DEFAULT 0"), ("followup_lead_id", "TEXT NOT NULL DEFAULT ''")):
+    for name, definition in (("followup_requested", "INTEGER NOT NULL DEFAULT 0"), ("followup_lead_id", "TEXT NOT NULL DEFAULT ''"), ("followup_contact_revision", "INTEGER NOT NULL DEFAULT 0")):
         if name not in {r[1] for r in c.execute("PRAGMA table_info(reply_requests)")}:
             c.execute(f"ALTER TABLE reply_requests ADD COLUMN {name} {definition}")
+    from crm_followup_contact import schema as contact_schema
+    contact_schema(c)
     c.executescript("""
         CREATE TABLE IF NOT EXISTS crm_followup_cycles(
             id TEXT PRIMARY KEY,lead_id TEXT NOT NULL REFERENCES leads(id),contact_id TEXT NOT NULL,
@@ -69,7 +71,10 @@ def requested(c, store, message, payload, doctor):
     target=c.execute("SELECT contact_id FROM messages WHERE id=?",(message,)).fetchone()
     if not target or target[0]!=lead["contact_id"]:
         raise ValueError("O acompanhamento pertence a outro contato.")
-    c.execute("UPDATE reply_requests SET followup_requested=1,followup_lead_id=? WHERE message_id=?",(lead_id,message))
+    from crm_followup_contact import preference
+    setting=preference(c,lead["contact_id"])
+    if not setting["paused"]:
+        c.execute("UPDATE reply_requests SET followup_requested=1,followup_lead_id=?,followup_contact_revision=? WHERE message_id=?",(lead_id,setting["revision"],message))
 
 
 def body_for(c, cycle):
@@ -80,6 +85,9 @@ def body_for(c, cycle):
 
 
 def guard(c, store, cycle, now, *, own_message=""):
+    from crm_followup_contact import preference
+    if preference(c,cycle["contact_id"])["paused"]:
+        return "paused","Follow-up pausado na ficha do contato"
     lead=c.execute("""SELECT l.*,ct.opted_out,ct.merged_into,ct.experts_status,
         coalesce(ps.phone,ct.phone) phone,coalesce(ps.revision,1) phone_revision,s.kind,
         coalesce(cs.disposition,'commercial') disposition,p.course_key,p.institute_key
@@ -145,11 +153,15 @@ def guard(c, store, cycle, now, *, own_message=""):
 
 
 def accepted(c, store, message, now):
-    row=c.execute("""SELECT m.*,r.followup_requested,r.followup_lead_id FROM messages m
+    row=c.execute("""SELECT m.*,r.followup_requested,r.followup_lead_id,r.followup_contact_revision FROM messages m
         JOIN reply_requests r ON r.message_id=m.id WHERE m.id=?""",(message,)).fetchone()
     if not row or row["origin"]!="crm" or row["status"]!="sent":return
     if not row["followup_requested"] or row["media_id"]:
         stop_contact(c,row["contact_id"],"Atendimento humano retomado",now);return
+    from crm_followup_contact import preference
+    setting=preference(c,row["contact_id"])
+    if setting["paused"] or setting["revision"]!=row["followup_contact_revision"]:
+        return
     lead=c.execute("SELECT l.*,coalesce(ps.phone,ct.phone) phone,coalesce(ps.revision,1) phone_revision FROM leads l JOIN contacts ct ON ct.id=l.contact_id LEFT JOIN contact_phone_settings ps ON ps.contact_id=ct.id WHERE l.id=?",(row["followup_lead_id"],)).fetchone()
     if not lead or lead["contact_id"]!=row["contact_id"]:return
     rule=c.execute("SELECT * FROM followup_policies WHERE pipeline_id=? AND enabled=1",(lead["pipeline_id"],)).fetchone()

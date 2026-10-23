@@ -1101,6 +1101,38 @@ class HttpAuthTests(unittest.TestCase):
             self.assertEqual(c.execute("SELECT count(*) FROM followup_policies").fetchone()[0],1)
         self.assertTrue(self.store.list_audit(action="crm_followup_draft_saved")["events"])
 
+    def test_followup_contact_pause_staff_permissions_csrf_and_no_activation(self):
+        from crm_api import store_for
+        store=store_for(self.store);store.bootstrap({"Profissional Exemplo":["Clínica", "Outro clínico"]})
+        data=store.listing();doc=data["doctor_id"];pipeline=data["pipelines"][0]
+        key=store.lead({"doctor_id":doc,"pipeline_id":pipeline["id"],"stage_id":pipeline["stages"][0]["id"],
+            "name":"Contato Exemplo","phone":"5500000000002","title":"Interesse"},"Equipe")
+        self.limit_permissions(["crm.view"]);staff=self.login()[0];headers={"X-DOC4DOCS-Request":"1"}
+        path=f"/api/crm/followups/contact?clinic=vielle&doctor={doc}"
+        self.assertEqual(self.request("GET",path+"&id="+key)[0],401)
+        status,_,raw=self.request("GET",path+"&id="+key,cookie=staff)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["followup_contact"]["paused"])
+        payload={"doctor_id":doc,"id":key,"revision":1,"paused":True,"confirm":True}
+        self.assertEqual(self.request("POST",path,payload,staff)[0],403)
+        self.assertEqual(self.request("POST",path,{**payload,"doctor_id":"wrong"},staff,headers)[0],400)
+        self.assertEqual(self.request("POST",path,{**payload,"paused":"yes"},staff,headers)[0],400)
+        status,_,raw=self.request("POST",path,payload,staff,headers)
+        self.assertEqual(status,200,raw);self.assertTrue(json.loads(raw)["followup_contact"]["paused"])
+        self.assertEqual(self.request("POST",path,payload,staff,headers)[0],409)
+        status,_,raw=self.request("POST",path,{**payload,"revision":2,"paused":False},staff,headers)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["followup_contact"]["paused"])
+        other=data["pipelines"][1]
+        store.lead({"doctor_id":doc,"pipeline_id":other["id"],"stage_id":other["stages"][0]["id"],
+            "name":"Contato Exemplo","phone":"5500000000002","title":"Outro contexto"},"Equipe")
+        self.store.update_user(self.user_id,"Usuario Local","teste",crm_scope={doc:[pipeline["id"]]})
+        staff=self.login()[0]
+        status,_,raw=self.request("GET",path+"&id="+key,cookie=staff)
+        self.assertEqual(status,200,raw);self.assertFalse(json.loads(raw)["followup_contact"]["can_manage"])
+        self.assertEqual(self.request("POST",path,{**payload,"revision":3},staff,headers)[0],403)
+        with store.db() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM followup_policies").fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT count(*) FROM crm_followup_cycles").fetchone()[0],0)
+
     def test_admin_refuses_last_master_deactivation(self):
         cookie=self.master_cookie();uid=self.store.get_user_by_login("master")["id"]
         self.assertEqual(self.request("POST",f"/api/master/users/{uid}/status",{"active":False},cookie,{"X-DOC4DOCS-Request":"1"})[0],400)
