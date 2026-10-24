@@ -68,6 +68,8 @@ function collectClinicPermissions(keys) { return Object.fromEntries(keys.map(key
 const auditLabels={login:"Login realizado",login_denied:"Login negado",logout:"Logout",user_created:"Usuário criado",user_updated:"Usuário editado",user_activated:"Usuário ativado",user_deactivated:"Usuário desativado",password_reset:"Senha redefinida",clinics_changed:"Clínicas alteradas",permissions_changed:"Permissões alteradas",profile_saved:"Perfil salvo"};
 auditLabels.crm_access_changed="Acessos do CRM alterados";
 auditLabels.team_profiles_changed="Perfis da equipe alterados";
+auditLabels.user_email_changed="E-mail de acesso alterado";
+auditLabels.password_recovery_requested="Recuperação por e-mail solicitada";
 Object.entries(auditLabels).forEach(([key,label])=>$("auditAction").append(choiceOption(key,label)));
 let auditPage=1,auditRequest=0,editingProfile=null;
 async function loadAudit() {

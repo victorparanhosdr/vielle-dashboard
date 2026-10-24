@@ -14,14 +14,15 @@ from clinic_catalog import SUPPORTED_CLINICS, validate_clinic_keys
 from access_store import AccessStoreMixin, initialize_access_schema, validate_crm_scope, CRM_SCOPE_UNCHANGED, TEAM_PROFILES_UNCHANGED
 from access_policy import permission_map
 from team_presence import initialize_schema as initialize_team_schema, close_sessions as close_team_sessions
+from auth_recovery import AuthRecoveryMixin, EMAIL_UNCHANGED, initialize_recovery_schema, normalize_email, optional_email
 
 
 DATABASE_NAME = "doc4docs_auth.sqlite3"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PASSWORD_ITERATIONS = 600_000
 BUSY_TIMEOUT_MS = 60_000
 SESSION_TTL_SECONDS = 12 * 60 * 60
-USER_PUBLIC_COLUMNS = "id, nome, login, status, is_master, created_at, updated_at, last_login"
+USER_PUBLIC_COLUMNS = "id, nome, login, email, status, is_master, created_at, updated_at, last_login"
 
 
 def auth_database_path(base_dir, environ=None):
@@ -77,7 +78,7 @@ def verify_password(password, stored_hash):
         return False
 
 
-class AuthStore(AccessStoreMixin):
+class AuthStore(AuthRecoveryMixin, AccessStoreMixin):
     def __init__(self, path):
         self.path = Path(path)
 
@@ -102,7 +103,7 @@ class AuthStore(AccessStoreMixin):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, SCHEMA_VERSION):
+            if version not in (0, 1, 2, 3, 4, SCHEMA_VERSION):
                 raise RuntimeError("Unsupported authentication database schema version.")
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("BEGIN IMMEDIATE")
@@ -138,16 +139,18 @@ class AuthStore(AccessStoreMixin):
                     PRIMARY KEY (user_id, clinic_key)
                 )
             """)
+            initialize_recovery_schema(conn)
             initialize_access_schema(conn, version)
             initialize_team_schema(conn)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
-    def create_user(self, nome, login, password, *, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
+    def create_user(self, nome, login, password, *, email=None, status="active", is_master=False, clinic_keys=None, permissions=None, crm_scope=None, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         if status not in ("active", "inactive") or not isinstance(is_master, bool):
             raise ValueError("Invalid user status or master flag.")
         login = normalize_login(login)
+        email = optional_email(email)
         keys = validate_clinic_keys([] if clinic_keys is None else clinic_keys)
         permissions = permission_map(keys, permissions)
         crm_scope = validate_crm_scope(crm_scope)
@@ -156,11 +159,13 @@ class AuthStore(AccessStoreMixin):
         encoded = hash_password(password)
         now = utc_now()
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._check_identity_available(conn, login, email)
             cursor = conn.execute("""
                 INSERT INTO users
-                    (nome, login, password_hash, status, is_master, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (nome.strip(), login, encoded, status, int(is_master), now, now))
+                    (nome, login, email, password_hash, status, is_master, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (nome.strip(), login, email, encoded, status, int(is_master), now, now))
             user_id = cursor.lastrowid
             conn.executemany("INSERT INTO user_clinics (user_id, clinic_key, created_at) VALUES (?, ?, ?)",
                              [(user_id, key, now) for key in keys])
@@ -173,8 +178,12 @@ class AuthStore(AccessStoreMixin):
 
     def get_user_by_login(self, login):
         login = normalize_login(login)
+        try:
+            email = normalize_email(login)
+        except ValueError:
+            email = None
         with self.connection() as conn:
-            row = conn.execute("SELECT * FROM users WHERE login = ?", (login,)).fetchone()
+            row = conn.execute("SELECT * FROM users WHERE login = ? OR email = ?", (login, email)).fetchone()
             return dict(row) if row else None
 
     def create_first_master(self, nome, login, password):
@@ -187,6 +196,7 @@ class AuthStore(AccessStoreMixin):
             conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT 1 FROM users WHERE is_master = 1 LIMIT 1").fetchone():
                 raise ValueError("A Master already exists. Bootstrap cannot be repeated.")
+            self._check_identity_available(conn, login, None)
             cursor = conn.execute("""
                 INSERT INTO users
                     (nome, login, password_hash, status, is_master, created_at, updated_at)
@@ -200,8 +210,8 @@ class AuthStore(AccessStoreMixin):
             raise ValueError("Invalid user filter.")
         search = str(search).strip()[:254]
         pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        where = "(nome LIKE ? ESCAPE '\\' OR login LIKE ? ESCAPE '\\') AND (? = '' OR status = ?)"
-        values = (pattern, pattern, status, status)
+        where = "(nome LIKE ? ESCAPE '\\' OR login LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\') AND (? = '' OR status = ?)"
+        values = (pattern, pattern, pattern, status, status)
         with self.connection() as conn:
             total = conn.execute(f"SELECT count(*) FROM users WHERE {where}", values).fetchone()[0]
             rows = conn.execute(f"SELECT {USER_PUBLIC_COLUMNS} FROM users WHERE {where} ORDER BY nome COLLATE NOCASE, id LIMIT ? OFFSET ?",
@@ -232,16 +242,19 @@ class AuthStore(AccessStoreMixin):
             row = conn.execute(f"SELECT {USER_PUBLIC_COLUMNS} FROM users WHERE id = ?", (user_id,)).fetchone()
             return self._public_memberships(conn, row) if row else None
 
-    def update_user(self, user_id, nome, login, *, clinic_keys=None, permissions=None, crm_scope=CRM_SCOPE_UNCHANGED, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
+    def update_user(self, user_id, nome, login, *, email=EMAIL_UNCHANGED, clinic_keys=None, permissions=None, crm_scope=CRM_SCOPE_UNCHANGED, team_profiles=TEAM_PROFILES_UNCHANGED, actor_id=None):
         if not isinstance(nome, str) or not nome.strip() or len(nome.strip()) > 200:
             raise ValueError("Name must contain 1-200 characters.")
         login = normalize_login(login)
+        email = email if email is EMAIL_UNCHANGED else optional_email(email)
         keys = None if clinic_keys is None else validate_clinic_keys(clinic_keys)
         with self.connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            old = conn.execute("SELECT login, is_master FROM users WHERE id = ?", (user_id,)).fetchone()
+            old = conn.execute("SELECT login, email, is_master FROM users WHERE id = ?", (user_id,)).fetchone()
             if not old:
                 return False
+            next_email = old["email"] if email is EMAIL_UNCHANGED else email
+            self._check_identity_available(conn, login, next_email, user_id)
             if crm_scope is not CRM_SCOPE_UNCHANGED:
                 if old["is_master"]:
                     raise ValueError("O Master possui acesso a todo o CRM.")
@@ -265,10 +278,13 @@ class AuthStore(AccessStoreMixin):
                     self._audit(conn, "permissions_changed", actor_id, user_id, {"before": old_permissions, "after": next_permissions})
             self._save_team_profiles(conn, user_id, list(SUPPORTED_CLINICS) if old["is_master"] else (old_keys if keys is None else keys),
                                      team_profiles, previous_profiles, actor_id, is_master=bool(old["is_master"]))
-            conn.execute("UPDATE users SET nome = ?, login = ?, updated_at = ? WHERE id = ?", (nome.strip(), login, utc_now(), user_id))
-            if old["login"] != login:
+            conn.execute("UPDATE users SET nome = ?, login = ?, email = ?, updated_at = ? WHERE id = ?", (nome.strip(), login, next_email, utc_now(), user_id))
+            if old["login"] != login or old["email"] != next_email:
+                self._revoke_recovery(conn, user_id)
                 close_team_sessions(conn, time.time(), user_id=user_id)
                 conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+                if old["email"] != next_email:
+                    self._audit(conn, "user_email_changed", actor_id, user_id, {"recovery_enabled": bool(next_email), "sessions_revoked": True})
             elif keys is not None and set(old_keys) != set(keys):
                 close_team_sessions(conn, time.time(), user_id=user_id)
             self._audit(conn, "user_updated", actor_id, user_id)
@@ -292,6 +308,7 @@ class AuthStore(AccessStoreMixin):
                 {clinic: "management" for clinic in SUPPORTED_CLINICS}, previous, actor_id, is_master=True)
             close_team_sessions(conn, time.time(), user_id=user_id)
             conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            self._revoke_recovery(conn, user_id)
             self._audit(conn, "user_promoted_master", actor_id, user_id,
                         {"before": "common", "after": "master", "sessions_revoked": True})
 
@@ -324,6 +341,7 @@ class AuthStore(AccessStoreMixin):
             result = conn.execute("UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
                                   ("active" if active else "inactive", utc_now(), user_id))
             if not active:
+                self._revoke_recovery(conn, user_id)
                 close_team_sessions(conn, time.time(), user_id=user_id)
                 conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             if result.rowcount:
@@ -333,10 +351,12 @@ class AuthStore(AccessStoreMixin):
     def set_password(self, user_id, password, *, actor_id=None):
         encoded = hash_password(password)
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             result = conn.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
                                   (encoded, utc_now(), user_id))
             close_team_sessions(conn, time.time(), user_id=user_id)
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            self._revoke_recovery(conn, user_id)
             if result.rowcount:
                 self._audit(conn, "password_reset", actor_id, user_id)
             return result.rowcount == 1

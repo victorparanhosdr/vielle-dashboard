@@ -7091,7 +7091,10 @@ class Handler(MasterApiMixin, SessionAuthMixin, SimpleHTTPRequestHandler):
         if not self.require_dashboard_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
-        from auth_http import PUBLIC_PAGE_ROUTES, is_public_home_entry
+        from auth_http import AUTH_PAGE_ROUTES, PUBLIC_PAGE_ROUTES, is_public_home_entry
+        if parsed.path in AUTH_PAGE_ROUTES:
+            self.path = AUTH_PAGE_ROUTES[parsed.path]
+            return super().do_GET()
         if parsed.path in PUBLIC_PAGE_ROUTES:
             self.path = PUBLIC_PAGE_ROUTES[parsed.path]
             return super().do_GET()
@@ -7702,6 +7705,9 @@ if __name__ == "__main__":
         threading.Thread(target=run_crm_worker, args=(auth_store, threading.Event()), daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.auth_store = auth_store
+    from auth_mail import MailSettings, RecoveryService
+    server.account_recovery = RecoveryService(auth_store, MailSettings.from_environ())
+    server.account_recovery.start()
     server.login_limiter = LoginLimiter()
     print(f"Relatorio Kommo rodando em http://localhost:{PORT}")
     server.serve_forever()

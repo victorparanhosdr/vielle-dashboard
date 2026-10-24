@@ -9,9 +9,9 @@
     <link rel="stylesheet" href="/master.css?v=crm-scope-1">
     <script src="/session.js"></script>
     <script src="/master-icons.js" defer></script>
-    <script src="/master.js?v=master-promotion-2" defer></script>
+    <script src="/master.js?v=email-1" defer></script>
     <script src="/master-crm-access.js?v=1" defer></script>
-    <script src="/master-access.js?v=team-profile-1" defer></script>
+    <script src="/master-access.js?v=email-1" defer></script>
   <link rel="stylesheet" href="/design-system.css?v=crm-release1">
   <script src="/body-icons.js" defer></script>
   <script src="/app-shell.js?v=crm-release1" defer></script>
@@ -34,13 +34,13 @@
       </nav>
       <section id="usersSection">
       <div class="userFilters">
-        <label class="searchField"><span>Buscar usuário</span><input id="searchUsers" type="search" placeholder="Nome ou login" maxlength="254"></label>
+        <label class="searchField"><span>Buscar usuário</span><input id="searchUsers" type="search" placeholder="Nome, e-mail ou login" maxlength="254"></label>
         <label><span>Status</span><select id="statusFilter"><option value="">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></label>
         <span id="userCount" class="userCount" aria-live="polite"></span>
         <button id="reloadUsers" class="secondary iconButton" type="button" title="Atualizar lista" aria-label="Atualizar lista"><span data-icon="RefreshCw"></span></button>
       </div>
       <section aria-label="Usuários cadastrados" class="userList">
-        <table><thead><tr><th scope="col">Nome</th><th scope="col">Login</th><th scope="col">Perfil</th><th scope="col">Status</th><th scope="col">Criação</th><th scope="col">Último acesso</th><th scope="col" class="actionsHeading">Ações</th></tr></thead><tbody id="userRows"><tr><td colspan="7">Carregando usuários...</td></tr></tbody></table>
+        <table><thead><tr><th scope="col">Nome</th><th scope="col">E-mail / acesso</th><th scope="col">Perfil</th><th scope="col">Status</th><th scope="col">Criação</th><th scope="col">Último acesso</th><th scope="col" class="actionsHeading">Ações</th></tr></thead><tbody id="userRows"><tr><td colspan="7">Carregando usuários...</td></tr></tbody></table>
         <div class="pagination"><span id="pageLabel"></span><button id="prevPage" class="secondary iconButton" type="button" title="Página anterior" aria-label="Página anterior" disabled><span data-icon="ChevronLeft"></span></button><button id="nextPage" class="secondary iconButton" type="button" title="Próxima página" aria-label="Próxima página" disabled><span data-icon="ChevronRight"></span></button></div>
       </section>
       </section>
@@ -59,7 +59,9 @@
       <form id="userForm">
         <div class="dialogHeading"><h2 id="userDialogTitle">Novo usuário</h2><button type="button" data-close="userDialog" class="secondary iconButton" title="Fechar" aria-label="Fechar"><span data-icon="X"></span></button></div>
         <label><span>Nome</span><input id="userName" name="nome" maxlength="200" autocomplete="off" required></label>
-        <label><span>Login</span><input id="userLogin" name="login" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
+        <label><span>E-mail de acesso e recuperação</span><input id="userEmail" name="email" type="email" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
+        <label id="legacyLoginField" hidden><span>Login atual</span><input id="userLogin" name="login" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+        <label id="emailConfirmationField" class="checkboxLabel"><input id="confirmUserEmail" type="checkbox"><span>Conferi que este e-mail pertence ao usuário. Alterá-lo encerra as sessões e invalida os links anteriores.</span></label>
         <label id="initialPasswordField"><span>Senha (mínimo de 12 caracteres)</span><input id="initialPassword" name="password" type="password" autocomplete="new-password" minlength="12"></label>
         <label id="initialStatusField" class="checkboxLabel"><input id="initialActive" type="checkbox" checked><span>Usuário ativo</span></label>
         <fieldset id="teamProfileField" hidden><legend>Perfil na equipe</legend><div id="teamProfileChoices" class="permissionTools"></div></fieldset>

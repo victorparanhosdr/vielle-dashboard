@@ -36,10 +36,11 @@ function renderRows() {
   }
   users.forEach(user=>{
     const row=document.createElement("tr");row.dataset.userId=user.id;
-    [user.nome,user.login,user.is_master?"Master":"Comum",user.status==="active"?"Ativo":"Inativo",date(user.created_at),date(user.last_login,true)].forEach((value,index)=>{
-      const cell=document.createElement("td");cell.dataset.label=["Nome","Login","Perfil","Status","Criação","Último acesso"][index];
+    [user.nome,user.email||user.login,user.is_master?"Master":"Comum",user.status==="active"?"Ativo":"Inativo",date(user.created_at),date(user.last_login,true)].forEach((value,index)=>{
+      const cell=document.createElement("td");cell.dataset.label=["Nome","E-mail / acesso","Perfil","Status","Criação","Último acesso"][index];
       if(index===3){const badge=document.createElement("span");badge.className=`statusBadge ${user.status}`;badge.textContent=value;cell.append(badge);}else cell.textContent=value;
       if(index===0){const memberships=document.createElement("small");memberships.className="clinicSummary";memberships.textContent=user.is_master?"Todas as clínicas":(user.clinic_keys||[]).map(key=>clinicCatalog.find(clinic=>clinic.key===key)?.name||key).join(" · ")||"Sem clínicas liberadas";cell.append(memberships);}
+      if(index===1 && (!user.email || user.email!==user.login)){const legacy=document.createElement("small");legacy.className="clinicSummary";legacy.textContent=user.email?`Login atual: ${user.login}`:"Sem e-mail de recuperação";cell.append(legacy);}
       row.append(cell);
     });
     const cell=document.createElement("td");cell.dataset.label="Ações";const actions=document.createElement("div");actions.className="rowActions";
@@ -62,6 +63,9 @@ function openUser(user=null) {
   editing=user;$("userForm").reset();$("userFormError").textContent="";
   $("userDialogTitle").textContent=user?"Editar usuário":"Novo usuário";$("saveUser").textContent=user?"Salvar alterações":"Criar usuário";
   $("userName").value=user?.nome||"";$("userLogin").value=user?.login||"";
+  $("userEmail").value=user?.email||"";$("userEmail").required=!user;
+  const legacy=Boolean(user && !user.login.includes("@"));$("legacyLoginField").hidden=!legacy;$("userLogin").disabled=!legacy;$("userLogin").required=legacy;
+  updateEmailConfirmation();
   $("initialPasswordField").hidden=Boolean(user);$("initialStatusField").hidden=Boolean(user);$("initialPassword").required=!user;$("initialPassword").disabled=Boolean(user);
   $("clinicMemberships").hidden=Boolean(user?.is_master);$("masterClinicNotice").hidden=!user?.is_master;
   $("teamProfileChoices").replaceChildren();renderClinicPermissions(user);
@@ -81,19 +85,25 @@ function openUser(user=null) {
   }
   $("userDialog").showModal();$("userName").focus();
 }
+function updateEmailConfirmation(){
+  const changed=!editing || $("userEmail").value.trim().toLowerCase()!==(editing.email||"");
+  $("emailConfirmationField").hidden=!changed;$("confirmUserEmail").required=changed;
+}
+$("userEmail").addEventListener("input",()=>{$("confirmUserEmail").checked=false;updateEmailConfirmation();});
 function openPassword(user) { passwordUser=user;$("passwordForm").reset();$("passwordError").textContent="";$("passwordTarget").textContent=`${user.nome} · ${user.login}`;$("passwordDialog").showModal();$("newPassword").focus(); }
 function openStatus(user) { statusUser=user;const active=user.status==="active";$("statusTitle").textContent=active?"Desativar usuário?":"Ativar usuário?";$("statusTarget").textContent=`${user.nome} · ${user.login}`;$("statusMessage").textContent=active?"O acesso será bloqueado e as sessões abertas serão encerradas.":"O usuário poderá entrar novamente com sua senha.";$("saveStatus").textContent=active?"Desativar":"Ativar";$("statusError").textContent="";$("statusDialog").showModal(); }
 function formSubmit(formId, buttonId, errorId, run) {
   $(formId).addEventListener("submit",async event=>{event.preventDefault();const button=$(buttonId);if(button.disabled)return;button.disabled=true;$(errorId).textContent="";try{await run();}catch(error){$(errorId).textContent=error.message;}finally{button.disabled=false;}});
 }
 formSubmit("userForm","saveUser","userFormError",async()=>{
-  const body={nome:$("userName").value,login:$("userLogin").value};const user=editing;
+  const user=editing,email=$("userEmail").value.trim().toLowerCase();
+  const body={nome:$("userName").value,login:user?($("userLogin").disabled?(email||user.login):$("userLogin").value):email,email,confirm_email:$("confirmUserEmail").checked};
   if(!user?.is_master){body.clinic_keys=Array.from($("clinicChoices").querySelectorAll('input[name="clinic_key"]:checked'),input=>input.value);body.permissions=collectClinicPermissions(body.clinic_keys);body.crm_scope=collectCrmScope();}
   body.team_profiles=collectTeamProfiles();
   if(!user){body.password=$("initialPassword").value;body.status=$("initialActive").checked?"active":"inactive";}
   const result=await api(user?`/api/master/users/${user.id}/edit`:"/api/master/users",body);
   $("userDialog").close();notice(user?"Usuário atualizado.":"Usuário criado.");
-  if(user?.id===currentUser?.id&&result.user.login!==currentUser.login){window.location.replace("/login?next=/master");return;}
+  if(user?.id===currentUser?.id&&(result.user.login!==currentUser.login || result.user.email!==user.email)){window.location.replace("/login?next=/master");return;}
   if(user?.id===currentUser?.id)document.querySelectorAll("[data-session-user]").forEach(el=>el.textContent=result.user.nome);
   await loadUsers();
 });

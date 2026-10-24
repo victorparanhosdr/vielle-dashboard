@@ -21,6 +21,8 @@ PUBLIC_FILES.update({"/pricing.html", "/pricing.css", "/pricing.js", "/pricing-m
 PUBLIC_FILES.update({"/design-system.css", "/app-shell.js"})
 PUBLIC_FILES.update({"/crm-form.css", "/crm-form.js", "/crm-form-renderer.js", "/body-icons.js"})
 PUBLIC_FILES.add("/crm-attribution.js")
+PUBLIC_FILES.update({"/recover-password.html", "/reset-password.html", "/password-recovery.js"})
+AUTH_PAGE_ROUTES = {"/recuperar-senha": "/recover-password.html", "/redefinir-senha": "/reset-password.html"}
 PUBLIC_FILES.update({'/crm-form-phone.js','/crm-form-phone.css','/vendor/libphonenumber-max-1.13.15.js'})
 PUBLIC_FILES.update({'/privacidade.html','/sobre.html','/legal.css'})
 PUBLIC_FILES.update({"/home.html", "/plans.html", "/marketing.css", "/marketing.js",
@@ -70,10 +72,23 @@ class LoginLimiter:
 
 
 class SessionAuthMixin:
+    def log_request(self, code="-", size="-"):
+        path = urlsplit(self.path).path
+        if path in {*AUTH_PAGE_ROUTES, *AUTH_PAGE_ROUTES.values()} or path.startswith("/api/auth/password/"):
+            self.log_message('"%s %s %s" %s %s', self.command, path, self.request_version, str(code), str(size))
+        else:
+            super().log_request(code, size)
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "same-origin")
+        path = urlsplit(self.path).path.removeprefix("/static")
+        recovery = path in {*AUTH_PAGE_ROUTES, *AUTH_PAGE_ROUTES.values()} or path.startswith("/api/auth/")
+        self.send_header("Referrer-Policy", "no-referrer" if recovery else "same-origin")
+        if path in {*AUTH_PAGE_ROUTES, *AUTH_PAGE_ROUTES.values()}:
+            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
         super().end_headers()
 
     def auth_json(self, payload, status=200, cookies=()):
@@ -123,7 +138,7 @@ class SessionAuthMixin:
             self.current_user = self.server.auth_store.session_user(self.session_token())
             if not self.current_user:
                 return True
-        if self.command in ("GET", "HEAD") and (public_path in PUBLIC_FILES or path in {"/login", "/precificacao", "/precificacao/"}):
+        if self.command in ("GET", "HEAD") and (public_path in PUBLIC_FILES or path in AUTH_PAGE_ROUTES or path in {"/login", "/precificacao", "/precificacao/"}):
             return True
         if self.command in ("GET", "HEAD") and path in PUBLIC_PAGE_ROUTES:
             return True
@@ -348,6 +363,8 @@ class SessionAuthMixin:
         return super().send_head()
 
     def handle_session_post(self, path):
+        if path in ("/api/auth/password/forgot", "/api/auth/password/reset"):
+            return self.handle_password_recovery_post(path)
         if path not in ("/api/auth/login", "/api/auth/logout"):
             return False
         if not self.same_origin_request():
@@ -381,11 +398,59 @@ class SessionAuthMixin:
             self.auth_json({"ok": True}, cookies=[self.session_cookie(token), *self.expired_clinic_cookies()])
         return True
 
+    def handle_password_recovery_post(self, path):
+        if not self.same_origin_request():
+            self.auth_json({"ok": False, "error": "Origem da solicitacao invalida."}, 403)
+            return True
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 8192 or self.headers.get_content_type() != "application/json":
+                raise ValueError()
+            data = json.loads(self.rfile.read(length))
+            fields = {"email"} if path.endswith("/forgot") else {"token", "password", "password_confirmation"}
+            if not isinstance(data, dict) or set(data) != fields or any(not isinstance(v, str) for v in data.values()):
+                raise ValueError()
+        except (ValueError, UnicodeError):
+            self.auth_json({"ok": False, "error": "Solicitacao invalida."}, 400)
+            return True
+        service = getattr(self.server, "account_recovery", None)
+        if not service or not service.ready:
+            self.auth_json({"ok": False, "error": "Recuperacao por e-mail temporariamente indisponivel. Fale com o responsavel pelo acesso."}, 503)
+            return True
+        try:
+            if path.endswith("/forgot"):
+                service.request(data["email"], self.client_address[0])
+                self.auth_json({"ok": True, "message": "Se este e-mail estiver vinculado a uma conta ativa, voce recebera um link de recuperacao. Confira tambem o spam."})
+                return True
+            store = self.server.auth_store
+            if not store.recovery_limit("", self.client_address[0], phase="consume"):
+                self.auth_json({"ok": False, "error": "Muitas tentativas. Aguarde alguns minutos."}, 429)
+                return True
+            from auth_store import password_bytes
+            if data["password"] != data["password_confirmation"]:
+                self.auth_json({"ok": False, "error": "As senhas nao conferem."}, 400)
+                return True
+            password_bytes(data["password"], new=True)
+            user_id = store.consume_password_recovery(data["token"], data["password"])
+            if user_id is None:
+                self.auth_json({"ok": False, "error": "Link invalido, expirado ou ja utilizado. Solicite um novo e-mail."}, 400)
+                return True
+            service.notify_changed(user_id)
+            self.auth_json({"ok": True}, cookies=[self.session_cookie(), *self.expired_clinic_cookies()])
+        except (ValueError, UnicodeError):
+            self.auth_json({"ok": False, "error": "Use uma senha com pelo menos 12 caracteres e ate 1024 bytes."}, 400)
+        except Exception:
+            # Do not echo SMTP/DB errors, addresses or request bodies to the page.
+            self.auth_json({"ok": False, "error": "Nao foi possivel concluir agora. Tente novamente mais tarde."}, 503)
+        return True
+
     def do_HEAD(self):
         if not self.require_dashboard_auth():
             return
         parsed = urlsplit(self.path)
-        if parsed.path in PUBLIC_PAGE_ROUTES:
+        if parsed.path in AUTH_PAGE_ROUTES:
+            self.path = AUTH_PAGE_ROUTES[parsed.path]
+        elif parsed.path in PUBLIC_PAGE_ROUTES:
             self.path = PUBLIC_PAGE_ROUTES[parsed.path]
         elif is_public_home_entry(parsed) and not getattr(self, "current_user", None):
             self.path = "/home.html"

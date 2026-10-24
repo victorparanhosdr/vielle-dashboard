@@ -6,6 +6,7 @@ import sqlite3
 from urllib.parse import parse_qs
 
 from auth_store import normalize_login, password_bytes
+from auth_recovery import normalize_email, optional_email
 from clinic_catalog import CLINIC_DISPLAY_NAMES, validate_clinic_keys
 from access_policy import MODULES, ACTION_LABELS, permission_map
 from access_store import validate_crm_scope, TEAM_PROFILES_UNCHANGED
@@ -113,8 +114,12 @@ class MasterApiMixin:
                 self.auth_json({"ok": True, "id": profile_id})
                 return True
             if not match:
-                user_fields(data, ("nome", "login", "password", "status", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
+                user_fields(data, ("nome", "login", "email", "confirm_email", "password", "status", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
                 name, login = validate_identity(data)
+                email = normalize_email(data.get("email"))
+                if normalize_email(login) != email or data.get("confirm_email") is not True:
+                    raise ValueError("Confirme o e-mail do usuario para login e recuperacao.")
+                login = email
                 password = validate_password(data)
                 status = data.get("status", "active")
                 if status not in ("active", "inactive"):
@@ -124,7 +129,7 @@ class MasterApiMixin:
                     raise ValueError("Permissões inválidas.")
                 permissions = permission_map(keys, data.get("permissions", {key: [] for key in keys}))
                 scope = crm_scope_fields(store, data)
-                user_id = store.create_user(name, login, password, status=status, clinic_keys=keys, permissions=permissions,
+                user_id = store.create_user(name, login, password, email=email, status=status, clinic_keys=keys, permissions=permissions,
                                             team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope)
                 self.auth_json({"ok": True, "user": store.get_public_user(user_id)}, 201)
                 return True
@@ -133,15 +138,21 @@ class MasterApiMixin:
                 self.auth_json({"ok": False, "error": "Usuário não encontrado."}, 404)
                 return True
             if action == "edit":
-                user_fields(data, ("nome", "login", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
+                user_fields(data, ("nome", "login", "email", "confirm_email", "clinic_keys", "permissions", "crm_scope", "team_profiles"))
                 name, login = validate_identity(data)
+                email_fields = {}
+                if "email" in data:
+                    email = optional_email(data["email"])
+                    if email != store.get_public_user(user_id).get("email") and data.get("confirm_email") is not True:
+                        raise ValueError("Confirme a alteracao do e-mail de acesso e recuperacao.")
+                    email_fields["email"] = email
                 if "clinic_keys" in data and not isinstance(data["clinic_keys"], list):
                     raise ValueError("Clínicas inválidas.")
                 if "permissions" in data and not isinstance(data["permissions"], dict):
                     raise ValueError("Permissões inválidas.")
                 scope = crm_scope_fields(store, data)
                 store.update_user(user_id, name, login, clinic_keys=data.get("clinic_keys"), permissions=data.get("permissions"),
-                                  team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope)
+                                  team_profiles=data.get("team_profiles", TEAM_PROFILES_UNCHANGED), actor_id=actor_id, **scope, **email_fields)
             elif action == "promote":
                 user_fields(data, ("confirm", "expected_login"))
                 if data.get("confirm") is not True:
@@ -157,7 +168,7 @@ class MasterApiMixin:
                 store.set_password(user_id, validate_password(data), actor_id=actor_id)
             self.auth_json({"ok": True, "user": store.get_public_user(user_id)})
         except sqlite3.IntegrityError:
-            self.auth_json({"ok": False, "error": "Este login ou nome de perfil já está em uso."}, 409)
+            self.auth_json({"ok": False, "error": "Este login, e-mail ou nome de perfil já está em uso."}, 409)
         except (ValueError, UnicodeError) as error:
             message = str(error) if not isinstance(error, (json.JSONDecodeError, UnicodeError)) else "JSON inválido."
             self.auth_json({"ok": False, "error": message}, 400)

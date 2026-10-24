@@ -6,8 +6,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Entrar | DOC4DOCS</title>
-    <link rel="stylesheet" href="/login.css?v=2">
-    <script src="/login.js?v=tasks-1" defer></script>
+    <link rel="stylesheet" href="/login.css?v=email-1">
+    <script src="/login.js?v=email-1" defer></script>
     <link rel="stylesheet" href="/design-system.css?v=crm-release1">
   </head>
   <body data-app-page="login">
@@ -19,13 +19,14 @@
       <section class="loginPanel" aria-labelledby="loginTitle">
         <h1 id="loginTitle">Acessar conta</h1>
         <form id="loginForm">
-          <label for="login">Login</label>
-          <input id="login" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
+          <label for="login">E-mail ou login atual</label>
+          <input id="login" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" inputmode="email" required>
           <label for="password">Senha</label>
           <input id="password" name="password" type="password" autocomplete="current-password" required>
           <p id="loginError" class="loginError" role="alert" aria-live="polite"></p>
           <button id="loginSubmit" type="submit">Entrar</button>
         </form>
+        <p class="recoveryLink"><a href="/recuperar-senha">Esqueci minha senha</a></p>
       </section>
       <nav aria-label="Institucional"><a href="/inicio">Conhecer o DOC4DOCS</a> · <a href="/planos">Planos</a> · <a href="/privacidade.html">Privacidade</a></nav>
     </main>

@@ -962,7 +962,7 @@ class HttpAuthTests(unittest.TestCase):
     def test_admin_create_edit_disable_enable_reset_and_list(self):
         cookie=self.master_cookie()
         headers={"X-DOC4DOCS-Request":"1"}
-        payload={"nome":"Pessoa Teste","login":"pessoa","password":"Pessoa-test-password!"}
+        payload={"nome":"Pessoa Teste","login":"pessoa@example.test","email":"pessoa@example.test","confirm_email":True,"password":"Pessoa-test-password!"}
         status,_,body=self.request("POST","/api/master/users",payload,cookie,headers)
         self.assertEqual(status,201,body)
         self.assertNotIn(b"password",body)
@@ -985,11 +985,12 @@ class HttpAuthTests(unittest.TestCase):
 
     def test_admin_payload_validation_and_no_master_promotion(self):
         cookie=self.master_cookie(); headers={"X-DOC4DOCS-Request":"1"}
-        normal={"nome":"Teste","login":"novo","password":"Changed-test-password!"}
+        normal={"nome":"Teste","login":"novo@example.test","email":"novo@example.test","confirm_email":True,"password":"Changed-test-password!"}
         for changed in ({"is_master":True},{"status":"other"},{"password":"short"},{"login":"has space"},{"nome":""}):
             self.assertEqual(self.request("POST","/api/master/users",{**normal,**changed},cookie,headers)[0],400)
         self.assertEqual(self.request("POST","/api/master/users",normal,cookie)[0],403)
-        self.assertEqual(self.request("POST","/api/master/users",{**normal,"login":"teste"},cookie,headers)[0],409)
+        self.store.update_user(self.user_id,"Usuario Local","teste",email="existing@example.test")
+        self.assertEqual(self.request("POST","/api/master/users",{**normal,"login":"existing@example.test","email":"existing@example.test"},cookie,headers)[0],409)
         self.assertEqual(self.request("POST",f"/api/master/users/{self.user_id}/edit",{"nome":"Test","login":"teste","is_master":True},cookie,headers)[0],400)
         self.assertEqual(self.request("POST","/api/master/users/999/status",{"active":False},cookie,headers)[0],404)
         self.assertEqual(self.store.get_user_by_login("teste")["is_master"],0)
@@ -1321,7 +1322,7 @@ class HttpAuthTests(unittest.TestCase):
 
     def test_master_creates_user_with_team_profile(self):
         cookie=self.master_cookie(); headers={"X-DOC4DOCS-Request":"1"}
-        payload={"nome":"Gestao Teste","login":"gestaoteste","password":"Temporary-test-password!",
+        payload={"nome":"Gestao Teste","login":"gestao@example.test","email":"gestao@example.test","confirm_email":True,"password":"Temporary-test-password!",
                  "clinic_keys":["vielle"],"permissions":{"vielle":[]},"team_profiles":{"vielle":"management"}}
         status,_,body=self.request("POST","/api/master/users",payload,cookie,headers)
         self.assertEqual(status,201,body)
@@ -1383,7 +1384,7 @@ class HttpAuthTests(unittest.TestCase):
         self.assertEqual(self.store.allowed_clinics(self.user_id), ["inspire", "carla"])
         for invalid in (["bad"], "vielle", None, [42]):
             self.assertEqual(self.request("POST", path, {**data, "clinic_keys":invalid}, master, headers)[0], 400)
-        status, _, body = self.request("POST", "/api/master/users", {"nome":"Created", "login":"created", "password":"Temporary-test-password!", "clinic_keys":["carla"]}, master, headers)
+        status, _, body = self.request("POST", "/api/master/users", {"nome":"Created", "login":"created@example.test", "email":"created@example.test", "confirm_email":True, "password":"Temporary-test-password!", "clinic_keys":["carla"]}, master, headers)
         self.assertEqual(status, 201)
         self.assertEqual(json.loads(body)["user"]["clinic_keys"], ["carla"])
         _, _, body = self.request("GET", "/api/auth/me", cookie=master)

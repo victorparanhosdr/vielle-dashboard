@@ -24,9 +24,9 @@ class AuthStoreTests(unittest.TestCase):
     def test_empty_database_and_idempotent_initialization(self):
         with self.store.connection() as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 0)
-            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 5)
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        self.assertEqual(tables, {"users", "sessions", "user_clinics", "user_clinic_permissions", "access_profiles", "audit_log", "sqlite_sequence", "user_crm_scope", "user_team_profiles", "team_clients", "team_presence", "team_intervals", "team_help"})
+            self.assertEqual(tables, {"users", "sessions", "user_clinics", "user_clinic_permissions", "access_profiles", "audit_log", "sqlite_sequence", "user_crm_scope", "user_team_profiles", "team_clients", "team_presence", "team_intervals", "team_help", "password_recovery", "recovery_limits"})
         self.create()
         self.store.initialize()
         self.assertTrue(self.store.validate_password("tester", PASSWORD))
