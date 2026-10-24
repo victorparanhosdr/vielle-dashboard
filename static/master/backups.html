@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Backups | DOC4DOCS</title>
+  <link rel="icon" href="/doc4docs-favicon.png">
+  <link rel="stylesheet" href="/master.css?v=crm-scope-1">
+  <link rel="stylesheet" href="/design-system.css?v=crm-release1">
+  <link rel="stylesheet" href="/master/backups.css?v=1">
+  <script src="/session.js"></script>
+  <script src="/master/backups.js?v=1" defer></script>
+</head>
+<body>
+  <header class="masterHeader">
+    <a class="brand" href="/master"><img src="/doc4docs-logo-white.png" alt="DOC4DOCS" width="148" height="68"></a>
+    <div class="accountActions"><span class="masterBadge">Master</span><span data-session-user></span><a href="/master">Administração</a><a href="/">Voltar ao sistema</a></div>
+  </header>
+  <main class="masterMain">
+    <div class="pageHeading"><div><p class="eyebrow">Segurança</p><h1>Backups externos</h1></div><button id="refreshBackup" class="secondary" type="button">Atualizar</button></div>
+    <p id="notice" role="status" aria-live="polite">Carregando...</p>
+    <section aria-label="Estado da cópia externa">
+      <div class="backupHeadline"><h2 id="backupState">Consultando servidor</h2><span id="backupBadge" class="statusBadge">Aguardando</span></div>
+      <dl class="backupFacts">
+        <div><dt>Última cópia conferida no Drive</dt><dd id="lastUploaded">—</dd></div>
+        <div><dt>Última tentativa</dt><dd id="lastAttempt">—</dd></div>
+        <div><dt>Próxima verificação</dt><dd id="nextAttempt">—</dd></div>
+        <div><dt>Agendamento no servidor</dt><dd id="schedule">—</dd></div>
+        <div><dt>Recuperação real testada</dt><dd id="restoreVerified">Não confirmada</dd></div>
+        <div><dt>Retenção externa</dt><dd id="retention">Todas as cópias, sem exclusão automática</dd></div>
+        <div><dt>Destino privado</dt><dd><a id="backupFolder" target="_blank" rel="noopener noreferrer" hidden>Abrir pasta no Google Drive</a><span id="noFolder">Ainda não confirmado</span></dd></div>
+      </dl>
+      <p id="failureNotice" class="notice error" role="alert" hidden></p>
+      <p id="backupErrorCode" class="backupCode" hidden></p>
+      <form id="retryBackup">
+        <label class="checkboxLabel"><input name="confirm" type="checkbox" required><span>Solicitar verificação ou nova tentativa da cópia pendente</span></label>
+        <button id="runBackup" type="submit" disabled>Solicitar ao servidor</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

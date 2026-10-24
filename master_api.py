@@ -64,6 +64,9 @@ class MasterApiMixin:
             return False
         if not self.require_master_auth():
             return True
+        from offsite_backup_api import handle as handle_offsite_backup
+        if handle_offsite_backup(self, parsed):
+            return True
         from marketing_leads import master_request
         if master_request(self, parsed):
             return True
