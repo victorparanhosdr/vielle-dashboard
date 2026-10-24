@@ -6,6 +6,7 @@ from email.utils import format_datetime, make_msgid
 from datetime import datetime, timezone
 import logging
 import os
+from pathlib import Path
 import queue
 import smtplib
 import ssl
@@ -13,6 +14,7 @@ import threading
 from urllib.parse import urlsplit
 
 from auth_recovery import normalize_email
+from auth_email_templates import render_auth_email
 
 
 @dataclass(frozen=True)
@@ -49,38 +51,30 @@ class SmtpMailer:
         self.settings = settings
 
     def send(self, recipient, *, token=None):
-        settings = self.settings
         recipient = normalize_email(recipient)
+        message = self._message(recipient, "recovery" if token else "changed", token=token)
+        self._deliver(message, recipient)
+
+    def send_test_to_sender(self):
+        self._deliver(self._message(self.settings.username, "test"), self.settings.username)
+
+    def _message(self, recipient, kind, *, token=None):
+        settings = self.settings
         message = EmailMessage()
         message["From"] = "DOC4DOCS <" + settings.username + ">"
         message["To"] = recipient
         message["Date"] = format_datetime(datetime.now(timezone.utc))
         message["Message-ID"] = make_msgid(domain=settings.username.rsplit("@", 1)[1])
-        if token:
-            message["Subject"] = "Redefinir sua senha do DOC4DOCS"
-            link = settings.public_url + "/redefinir-senha#token=" + token
-            message.set_content("Recebemos uma solicitação para redefinir sua senha do DOC4DOCS.\n\n"
-                "Abra o link abaixo para escolher uma nova senha:\n" + link + "\n\n"
-                "O link vence em 20 minutos e só pode ser usado uma vez.\n"
-                "Se você não fez esta solicitação, ignore este e-mail. Sua senha continua a mesma.\n"
-                "Nunca compartilhe este link ou sua senha.\n\nEquipe DOC4DOCS\n")
-        else:
-            message["Subject"] = "Sua senha do DOC4DOCS foi alterada"
-            message.set_content("A senha da sua conta DOC4DOCS foi alterada e as sessões anteriores foram encerradas.\n\n"
-                "Se você não reconhece esta alteração, avise o responsável da sua empresa e solicite uma nova recuperação em "
-                + settings.public_url + "/recuperar-senha.\n\nEquipe DOC4DOCS\n")
-        self._deliver(message, recipient)
-
-    def send_test_to_sender(self):
-        message = EmailMessage()
-        message["From"] = "DOC4DOCS <" + self.settings.username + ">"
-        message["To"] = self.settings.username
-        message["Date"] = format_datetime(datetime.now(timezone.utc))
-        message["Message-ID"] = make_msgid(domain=self.settings.username.rsplit("@", 1)[1])
-        message["Subject"] = "DOC4DOCS - Teste de conexão de e-mail"
-        message.set_content("Este é um teste de envio do DOC4DOCS pela caixa configurada.\n\n"
-                            "Nenhuma senha de usuário foi alterada. Este e-mail não contém link de recuperação.\n\nEquipe DOC4DOCS\n")
-        self._deliver(message, self.settings.username)
+        cid = make_msgid(domain=settings.username.rsplit("@", 1)[1])
+        subject, plain, html = render_auth_email(kind, settings.public_url, token=token, logo_cid=cid[1:-1])
+        message["Subject"] = subject
+        message.set_content(plain)
+        message.add_alternative(html, subtype="html")
+        logo = Path(__file__).with_name("static") / "doc4docs-logo-white.png"
+        message.get_body(preferencelist=("html",)).add_related(
+            logo.read_bytes(), maintype="image", subtype="png", cid=cid,
+            disposition="inline", filename="doc4docs.png")
+        return message
 
     def _deliver(self, message, recipient):
         settings = self.settings

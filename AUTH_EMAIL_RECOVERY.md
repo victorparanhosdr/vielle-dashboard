@@ -53,6 +53,24 @@ Same-origin/custom-header protection, bounded JSON bodies, no-store caching,
 no-referrer, framing denial, restrictive recovery-page CSP and redacted access
 logging apply. SMTP/provider exception bodies never reach responses or logs.
 
+## Branded messages
+
+Recovery, password-change notices and the explicit sender self-test share the
+DOC4DOCS transactional layout: official logo, deep green, white surface, restrained
+gold accent and a clear action button. Inline styles and presentation tables are
+used instead of scripts, web fonts or externally loaded stylesheets.
+
+Messages contain a UTF-8 plain-text alternative and HTML. The official PNG logo
+is embedded as an inline related MIME part, not loaded from a remote tracking
+URL. The recovery bearer remains in the button's fragment destination and the
+plain-text fallback, not the visible HTML copy. This is presentation, not token
+secrecy: possession of the email still grants use of its recovery link.
+
+Expiry, single-use validation, digest-only persistence, rate limits, SMTP TLS
+and recipient rules are unchanged. No database migration or credentials change
+is required for the visual update. MIME/escaping tests and synthetic browser
+previews do not imply verification in every mail-client version.
+
 ## Server settings
 
 - `DOC4DOCS_AUTH_EMAIL_ENABLED`: only `1` enables SMTP recovery. Default disabled.

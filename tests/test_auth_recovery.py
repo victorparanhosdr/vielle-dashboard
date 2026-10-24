@@ -2,6 +2,7 @@ import concurrent.futures
 import contextlib
 import functools
 import http.client
+from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ from auth_store import AuthStore, verify_password
 from auth_http import AUTH_PAGE_ROUTES, LoginLimiter, SessionAuthMixin
 from auth_recovery import RECOVERY_TTL, normalize_email
 from auth_mail import MailSettings, RecoveryService, SmtpMailer
+from auth_email_templates import render_auth_email
 from master_api import MasterApiMixin
 
 
@@ -182,7 +184,7 @@ class MailTests(Fixture):
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
         message = smtp.send_message.call_args.args[0]
-        self.assertIn("https://app.example.test/redefinir-senha#token=" + "T" * 43, message.get_content())
+        self.assertIn("https://app.example.test/redefinir-senha#token=" + "T" * 43, message.get_body(preferencelist=("plain",)).get_content())
         self.assertNotIn(settings.password, message.as_string())
         self.assertEqual(smtp.send_message.call_args.kwargs["to_addrs"], [EMAIL])
 
@@ -206,8 +208,58 @@ class MailTests(Fixture):
             SmtpMailer(settings).send_test_to_sender()
         call = smtp.send_message.call_args
         self.assertEqual(call.kwargs["to_addrs"], [settings.username])
-        self.assertNotIn("#token=", call.args[0].get_content())
+        self.assertNotIn("#token=", call.args[0].get_body(preferencelist=("plain",)).get_content())
         self.assertNotIn(settings.password, call.args[0].as_string())
+
+    def test_branded_mail_has_plain_html_and_embedded_logo_without_remote_images(self):
+        mailer = SmtpMailer(MailSettings("smtp.example.test", "sender@example.test", "synthetic-only-secret", "https://app.example.test"))
+        for kind in ("recovery", "changed", "test"):
+            with self.subTest(kind=kind):
+                message = mailer._message(EMAIL, kind, token="T" * 43 if kind == "recovery" else None)
+                self.assertEqual(message.get_content_type(), "multipart/alternative")
+                self.assertIsNotNone(message.get_body(preferencelist=("plain",)))
+                html = message.get_body(preferencelist=("html",)).get_content()
+                images = [part for part in message.walk() if part.get_content_type() == "image/png"]
+                self.assertEqual(len(images), 1)
+                image = images[0]
+                self.assertEqual(image.get_content_disposition(), "inline")
+                self.assertTrue(image.get_payload(decode=True).startswith(b"\x89PNG\r\n\x1a\n"))
+                self.assertIn('src="cid:' + image["Content-ID"][1:-1] + '"', html)
+                self.assertNotIn('src="https:', html)
+                self.assertNotIn("<script", html)
+                self.assertNotIn("<form", html)
+                self.assertIn("#123e32", html)
+                self.assertIn("Criado por doutores. Para doutores.", html)
+                self.assertLess(len(message.as_bytes()), 400000)
+                if kind != "recovery":
+                    self.assertNotIn("#token=", html)
+
+    def test_html_recovery_link_keeps_token_out_of_visible_copy(self):
+        token = "T" * 43
+        _, plain, html = render_auth_email("recovery", "https://app.example.test", token=token)
+        class TextReader(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text, self.links = [], []
+            def handle_data(self, data):
+                self.text.append(data)
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    self.links.extend(value for name, value in attrs if name == "href")
+        reader = TextReader()
+        reader.feed(html)
+        self.assertNotIn(token, "".join(reader.text))
+        self.assertEqual(reader.links, ["https://app.example.test/redefinir-senha#token=" + token])
+        self.assertIn("Redefinir minha senha", "".join(reader.text))
+        self.assertIn("20 minutos", plain)
+        with self.assertRaises(ValueError):
+            render_auth_email("recovery", "https://app.example.test", token='\"><script>bad</script>')
+
+    def test_template_escapes_dynamic_html_attributes(self):
+        _, _, html = render_auth_email("test", 'https://app.example.test/\" onmouseover=\"bad', logo_cid='\" onerror=\"bad')
+        self.assertIn("&quot;", html)
+        self.assertNotIn('src="cid:" onerror=', html)
+        self.assertNotIn('href="https://app.example.test/" onmouseover=', html)
 
     def test_provider_errors_do_not_log_secrets_addresses_or_links(self):
         mailer = MagicMock()
